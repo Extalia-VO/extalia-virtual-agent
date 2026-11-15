@@ -12,6 +12,8 @@ file-read, memory and skill-catalog measurements.
 | Native standby | [Standby QA](native-standby-qa.json) |
 | Deferred page loading | [Page loading](deferred-pages.md) |
 | Provider completion placement | [Measurements and selection](provider-completion.md) |
+| Operational work memory | [Local probe](work-memory.md), [review validation](work-memory-validation.md) |
+| Repeated handover | [Validation and storage comparison](repeatable-handover-validation.md) |
 
 For unfinished performance acceptance see [Office](../modules/office.md) and
 [remaining PRD work](../product/prd-remaining-work.md).

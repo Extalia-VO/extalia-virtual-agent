@@ -21,6 +21,8 @@ pub const MAX_GRAPH_DEPTH: usize = 3;
 pub const MAX_GRAPH_NODES: usize = 500;
 pub const MAX_OVERVIEW_NODES: usize = 2_000;
 pub const MAX_OVERVIEW_EDGES: usize = 8_000;
+/// Candidate sources inspected by one correction-aware read, before live-file checks.
+pub const MAX_REVISION_BACKLINKS: usize = 32;
 const MAX_SEARCH_TERMS: usize = 16;
 
 /// The profile (and later workspace) a query runs for.
@@ -262,6 +264,34 @@ impl KnowledgeStore {
             &format!(
                 "SELECT {EDGE_COLUMNS} {EDGE_FROM} AND e.target_node_id = ?2 \
                  AND t.node_id IS NOT NULL ORDER BY e.source_node_id, e.ordinal"
+            ),
+            node_id,
+        )
+    }
+
+    /// Bounded, resolved incoming amendment/conflict claims. A source appears once per
+    /// relation even when it repeats the same link. Newer file mtimes order discovery,
+    /// never establish which claim is true. The caller must check live source hashes.
+    /// One extra candidate lets the caller report truncation without counting all rows.
+    pub fn revision_backlinks(
+        &self,
+        scope: &ProfileScope,
+        node_id: &str,
+    ) -> Result<Vec<EdgeView>, KnowledgeError> {
+        if !self.visible(scope) {
+            return Ok(Vec::new());
+        }
+        self.edges(
+            &format!(
+                "SELECT {EDGE_COLUMNS} {EDGE_FROM} AND e.target_node_id = ?2 \
+                 AND t.node_id IS NOT NULL AND e.source_node_id <> e.target_node_id \
+                 AND e.edge_type IN ('updates', 'contradicts', 'supersedes') \
+                 AND e.ordinal = (SELECT min(d.ordinal) FROM knowledge_edges d \
+                   WHERE d.profile_id = e.profile_id AND d.source_node_id = e.source_node_id \
+                     AND d.target_node_id = e.target_node_id AND d.edge_type = e.edge_type \
+                     AND d.visibility = 'profile') \
+                 ORDER BY s.source_mtime_ns DESC, s.path, e.ordinal LIMIT {}",
+                MAX_REVISION_BACKLINKS + 1
             ),
             node_id,
         )

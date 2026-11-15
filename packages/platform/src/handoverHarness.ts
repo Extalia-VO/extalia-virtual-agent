@@ -4,7 +4,10 @@ export interface HandoverHarnessDestination {
   sourceIds: string[];
   evidence: Array<'builtin' | 'executable' | 'application' | 'observed-session' | 'native-connection'>;
   existing: 'ready' | 'setup-required' | 'unsupported';
-  create: 'ready' | 'unavailable' | 'unsupported';
+  /** Setup-required is an explicit capability check before creation, never a claim that an installed CLI is ready. */
+  create: 'ready' | 'setup-required' | 'unavailable' | 'unsupported';
+  /** The native profile selected for new creation; no private filesystem path. */
+  creationProfile?: string;
   sessionIds: string[];
   /** Stable reason code for localized presentation; never a credential or endpoint. */
   reason?: 'no-connection' | 'setup-required' | 'adapter-unavailable' | 'runtime-unavailable';
@@ -13,7 +16,7 @@ export interface HandoverHarnessInventory {
   sourceSessionId: string;
   revision: string;
   harnesses: HandoverHarnessDestination[];
-  pendingCreation?: { harnessId: string; operationId: string; nativeSessionId: string; state: 'created' | 'unknown' };
+  pendingCreation?: { harnessId: string; operationId: string; nativeSessionId?: string; state: 'created' | 'unknown' };
 }
 export interface HandoverDestinationCreateInput { harnessId: string; revision: string; operationId: string }
 export interface HandoverDestinationCreateReceipt {

@@ -26,6 +26,8 @@ export interface HermesObservedRpcOptions {
   bin: string;
   env?: NodeJS.ProcessEnv;
   profile?: string;
+  /** Native public profile identity: the canonical profile home selected by the host. */
+  expectedProfileId?: string;
   signal: AbortSignal;
   onMessage(message: unknown): void;
   onClose(): void;
@@ -38,6 +40,9 @@ export interface HermesObservedControlOptions {
   env?: NodeJS.ProcessEnv;
   profile?: string;
   cwd?: string;
+  expectedProfileId?: string;
+  /** Revalidate the retained source/profile/workspace before each native mutation. */
+  assertCurrent?(): void;
   onChange?: () => void;
   rpcFactory?: HermesObservedRpcFactory;
 }
@@ -71,6 +76,7 @@ export const createHermesObservedRpc: HermesObservedRpcFactory = async (options)
   const profileId = attached.profile_id ?? endpoint?.profile_id;
   const instanceId = attached.instance_id ?? endpoint?.instance_id;
   if (!text(profileId, 4096) || !text(instanceId, 256) || !text(attached.url, 2048) || !Array.isArray(attached.protocols)) throw new Error('Hermes returned an invalid gateway attachment.');
+  if (options.expectedProfileId !== undefined && profileId !== options.expectedProfileId) throw new Error('Hermes attached a different native profile.');
   let url: URL;
   try { url = new URL(attached.url); } catch { throw new Error('Hermes returned an invalid gateway attachment.'); }
   const protocols = attached.protocols;
@@ -195,7 +201,7 @@ export const createHermesObservedRpc: HermesObservedRpcFactory = async (options)
   };
 };
 
-/** Ephemeral attachment to one exact live canonical session; no historical adoption or engine. */
+/** Ephemeral attachment to one exact authorized canonical session; the gateway owns cold resume and execution. */
 export class HermesObservedControl {
   private rpc?: HermesObservedRpc;
   private abort?: AbortController;
@@ -300,19 +306,28 @@ export class HermesObservedControl {
       this.changed();
     } catch { this.lost(); if (this.rpc) void this.closeRpc(this.rpc).catch(() => undefined); }
   }
-  private async live(rpc: HermesObservedRpc) {
-    const listed = row(await rpc.request('session.list', { scope: 'live', limit: 200 }));
-    if (listed?.scope !== 'live' || !Array.isArray(listed.sessions) || listed.sessions.length > 200 || !listed.sessions.some(value => row(value)?.session_id === this.options.nativeSessionId)) throw new Error('The exact Hermes session is not live in this gateway.');
+  private async authority(rpc: HermesObservedRpc) {
+    this.options.assertCurrent?.();
+    if (this.options.expectedProfileId !== undefined && rpc.profileId !== this.options.expectedProfileId) throw new Error('Hermes attached a different native profile.');
+    const description = row(await rpc.request('runtime.describe', {}));
+    if (!description || description.profile_id !== rpc.profileId || description.instance_id !== rpc.instanceId || !integer(description.authority_epoch) ||
+        this.epoch !== undefined && description.authority_epoch !== this.epoch ||
+        !Array.isArray(description.capabilities) || !description.capabilities.includes('durable-admission-v1')) throw new Error('Hermes does not expose the same shared native gateway authority.');
+    this.options.assertCurrent?.();
+    return description.authority_epoch;
   }
   private async snapshot(rpc: HermesObservedRpc) {
-    await this.live(rpc);
+    // Explicit exact resume lets the authenticated owner restore cold sessions.
+    // A bounded live-list page cannot prove that an exact historical ID is absent.
+    this.options.assertCurrent?.();
     const result = row(await rpc.request('session.resume', { session_id: this.options.nativeSessionId, omit_messages: true }));
+    this.options.assertCurrent?.();
     const info = row(result?.info);
     if (!result || result.session_id !== this.options.nativeSessionId || result.stored_session_id !== this.options.nativeSessionId ||
         result.authority_epoch !== this.epoch || !integer(result.execution_generation) || typeof result.running !== 'boolean' || !text(result.subscription_id, 256) ||
         !text(result.replay_epoch, 256) || !integer(result.last_sequence) || info?.desktop_protocol !== protocol || info.profile_id !== rpc.profileId ||
         this.options.cwd !== undefined && info.cwd !== this.options.cwd || !Array.isArray(result.prompts) || result.prompts.length > MAX_REQUESTS ||
-        !Array.isArray(result.pending) || result.pending.some(value => row(value)?.status === 'unknown')) throw new Error('Hermes did not confirm the exact live session identity.');
+        !Array.isArray(result.pending) || result.pending.some(value => row(value)?.status === 'unknown')) throw new Error('Hermes did not confirm the exact authorized session identity.');
     const questions = result.prompts.map(value => this.question(value));
     if (questions.some(value => value.executionGeneration !== result.execution_generation) || new Set(questions.map(value => value.id)).size !== questions.length) throw new Error('Hermes returned stale native questions.');
     this.generation = result.execution_generation; this.running = result.running; this.replayEpoch = result.replay_epoch; this.sequence = result.last_sequence;
@@ -331,15 +346,12 @@ export class HermesObservedControl {
     this.busy = true; this.problem = undefined; this.invalidated = false; this.abort = new AbortController(); this.buffering = [];
     try {
       const rpc = await (this.options.rpcFactory ?? createHermesObservedRpc)({
-        bin: this.options.bin, env: this.options.env, profile: this.options.profile, signal: this.abort.signal,
+        bin: this.options.bin, env: this.options.env, profile: this.options.profile, expectedProfileId: this.options.expectedProfileId, signal: this.abort.signal,
         onMessage: message => this.message(message), onClose: () => this.lost(),
       });
       this.rpc = rpc;
       if (this.closed || this.abort.signal.aborted || this.invalidated) throw new Error('Hermes attachment was cancelled.');
-      const description = row(await rpc.request('runtime.describe', {}));
-      if (!description || description.profile_id !== rpc.profileId || description.instance_id !== rpc.instanceId || !integer(description.authority_epoch) ||
-          !Array.isArray(description.capabilities) || !description.capabilities.includes('durable-admission-v1')) throw new Error('Hermes does not expose the shared native gateway protocol.');
-      this.epoch = description.authority_epoch;
+      this.epoch = await this.authority(rpc);
       await this.snapshot(rpc);
       if (this.closed || this.invalidated) throw new Error('Hermes attachment was cancelled.');
       this.connected = true; this.connectionId = randomUUID();
@@ -363,9 +375,10 @@ export class HermesObservedControl {
     if (!text(input?.text) || !input.text.trim() || input.executionGeneration !== this.generation) throw new Error('Use the current Hermes turn and a nonempty message.');
     this.busy = true; this.delivery = undefined;
     try {
-      await this.live(rpc);
+      await this.authority(rpc);
       if (!this.connected || input.executionGeneration !== this.generation) throw new Error('Hermes changed while sending.');
       if (input.intent !== undefined && input.intent !== (this.running ? 'steer' : 'start')) throw new Error('Hermes changed before the selected action could be admitted.');
+      this.options.assertCurrent?.();
       const generation = this.generation;
       const method = this.running ? 'session.steer' : 'prompt.submit';
       const result = row(await rpc.request(method, { session_id: this.options.nativeSessionId, text: input.text,
@@ -387,6 +400,7 @@ export class HermesObservedControl {
     // Retire immediately. Ambiguous completion must never make a second reply possible.
     this.requests.delete(question.id);
     try {
+      this.options.assertCurrent?.();
       const result = row(await rpc.request(question.kind === 'approval' ? 'approval.respond' : 'clarify.respond', {
         session_id: this.options.nativeSessionId, execution_generation: input.executionGeneration, prompt_id: question.id,
         ...(question.kind === 'approval' ? { choice: input.choice } : { answer: input.answer }),

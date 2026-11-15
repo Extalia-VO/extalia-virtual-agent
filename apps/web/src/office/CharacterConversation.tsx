@@ -83,7 +83,7 @@ export interface CharacterConversationToolsState {
  * observed execution stays in its source app; Codex has a separate text sender. Tabs stay mounted, so switching
  * keeps the scroll position; the composer stays mounted, so it keeps the draft.
  */
-export function CharacterConversation({ t, language, agents, state, session, agent, onState, appearance, tab: controlledTab, onTab, readOnlyReason, onLocate, following = false, onToggleFollow, onSelectCharacter, onToolsStateChange, onHandoverReady }: {
+export function CharacterConversation({ t, language, agents, state, session, agent, onState, appearance, tab: controlledTab, onTab, readOnlyReason, onLocate, following = false, onToggleFollow, onSelectCharacter, onToolsStateChange, onHandoverReady, onOpenSettings }: {
   t: Messages;
   language: string;
   agents: AgentHostApi;
@@ -108,6 +108,7 @@ export function CharacterConversation({ t, language, agents, state, session, age
   /** Let the containing dialog size itself to the tools' actual layout state. */
   onToolsStateChange?: ((state: CharacterConversationToolsState) => void) | undefined;
   onHandoverReady?: ((session: SessionSummary) => void) | undefined;
+  onOpenSettings?: (() => void) | undefined;
 }) {
   const workspaceReview = useWorkspaceReviewRecovery({ agents, session, onState });
   const inputContext = useObservedInputs();
@@ -330,6 +331,9 @@ export function CharacterConversation({ t, language, agents, state, session, age
         </div>
       </aside>}
       {handoverOpen && !isWorker && !readOnlyReason && <SessionHandoverDialog agents={agents} state={state} session={session} t={t.sessionHandover} cliResumeMessages={t.observedCliResume} antigravityMessages={t.observedAntigravity}
+        workspaceLinkMessages={t.observedWorkspaceLink} onState={onState} onOpenSettings={onOpenSettings}
+        destinationSetup={(destination, changed) => destination.observation?.sourceId === 'hermes' ? <ObservedHermesControls t={t} agents={agents} session={destination} settingsOnly onChanged={changed} /> : undefined}
+        onOpenDestination={onHandoverReady ? id => { void guard(async () => { const next = await agents.getState(); onState(next); const destination = next.sessions.find(item => item.id === id); if (destination) { setHandoverOpen(false); onHandoverReady(destination); } }); } : undefined}
         onClose={() => setHandoverOpen(false)} onApplied={receipt => {
           if (receipt.state === 'native-ready') void guard(async () => {
             const next = await agents.getState(); setHandoverOpen(false); onState(next);

@@ -206,8 +206,40 @@ impl<'s> SkillRegistry<'s> {
         now_ms: i64,
         expected_tree_sha256: Option<&str>,
     ) -> Result<ImportReceipt, SkillError> {
+        self.import_with_base(
+            source,
+            origin,
+            source_ref,
+            now_ms,
+            expected_tree_sha256,
+            None,
+        )
+    }
+
+    /// Generated refinements retain the activation pointer and require a current,
+    /// scoped immutable base. The compare and insertion share one transaction.
+    #[allow(clippy::too_many_arguments)]
+    pub fn import_with_base(
+        &mut self,
+        source: &Path,
+        origin: Origin,
+        source_ref: &str,
+        now_ms: i64,
+        expected_tree_sha256: Option<&str>,
+        refinement: Option<super::candidates::RefinementBase<'_>>,
+    ) -> Result<ImportReceipt, SkillError> {
         if source_ref.len() > LONG_TEXT {
             return Err(SkillError::Denied("source_ref_too_long"));
+        }
+        if let Some(base) = refinement {
+            if origin != Origin::Generated {
+                return Err(SkillError::Denied("refinement_origin_invalid"));
+            }
+            let (revision, _, _) =
+                self.candidate_context(base.revision_id, base.profile_id, base.workspace_id)?;
+            if revision.skill_md_sha256 != base.skill_md_sha256 {
+                return Err(SkillError::Denied("refinement_base_changed"));
+            }
         }
         let tree = self.objects.stage(source, &self.limits)?;
         if expected_tree_sha256.is_some_and(|expected| expected != tree.sha256) {
@@ -224,6 +256,26 @@ impl<'s> SkillRegistry<'s> {
             None => None,
         };
         let package = manifest::resolve(&tree, manifest_bytes.as_deref(), &skill_md)?;
+        if let Some(base) = refinement {
+            let entry = tree
+                .file("PROVENANCE.md")
+                .ok_or(SkillError::Denied("candidate_provenance_unavailable"))?;
+            let candidate = super::candidates::provenance(&self.objects.read_file(
+                &tree.sha256,
+                "PROVENANCE.md",
+                entry,
+            )?)?;
+            if candidate.profile_id != base.profile_id
+                || candidate.workspace_id != base.workspace_id
+                || source_ref
+                    != format!(
+                        "prompt:{}:{}",
+                        candidate.session_id, candidate.prompt_sha256
+                    )
+            {
+                return Err(SkillError::Denied("candidate_scope_mismatch"));
+            }
+        }
         let manifest = &package.manifest;
         let revision_id = format!("skr_{}", tree.sha256);
         let at = format_utc(now_ms);
@@ -231,6 +283,14 @@ impl<'s> SkillRegistry<'s> {
 
         let tx = immediate(self.conn())?;
         sources::check_package(&tx, &profile, &manifest.id, origin, source_ref)?;
+        if let Some(base) = refinement
+            && let Some(unchanged) =
+                super::candidates::check_refinement(&tx, &profile, &manifest.id, base, &tree)?
+        {
+            // Different run/source receipt alone never creates a new skill.
+            tx.commit()?;
+            return Ok(receipt(unchanged, false));
+        }
         if let Some(existing) = load_revision(&tx, &profile, &revision_id).optional_found()? {
             if existing.package_id != manifest.id {
                 return Err(SkillError::Corrupt("revision package"));
@@ -238,6 +298,19 @@ impl<'s> SkillRegistry<'s> {
             sources::record(&tx, &profile, &revision_id, origin, source_ref, &at)?;
             tx.commit()?;
             return Ok(receipt(existing, false));
+        }
+        // Omitting the optional base cannot turn refinement into creation. Exact
+        // immutable-tree retries above remain idempotent; manual imports retain
+        // their explicit user-managed revision workflow.
+        if origin == Origin::Generated && refinement.is_none() {
+            let exists: bool = tx.query_row(
+                "SELECT EXISTS(SELECT 1 FROM skill_packages WHERE profile_id=?1 AND package_id=?2)",
+                params![profile, manifest.id],
+                |row| row.get(0),
+            )?;
+            if exists {
+                return Err(SkillError::Denied("refinement_base_required"));
+            }
         }
         tx.execute(
             "INSERT OR IGNORE INTO skill_packages (profile_id, package_id, origin, source_ref, created_at)

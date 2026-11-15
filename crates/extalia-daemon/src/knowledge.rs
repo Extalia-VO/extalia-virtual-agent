@@ -322,7 +322,11 @@ impl Knowledge {
     fn store(&mut self) -> Result<&mut KnowledgeStore, KnowledgeError> {
         if self.store.is_none() {
             let mut store = KnowledgeStore::open(&self.data_dir, &self.profile)?;
-            if !store.profile_alias_matches(self.profile_alias.as_ref())? {
+            let parser_refresh = !store.parser_is_current()?
+                && (store.generation()? > 0
+                    || store.stats()?.notes > 0
+                    || store.stats()?.skipped_documents > 0);
+            if !store.profile_alias_matches(self.profile_alias.as_ref())? || parser_refresh {
                 // Never expose an old ACL cache. Do not recreate a vanished vault or
                 // fall back to another folder when the startup alias changed.
                 let empty_initial = self.custom_root.is_none()
@@ -651,8 +655,60 @@ impl Knowledge {
             value["body"] = body.into();
             value["bodyStatus"] = if current { "current" } else { "changed" }.into();
             value["bodyTruncated"] = truncated.into();
+            if current {
+                let (updates, truncated) = self.related_updates(&scope, &node.node_id)?;
+                value["relatedUpdates"] = updates.into();
+                value["relatedUpdatesTruncated"] = truncated.into();
+            }
         }
         Ok(value)
+    }
+
+    /// Recall amendments beside the original body, never splice them into its hash or
+    /// turn authored labels/front matter into authority. Changed, deleted or excluded
+    /// sources do not contribute excerpts from an obsolete index snapshot.
+    fn related_updates(
+        &self,
+        scope: &ProfileScope,
+        node_id: &str,
+    ) -> Result<(Vec<Value>, bool), KnowledgeRefusal> {
+        use extalia_core::knowledge::query::MAX_REVISION_BACKLINKS;
+        let store = self.open_store();
+        let edges = store.revision_backlinks(scope, node_id).map_err(refuse)?;
+        let mut truncated = edges.len() > MAX_REVISION_BACKLINKS;
+        let mut updates = Vec::new();
+        for edge in edges.iter().take(MAX_REVISION_BACKLINKS) {
+            let Some(source) = store.node(scope, &edge.source_node_id).map_err(refuse)? else {
+                continue;
+            };
+            let Some(reference) = node_ref(&source) else {
+                continue;
+            };
+            let Some((text, sha256)) = self.read_note(&source.path) else {
+                continue;
+            };
+            if sha256 != source.source_sha256 {
+                continue;
+            }
+            let Some(line) = text.lines().nth(edge.line.saturating_sub(1) as usize) else {
+                continue;
+            };
+            if updates.len() == limits::RELATED_UPDATES {
+                truncated = true;
+                break;
+            }
+            updates.push(json!({
+                "nodeId": reference["nodeId"],
+                "path": reference["path"],
+                "title": reference["title"],
+                "relation": edge.edge_type.as_str(),
+                "line": edge.line,
+                "sourceSha256": sha256,
+                "excerpt": clean_text(line, limits::RELATED_UPDATE_EXCERPT),
+                "trustStatus": "untrusted",
+            }));
+        }
+        Ok((updates, truncated))
     }
 
     /// The note body after its front matter, sanitized and bounded: `(body, unchanged since

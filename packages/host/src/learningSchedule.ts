@@ -13,6 +13,12 @@ export interface ScheduledLearningInput {
   kind?: 'learning' | 'knowledge-meeting';
   workspaceName?: string;
   sessionName?: string;
+  /** Restored quiet interval; an immediate action is never restored after restart. */
+  delaySeconds?: 60 | 600;
+  /** Persist the interval before acknowledging a snooze or admitting this entry. */
+  persistDelay?(seconds: 60 | 600): Promise<void>;
+  /** Retire unentered work after invalidation; shutdown and foreground interruption preserve it. */
+  cancelPending?(): Promise<void>;
   /** Callers retain bounded evidence only; no source run or conversation-history closure. */
   execute(signal: AbortSignal): Promise<void>;
   validate(): Promise<boolean>;
@@ -25,6 +31,9 @@ interface Entry {
   /** A snooze is a full idle interval, not a wall-clock deadline retained through work. */
   delayMs: number;
   immediate: boolean;
+  /** The entry cannot enter validation while a durable schedule mutation is outstanding. */
+  mutation?: Promise<void>;
+  retiring?: boolean;
 }
 interface Active {
   entry: Entry;
@@ -45,11 +54,12 @@ const record = (value: unknown): value is Record<string, unknown> => !!value && 
 const text = (value: unknown, max = 256): value is string => typeof value === 'string' && value.length > 0 && value.length <= max && !/\p{Cc}/u.test(value);
 const keys = (value: Record<string, unknown>, required: string[], optional: string[] = []) => required.every(key => key in value) && Object.keys(value).every(key => required.includes(key) || optional.includes(key));
 function meetingResult(value: unknown): value is LearningMeetingResult {
-  if (!record(value) || !keys(value, ['outcome', 'knowledge'], ['meetingId', 'notePath', 'problem'])
+  if (!record(value) || !keys(value, ['outcome', 'knowledge'], ['meetingId', 'notePath', 'indexed', 'problem'])
     || !['completed', 'cancelled', 'failed', 'unknown'].includes(String(value.outcome))
     || !['saved', 'unavailable', 'failed'].includes(String(value.knowledge))) return false;
   if (value.meetingId !== undefined && !text(value.meetingId) || value.problem !== undefined && !text(value.problem, 1_000)) return false;
-  return value.knowledge === 'saved' ? text(value.notePath, 4_096) : value.notePath === undefined;
+  return (value.knowledge === 'saved' ? text(value.notePath, 4_096) : value.notePath === undefined)
+    && (value.indexed === undefined || value.knowledge === 'saved' && typeof value.indexed === 'boolean');
 }
 function skillNotice(value: unknown): value is LearningSkillNotice {
   if (!record(value) || !keys(value, ['id', 'profileId', 'workspaceId', 'sessionId', 'runId', 'createdAt', 'kind', 'packageId', 'revisionId', 'state', 'change', 'activationPerformed'], ['label', 'partial'])
@@ -57,6 +67,12 @@ function skillNotice(value: unknown): value is LearningSkillNotice {
     || !text(value.createdAt, 40) || !Number.isFinite(Date.parse(value.createdAt)) || value.kind !== 'skill-candidate'
     || value.activationPerformed !== false || !['new', 'revised', 'saved'].includes(String(value.change))) return false;
   return (value.label === undefined || text(value.label, 200)) && (value.partial === undefined || typeof value.partial === 'boolean');
+}
+
+function knowledgeResult(value: unknown): value is NonNullable<LearningScheduleResult['knowledge']> {
+  if (!record(value) || !keys(value, ['status'], ['path', 'indexed']) || !['saved', 'failed', 'skipped'].includes(String(value.status))) return false;
+  return (value.status === 'saved' ? text(value.path, 4096) : value.path === undefined)
+    && (value.indexed === undefined || value.status === 'saved' && typeof value.indexed === 'boolean');
 }
 
 /** Profile-aware admission queue. Nothing starts a Rust job or acquires a vault pin while waiting. */
@@ -71,6 +87,7 @@ export class LearningSchedule {
   private generation = 0;
   private foregroundHolds = 0;
   private readonly profileForegroundHolds = new Map<string, number>();
+  private readonly pendingHooks = new Set<Promise<void>>();
   private active?: Active;
   private reconciling = false;
   private wakeAgain = false;
@@ -102,10 +119,16 @@ export class LearningSchedule {
     if ([...this.entries.values()].filter(entry => entry.view.state === 'scheduled').length - replaced.length >= 16) return false;
     const createdAt = new Date(this.now()).toISOString();
     const { id, workspaceId, profileId, profileName, sessionId, workspaceName, sessionName } = input;
-    const delayMs = replaced.at(-1)?.delayMs ?? 60_000;
+    if (input.delaySeconds !== undefined && input.delaySeconds !== 60 && input.delaySeconds !== 600) throw new Error('Invalid learning quiet interval.');
+    const delayMs = input.delaySeconds !== undefined ? input.delaySeconds * 1_000 : replaced.at(-1)?.delayMs ?? 60_000;
     // Replaced source identities remain in the bounded dedupe window. No old
     // callback can resurrect evidence superseded by the latest workspace work.
-    for (const entry of replaced) this.entries.delete(entry.view.id);
+    for (const entry of replaced) {
+      this.retirePending(entry);
+      entry.view.state = 'cancelled'; entry.view.reason = 'changed';
+      delete entry.input;
+      this.entries.delete(entry.view.id);
+    }
     this.admitted.add(id);
     this.entries.set(id, { input: { ...input }, delayMs, immediate: false, view: {
       id, workspaceId, profileId, profileName, sessionId, kind,
@@ -121,19 +144,43 @@ export class LearningSchedule {
     return true;
   }
 
-  /** Admission is synchronous and never waits for a model or storage effect. */
-  act(input: LearningScheduleAction): LearningScheduleSnapshot {
+  /** Only a snooze waits for its durable acknowledgement; no action waits for model execution. */
+  async act(input: LearningScheduleAction): Promise<LearningScheduleSnapshot> {
     if (this.closed || input.revision !== this.snapshot().revision) throw new Error('Learning schedules changed. Refresh before trying again.');
     const entry = this.entries.get(input.id);
     if (!entry || entry.view.state !== 'scheduled') throw new Error('That learning job is no longer waiting.');
+    if (entry.mutation) throw new Error('A learning schedule change is still being saved. Refresh after it finishes.');
     if (input.action !== 'snooze' && input.action !== 'run-now') throw new Error('Choose a supported learning action.');
-    if (input.action === 'snooze') entry.delayMs = 600_000;
-    entry.immediate = input.action === 'run-now';
-    entry.view.waitingForIdle = true;
-    entry.view.reason = 'busy';
-    entry.view.dueAt = new Date(this.now()).toISOString();
-    this.changed();
-    this.wake();
+    if (input.action === 'snooze' && entry.input?.persistDelay) {
+      const persistDelay = entry.input.persistDelay;
+      // Install the fence before subscribers or a retained timer can dispatch.
+      this.stopTimer();
+      entry.mutation = Promise.resolve().then(() => persistDelay(600));
+      this.trackHook(entry.mutation);
+      this.waitForIdle(entry, true);
+      this.changed(); this.arm();
+      try {
+        await entry.mutation;
+        if (this.closed || this.entries.get(input.id) !== entry || entry.view.state !== 'scheduled') {
+          throw new Error('The learning schedule changed while its interval was being saved.');
+        }
+        entry.delayMs = 600_000;
+        this.changed();
+      } catch (error) {
+        // A lost acknowledgement may have committed a new queue revision. Never
+        // launch this closure with its previous revision, even if retirement fails.
+        if (this.entries.get(input.id) === entry && entry.view.state === 'scheduled') this.terminal(entry, 'failed', 'failed');
+        throw error;
+      } finally {
+        delete entry.mutation;
+        this.wake(); this.arm();
+      }
+    } else {
+      if (input.action === 'snooze') entry.delayMs = 600_000;
+      entry.immediate = input.action === 'run-now';
+      this.waitForIdle(entry, false);
+      this.changed(); this.wake();
+    }
     return this.snapshot();
   }
 
@@ -141,14 +188,20 @@ export class LearningSchedule {
   recordResult(id: string, result: LearningScheduleResult): void {
     const entry = this.entries.get(id);
     if (!entry || this.active?.entry !== entry || !this.active.entered) throw new Error('That learning invocation is no longer recording results.');
-    if (!record(result) || !keys(result, [], ['meeting', 'skill']) || result.meeting === undefined && result.skill === undefined
-      || result.meeting !== undefined && !meetingResult(result.meeting) || result.skill !== undefined && !skillNotice(result.skill))
+    if (!record(result) || !keys(result, [], ['meeting', 'skill', 'knowledge', 'problem']) || Object.keys(result).length === 0
+      || result.meeting !== undefined && !meetingResult(result.meeting) || result.skill !== undefined && !skillNotice(result.skill)
+      || result.knowledge !== undefined && !knowledgeResult(result.knowledge)
+      || result.problem !== undefined && !['connection', 'provider', 'timeout', 'invalid-request', 'authority', 'publication'].includes(String(result.problem)))
       throw new Error('Invalid learning artifact receipt.');
     if (result.skill && (result.skill.workspaceId !== entry.view.workspaceId || result.skill.profileId !== entry.view.profileId || result.skill.sessionId !== entry.view.sessionId))
       throw new Error('The learning receipt belongs to another source.');
+    if (result.knowledge?.path && !result.knowledge.path.startsWith(`Learning/${entry.view.workspaceId}/`))
+      throw new Error('The Knowledge receipt belongs to another workspace.');
     entry.view.result = { ...entry.view.result,
       ...(result.meeting ? { meeting: structuredClone(result.meeting) } : {}),
       ...(result.skill ? { skill: structuredClone(result.skill) } : {}),
+      ...(result.knowledge ? { knowledge: structuredClone(result.knowledge) } : {}),
+      ...(result.problem ? { problem: result.problem as LearningScheduleResult['problem'] } : {}),
     };
     this.changed();
   }
@@ -179,7 +232,7 @@ export class LearningSchedule {
     this.reconciling = true;
     try {
       for (const entry of this.entries.values()) {
-        if (entry.view.state !== 'scheduled') continue;
+        if (entry.view.state !== 'scheduled' || entry.mutation) continue;
         let ready: boolean;
         try { ready = !this.held(entry) && entry.input!.ready(); }
         catch { this.terminal(entry, 'failed', 'failed'); continue; }
@@ -237,7 +290,13 @@ export class LearningSchedule {
     this.closed = true; this.generation++; this.stopTimer();
     for (const entry of this.entries.values()) if (entry.view.state === 'scheduled') this.terminal(entry, 'cancelled', 'shutdown');
     if (this.active) { this.active.interruption = 'shutdown'; this.active.controller.abort(); }
-    return this.closePromise = this.active?.done ?? Promise.resolve();
+    const active = this.active?.done;
+    return this.closePromise = (async () => {
+      await active;
+      // An active validation can add retirement after close began. A delay
+      // acknowledgement can likewise release its already-queued retirement.
+      while (this.pendingHooks.size) await Promise.all([...this.pendingHooks]);
+    })();
   }
 
   private changed(): void {
@@ -246,13 +305,32 @@ export class LearningSchedule {
   }
 
   private terminal(entry: Entry, state: 'completed' | 'failed' | 'cancelled', reason?: LearningScheduleJob['reason']): void {
-    entry.view.state = state;
+    if ((reason === 'changed' || state === 'failed') && !(this.active?.entry === entry && this.active.entered)) this.retirePending(entry);
+    const partial = state === 'failed' && (entry.view.result?.knowledge?.status === 'saved' || entry.view.result?.skill
+      || entry.view.result?.meeting?.knowledge === 'saved');
+    entry.view.state = partial ? 'partial' : state;
     entry.view.waitingForIdle = false;
     if (reason) entry.view.reason = reason; else delete entry.view.reason;
     delete entry.input;
     const terminal = [...this.entries.values()].filter(item => !['scheduled', 'running'].includes(item.view.state));
     for (const old of terminal.slice(0, Math.max(0, terminal.length - 8))) this.entries.delete(old.view.id);
     this.changed();
+  }
+
+  private trackHook(effect: Promise<void>): void {
+    // A failed storage acknowledgement leaves persisted state for reconciliation;
+    // it cannot turn retirement into a new execution or an unhandled rejection.
+    const settled = effect.catch(() => undefined);
+    this.pendingHooks.add(settled);
+    void settled.then(() => this.pendingHooks.delete(settled));
+  }
+
+  private retirePending(entry: Entry): void {
+    if (entry.retiring || !entry.input?.cancelPending) return;
+    entry.retiring = true;
+    const cancelPending = entry.input.cancelPending;
+    const previous = entry.mutation;
+    this.trackHook(Promise.resolve(previous).catch(() => undefined).then(() => cancelPending()));
   }
 
   private stopTimer(): void {
@@ -263,7 +341,7 @@ export class LearningSchedule {
   private arm(): void {
     this.stopTimer();
     if (this.closed || this.active || this.foregroundHolds) return;
-    const waiting = [...this.entries.values()].filter(entry => entry.view.state === 'scheduled');
+    const waiting = [...this.entries.values()].filter(entry => entry.view.state === 'scheduled' && !entry.mutation);
     if (!waiting.length) return;
     const next = Math.min(...waiting.map(entry => entry.view.waitingForIdle ? this.now() + 1_000 : Date.parse(entry.view.dueAt)));
     const generation = this.timerGeneration;
@@ -294,7 +372,7 @@ export class LearningSchedule {
 
   private dispatch(): void {
     if (this.closed || this.active || this.foregroundHolds) return;
-    const due = [...this.entries.values()].filter(entry => entry.view.state === 'scheduled' && !entry.view.waitingForIdle && Date.parse(entry.view.dueAt) <= this.now());
+    const due = [...this.entries.values()].filter(entry => entry.view.state === 'scheduled' && !entry.mutation && !entry.view.waitingForIdle && Date.parse(entry.view.dueAt) <= this.now());
     for (const entry of due) {
       const input = entry.input!;
       let ready: boolean;
@@ -306,8 +384,9 @@ export class LearningSchedule {
       active.done = Promise.resolve().then(async () => {
         try {
           if (controller.signal.aborted || active.generation !== this.generation) { this.interrupted(active); return; }
-          if (!await input.validate()) { this.terminal(entry, 'cancelled', 'changed'); return; }
+          const valid = await input.validate();
           if (controller.signal.aborted || active.generation !== this.generation) { this.interrupted(active); return; }
+          if (!valid) { this.terminal(entry, 'cancelled', 'changed'); return; }
           if (this.held(entry) || !input.ready()) { this.waitForIdle(entry, true); this.changed(); return; }
           active.entered = true;
           await input.execute(controller.signal);

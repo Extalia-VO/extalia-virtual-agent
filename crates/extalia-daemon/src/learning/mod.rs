@@ -1,14 +1,28 @@
 //! Local learning owner. No model credentials, secondary store, provider transport,
 //! runtime launch or skill activation lives here. Jobs emit narrowly typed effects.
 mod files;
+#[cfg(all(test, unix))]
+mod grounded_files_tests;
 mod intake;
 mod jobs;
+mod journal;
+#[cfg(all(test, unix))]
+mod journal_tests;
+mod knowledge_grounding;
 mod observed;
 #[cfg(all(test, unix))]
 mod observed_tests;
 #[cfg(all(test, unix))]
+mod queue_tests;
+#[cfg(all(test, unix))]
+mod receipt_tests;
+mod receipts;
+#[cfg(all(test, unix))]
 mod tests;
 mod text;
+mod work_memory;
+#[cfg(all(test, unix))]
+mod work_memory_tests;
 use crate::wire::{ErrorCode, Op, ResponseResult};
 use files::{Draft, Pin, Stage};
 use jobs::Job;
@@ -79,6 +93,7 @@ pub struct Learning {
     jobs: HashMap<String, Job>,
     intakes: HashMap<String, intake::Intake>,
     observed: HashMap<String, extalia_core::observed_memory::ObservedMemoryStore>,
+    work_memory: HashMap<String, extalia_core::work_memory::WorkMemoryStore>,
     #[cfg(test)]
     hold: Option<(std::sync::mpsc::Sender<()>, std::sync::mpsc::Receiver<()>)>,
 }
@@ -95,6 +110,7 @@ impl Learning {
             jobs: HashMap::new(),
             intakes: HashMap::new(),
             observed: HashMap::new(),
+            work_memory: HashMap::new(),
             #[cfg(test)]
             hold: None,
         }
@@ -112,6 +128,7 @@ impl Learning {
         let action = s(params, "action");
         let input = &params["input"];
         let mut result = match action {
+            action if action.starts_with("memory.") => self.work_memory_action(action, input)?,
             action if action.starts_with("observed.") => self.observed_action(action, input)?,
             "evidence.begin" => {
                 if self.intakes.len() >= 4 {
@@ -168,6 +185,8 @@ impl Learning {
                 json!({"released":true})
             }
             "receipt.claim" => json!({"claimed":self.claim(input)?}),
+            "receipt.get" => self.get_receipt(input)?,
+            "receipt.record" => self.record_receipt(input)?,
             "job.begin" => {
                 self.data_handle()?;
                 if self.jobs.len() >= MAX_HANDLES {
@@ -181,7 +200,8 @@ impl Learning {
                         .ok_or(refuse("invalid_handle"))?;
                     prepared["evidence"] = intake.finish()?;
                 }
-                let job = Job::begin(&prepared)?;
+                let mut job = Job::begin(&prepared)?;
+                self.checkpoint_job(&mut job, false)?;
                 let out = job.view();
                 self.jobs.insert(job.id.clone(), job);
                 json!({"job":out})
@@ -191,20 +211,19 @@ impl Learning {
                     .jobs
                     .get(s(input, "jobId"))
                     .ok_or(refuse("invalid_handle"))?;
-                if job.pending.is_some() || job.status == "running" {
+                // Durable release drops only the live handle. An entered effect
+                // remains uncertain in the journal, never inferred as settled.
+                if !job.durable() && (job.pending.is_some() || job.status == "running") {
                     return Err(refuse("effect_pending"));
                 }
                 self.jobs.remove(s(input, "jobId"));
                 json!({"released":true})
             }
-            _ => {
-                let job = self
-                    .jobs
-                    .get_mut(s(input, "jobId"))
-                    .ok_or(refuse("invalid_handle"))?;
-                job.action(action, input)?;
-                json!({"job":job.view()})
-            }
+            "job.list" => self.list_jobs(input)?,
+            "job.recover" => self.recover_job(input)?,
+            "queue.capture" => self.capture_queue(input)?,
+            "queue.delay" | "queue.cancel" | "queue.admit" => self.queue_action(action, input)?,
+            _ => self.job_action(action, input)?,
         };
         result["action"] = Value::String(action.into());
         if !crate::wire::learning::valid_result(&result) {
@@ -223,7 +242,8 @@ impl Learning {
         for job in self.jobs.values_mut() {
             job.expire();
         }
-        self.jobs
-            .retain(|_, j| j.pending.is_some() || j.created.elapsed() < RETAIN);
+        // A durable effect which never entered owns no external work. Its stale
+        // live handle may expire while the journal keeps the resumable checkpoint.
+        self.jobs.retain(|_, j| j.retain_live_handle());
     }
 }

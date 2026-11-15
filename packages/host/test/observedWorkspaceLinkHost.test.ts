@@ -1,6 +1,6 @@
 import { mkdir, rm, symlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createAgentHost, type AgentHostRuntime } from '../src/service.js';
 import { useTempDirs } from './helpers.js';
 
@@ -125,6 +125,8 @@ describe('observed workspace link host contract', () => {
     const link = await api.observedWorkspaceLink(session.id);
     expect(link).toMatchObject({ mode: 'automatic', workspaceId: root.id });
     await api.setObservedWorkspaceLink(session.id, { revision: link.revision, workspaceId: root.id });
+    // Association persistence and its observed-memory baseline settle independently.
+    await vi.waitFor(() => expect(f.runtime.isBusy()).toBe(false));
     const relocated = path.join(f.root, 'relocated'); await mkdir(relocated);
     await f.relocate(root.id, relocated);
     expect(await api.observedWorkspaceLink(session.id)).toMatchObject({ mode: 'invalid', reason: 'workspace-changed' });

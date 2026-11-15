@@ -1,4 +1,4 @@
-import { EFFORTS, INPUT_TOKEN_LIMITS, PROVIDER_PRESETS, TASK_TIERS, presetById, supportsPromptCache, type Effort, type FeatureOwner } from '@extalia/core';
+import { EFFORTS, INPUT_TOKEN_LIMITS, PROVIDER_PRESETS, TASK_TIERS, presetById, supportsPromptCache, type ContextOptimizationMode, type Effort, type FeatureOwner } from '@extalia/core';
 import type { AgentHostApi, ConnectionTestResult } from '@extalia/platform';
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import { errorMessage } from '../host/remote';
@@ -207,6 +207,17 @@ export function ConnectionForm({ t, agents, draft, onChange, onTestReady, showAl
             value={draft.inputTokenLimit} aria-invalid={Boolean(errorFor('inputTokenLimit'))} aria-describedby={describedBy('inputTokenLimit')}
             onChange={event => update({ inputTokenLimit: event.target.value })} onBlur={touch('inputTokenLimit')} />,
           t.connection.inputTokenLimitHint)}
+        <Select id={`${id}-context-optimization`} label={t.connection.contextOptimization}
+          value={draft.contextOptimization ?? 'local'}
+          options={(['local', 'caveman', 'off'] as const).map(value => ({ value, label: t.connection.contextOptimizationModes[value] }))}
+          aria-describedby={`${id}-context-optimization-hint`}
+          onChange={value => update({ contextOptimization: value as ContextOptimizationMode })} />
+        <p className="muted small" id={`${id}-context-optimization-hint`}>{t.connection.contextOptimizationHint}</p>
+        {draft.contextOptimization === 'caveman' && field('cavemanExecutable', t.connection.cavemanExecutable,
+          <input id={`${id}-cavemanExecutable`} type="text" spellCheck={false} autoComplete="off"
+            value={draft.cavemanExecutable ?? ''} aria-invalid={Boolean(errorFor('cavemanExecutable'))} aria-describedby={describedBy('cavemanExecutable')}
+            onChange={event => update({ cavemanExecutable: event.target.value })} onBlur={touch('cavemanExecutable')} />,
+          t.connection.cavemanExecutableHint)}
         {supportsPromptCache({ preset: draft.preset, api: preset.api, baseUrl: draft.baseUrl }) && (
           <>
             <label className="switch">

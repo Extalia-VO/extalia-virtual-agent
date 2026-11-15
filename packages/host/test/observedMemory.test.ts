@@ -8,7 +8,7 @@ const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(valu
 const nativeKey = (scope: ObservedMemoryScope) => hash([scope.profileId, scope.workspaceId, scope.sourceId, scope.nativeSessionId, scope.boundary]);
 const deferred = () => { let resolve!: () => void; const promise = new Promise<void>(done => { resolve = done; }); return { promise, resolve }; };
 
-function fixture(enabled = true) {
+function fixture(enabled = true, withStorageSource = false) {
   let sequence = 0, revision = 0, created = true, unknownCapture = false;
   let captureGate: Promise<void> | undefined, searchGate: Promise<void> | undefined, readGate: Promise<void> | undefined;
   const scope: ObservedMemoryScope = { profileId: 'profile-one', workspaceId: 'workspace-one', sessionId: 'observed-one', sourceId: 'codex', nativeSessionId: 'native-one', boundary: hash('original-boundary') };
@@ -48,16 +48,123 @@ function fixture(enabled = true) {
     }
     throw new Error('Unexpected backend action');
   });
-  const onEpisode = vi.fn(), onRevoked = vi.fn();
-  const manager = new ObservedMemory({ backend: { process: process as RustLearningPort['process'] }, source: async id => sources.get(id),
-    list: async workspaceId => [...sources.values()].filter(source => source.scope.workspaceId === workspaceId).map(source => source.scope.sessionId), onEpisode, onRevoked });
+  const onEpisode = vi.fn(), onRevoked = vi.fn(), onWorkEvidence = vi.fn();
+  const source = vi.fn(async (id: string) => sources.get(id));
+  const storageSource = vi.fn(async (id: string) => sources.get(id));
+  const manager = new ObservedMemory({ backend: { process: process as RustLearningPort['process'] }, source,
+    ...(withStorageSource ? { storageSource } : {}),
+    list: async workspaceId => [...sources.values()].filter(source => source.scope.workspaceId === workspaceId).map(source => source.scope.sessionId), onEpisode, onRevoked, onWorkEvidence });
   const update = (patch: Partial<ObservedMemorySource>, id = scope.sessionId) => { const current = sources.get(id)!; sources.set(id, { ...current, ...patch, revision: hash(++revision) }); };
   const append = (bodies: EventBody[], patch: Partial<ObservedMemorySource> = {}, id = scope.sessionId) => update({ ...patch, events: [...sources.get(id)!.events, ...bodies.map(body => event(body, id))] }, id);
   const complete = async (id = scope.sessionId) => { append([{ type: 'prompt.submitted', text: 'Fresh task: retain this decision', via: 'native' }, { type: 'model.completed', text: 'Observed result, not independent proof.' }], { running: false }, id); await manager.afterPersisted(id); };
-  return { scope, sources, manager, event, update, append, complete, calls, stored, onEpisode, onRevoked,
+  return { scope, sources, source, storageSource, manager, event, update, append, complete, calls, stored, onEpisode, onRevoked, onWorkEvidence,
     duplicateReceipt: () => { created = false; }, unknownCapture: () => { unknownCapture = true; },
     captureGate: (value: Promise<void>) => { captureGate = value; }, searchGate: (value: Promise<void>) => { searchGate = value; }, readGate: (value: Promise<void>) => { readGate = value; } };
 }
+
+describe('observed operational evidence capture', () => {
+  it('does not turn external archive retrieval into new operational or learning evidence', async () => {
+    const f = fixture();
+    await f.manager.afterPersisted(f.scope.sessionId);
+    f.append([
+      { type: 'prompt.submitted', text: 'Verify the current project', via: 'native' },
+      { type: 'tool.completed', toolCallId: 'status', tool: 'extalia_continuity_status', kind: 'read', label: 'Archive status', ok: true, output: 'ARCHIVE-STATUS-REPEATED' },
+      { type: 'tool.completed', toolCallId: 'read', tool: 'mcp__extalia__extalia_continuity_read', kind: 'read', label: 'Archive read', ok: true, output: 'ARCHIVE-CONTENT-REPEATED' },
+      { type: 'tool.completed', toolCallId: 'file', tool: 'read_file', kind: 'read', label: 'Project file', ok: true, output: 'FRESH-PROJECT-EVIDENCE' },
+      { type: 'model.completed', text: 'Current work reported after archive retrieval.' },
+    ]);
+    await f.manager.afterPersisted(f.scope.sessionId);
+    expect(f.onWorkEvidence).toHaveBeenCalledOnce();
+    const operational = f.onWorkEvidence.mock.calls[0]![1];
+    expect(JSON.stringify(operational.entries)).not.toContain('ARCHIVE-');
+    expect(JSON.stringify(operational.entries)).toContain('FRESH-PROJECT-EVIDENCE');
+    const capture = f.calls.find(call => call.action === 'observed.capture')!.input as RustLearningInputs['observed.capture'];
+    expect(JSON.stringify(capture.entries)).not.toContain('ARCHIVE-');
+    expect(JSON.stringify(capture.entries)).toContain('FRESH-PROJECT-EVIDENCE');
+    await f.manager.afterPersisted(f.scope.sessionId);
+    expect(f.calls.filter(call => call.action === 'observed.capture')).toHaveLength(1);
+    await f.manager.close();
+  });
+
+  it.each([
+    [{ type: 'turn.failed', error: 'Search timed out.' }, 'failed'],
+    [{ type: 'turn.failed', error: 'Stopped after 50 steps without finishing.' }, 'failed'],
+    [{ type: 'turn.failed', error: 'Stopped by the user.' }, 'cancelled'],
+    [{ type: 'session.ended', reason: 'cancelled' }, 'cancelled'],
+  ] as const)('retains terminal failure evidence separately from completed-task learning (%j)', async (terminal, outcome) => {
+    const f = fixture(); await f.manager.afterPersisted(f.scope.sessionId);
+    f.append([{ type: 'prompt.submitted', text: 'Investigate parser timeout', via: 'native' }, terminal], { running: true });
+    await f.manager.afterPersisted(f.scope.sessionId); expect(f.onWorkEvidence).not.toHaveBeenCalled();
+    f.update({ running: false }); await f.manager.afterPersisted(f.scope.sessionId);
+    expect(f.onWorkEvidence).toHaveBeenCalledOnce();
+    expect(f.onWorkEvidence.mock.calls[0]![0].scope).toEqual(f.scope);
+    const evidence = f.onWorkEvidence.mock.calls[0]![1];
+    expect(evidence).toMatchObject({ outcome, coverage: { mode: 'partial' } });
+    expect(evidence.entries.some((entry: { kind: string }) => entry.kind === 'user')).toBe(true);
+    expect(evidence.entries.some((entry: { kind: string }) => entry.kind === 'status')).toBe(true);
+    expect(f.calls).toEqual([]); expect(f.onEpisode).not.toHaveBeenCalled();
+    await f.manager.afterPersisted(f.scope.sessionId); expect(f.onWorkEvidence).toHaveBeenCalledOnce(); await f.manager.close();
+  });
+
+  it('requires a terminal result and does not backfill a startup/enable/replacement history', async () => {
+    const f = fixture(false);
+    f.append([{ type: 'prompt.submitted', text: 'Historic task', via: 'native' }, { type: 'turn.failed', error: 'Historic error' }]);
+    await f.manager.afterPersisted(f.scope.sessionId); f.update({ enabled: true }); await f.manager.afterPersisted(f.scope.sessionId);
+    expect(f.onWorkEvidence).not.toHaveBeenCalled();
+    f.append([{ type: 'prompt.submitted', text: 'Fresh task with no result', via: 'native' }]); await f.manager.afterPersisted(f.scope.sessionId);
+    expect(f.onWorkEvidence).not.toHaveBeenCalled();
+    f.append([{ type: 'turn.failed', error: 'Fresh failure' }]); await f.manager.afterPersisted(f.scope.sessionId);
+    expect(f.onWorkEvidence).toHaveBeenCalledOnce();
+    await f.manager.close();
+    const restarted = new ObservedMemory({ backend: { process: vi.fn() as RustLearningPort['process'] }, source: async id => f.sources.get(id),
+      list: async () => [f.scope.sessionId], onWorkEvidence: f.onWorkEvidence });
+    await restarted.afterPersisted(f.scope.sessionId); expect(f.onWorkEvidence).toHaveBeenCalledOnce(); await restarted.close();
+  });
+
+  it('acknowledges operational capture before curation and retains independent legacy learning if that callback fails', async () => {
+    const f = fixture(); await f.manager.afterPersisted(f.scope.sessionId);
+    f.onWorkEvidence.mockImplementationOnce(async () => {
+      expect(f.calls).toEqual([]); expect(f.onEpisode).not.toHaveBeenCalled(); throw new Error('Outbox unavailable');
+    });
+    await f.complete();
+    expect(f.calls.map(call => call.action)).toEqual(['observed.capture']); expect(f.onEpisode).toHaveBeenCalledOnce();
+    expect(f.manager.status().sources[0]).toMatchObject({ state: 'uncertain', problem: expect.stringContaining('Operational work memory') });
+    await f.manager.afterPersisted(f.scope.sessionId); expect(f.onWorkEvidence).toHaveBeenCalledOnce(); await f.manager.close();
+  });
+
+  it('captures each terminal turn in one poll once and never claims the latest unfinished turn completed', async () => {
+    const f = fixture(); await f.manager.afterPersisted(f.scope.sessionId);
+    f.append([
+      { type: 'prompt.submitted', text: 'First completed task', via: 'native' }, { type: 'model.completed', text: 'First report' }, { type: 'turn.completed' },
+      { type: 'prompt.submitted', text: 'Second completed task', via: 'native' }, { type: 'model.completed', text: 'Second report' },
+      { type: 'prompt.submitted', text: 'Third failed task', via: 'native' }, { type: 'turn.failed', error: 'Missing source' },
+      { type: 'prompt.submitted', text: 'Latest unfinished task', via: 'native' }, { type: 'model.completed', text: 'I will inspect the file now.' },
+      { type: 'tool.started', tool: 'read_file', kind: 'read', label: 'Reading fixture' }, { type: 'tool.completed', tool: 'read_file', kind: 'read', label: 'Read fixture', ok: true, output: 'File evidence' },
+    ], { running: true });
+    await f.manager.afterPersisted(f.scope.sessionId); expect(f.onWorkEvidence).not.toHaveBeenCalled();
+    f.update({ running: false }); await f.manager.afterPersisted(f.scope.sessionId);
+    expect(f.onWorkEvidence.mock.calls.map(call => call[1].outcome)).toEqual(['completed', 'completed', 'failed']);
+    expect(f.onWorkEvidence.mock.calls.map(call => call[1].entries[0].text)).toEqual(['First completed task', 'Second completed task', 'Third failed task']);
+    expect(f.calls).toEqual([]); expect(f.onEpisode).not.toHaveBeenCalled();
+    await f.manager.afterPersisted(f.scope.sessionId); expect(f.onWorkEvidence).toHaveBeenCalledTimes(3);
+    f.append([{ type: 'turn.failed', error: 'Context limit' }]); await f.manager.afterPersisted(f.scope.sessionId);
+    expect(f.onWorkEvidence).toHaveBeenCalledTimes(4); expect(f.onWorkEvidence.mock.calls[3]![1].outcome).toBe('failed');
+    await f.manager.close();
+  });
+
+  it('bounds a delayed polling backlog explicitly and clears an ended unfinished frame', async () => {
+    const f = fixture(); await f.manager.afterPersisted(f.scope.sessionId);
+    const events: EventBody[] = [];
+    for (let index = 0; index < 12; index++) events.push({ type: 'prompt.submitted', text: `Completed task ${index}`, via: 'native' }, { type: 'turn.completed', summary: `Report ${index}` });
+    events.push({ type: 'prompt.submitted', text: 'Unfinished tail', via: 'native' }, { type: 'session.ended', reason: 'closed' });
+    f.append(events); await f.manager.afterPersisted(f.scope.sessionId);
+    expect(f.onWorkEvidence).toHaveBeenCalledTimes(8);
+    expect(f.onWorkEvidence.mock.calls[0]![1].coverage).toMatchObject({ truncated: true });
+    expect(f.onWorkEvidence.mock.calls[0]![1].coverage.limits.join(' ')).toContain('4 earlier terminal episodes');
+    f.append([{ type: 'model.completed', text: 'A detached reply after close cannot finish the old task.' }]);
+    await f.manager.afterPersisted(f.scope.sessionId); expect(f.onWorkEvidence).toHaveBeenCalledTimes(8); await f.manager.close();
+  });
+});
 
 describe('observed memory admission and Native recall', () => {
   it('does nothing on default-off startup, and enabling establishes a baseline without historical capture', async () => {
@@ -188,6 +295,82 @@ describe('observed memory admission and Native recall', () => {
     expect(f.manager.isBusy()).toBe(false); expect(f.onEpisode).not.toHaveBeenCalled();
     expect(f.stored.size).toBe(1); expect(f.onRevoked).not.toHaveBeenCalled();
     expect(f.calls.map(call => call.action)).toEqual(['observed.capture']);
+  });
+
+  it('drains the stored episode handoff after shutdown through fresh storage consent without accepting later events', async () => {
+    const f = fixture(true, true), capture = deferred(), handoff = deferred();
+    f.captureGate(capture.promise); await f.manager.afterPersisted(f.scope.sessionId);
+    f.onEpisode.mockImplementation(async () => { await handoff.promise; });
+    f.append([{ type: 'prompt.submitted', text: 'Accepted task', via: 'native' }, { type: 'model.completed', text: 'Accepted response' }]);
+    const admission = f.manager.afterPersisted(f.scope.sessionId);
+    await vi.waitFor(() => expect(f.stored.size).toBe(1));
+    expect(f.storageSource).not.toHaveBeenCalled();
+    let closed = false;
+    const closing = f.manager.close().then(() => { closed = true; });
+    f.source.mockResolvedValue(undefined); // Provider admission is no longer available.
+    f.append([{ type: 'prompt.submitted', text: 'Later task', via: 'native' }, { type: 'model.completed', text: 'Later response' }]);
+    await f.manager.afterPersisted(f.scope.sessionId);
+    capture.resolve();
+    await vi.waitFor(() => expect(f.onEpisode).toHaveBeenCalledOnce());
+    expect(f.storageSource).toHaveBeenCalledExactlyOnceWith(f.scope.sessionId);
+    expect(f.onEpisode.mock.calls[0]![0]).toEqual([...f.stored.values()][0]!.episode);
+    expect(f.manager.isBusy()).toBe(true); expect(closed).toBe(false);
+    handoff.resolve(); await Promise.all([admission, closing]);
+    expect(f.manager.isBusy()).toBe(false); expect(f.onRevoked).not.toHaveBeenCalled();
+    expect(f.calls.map(call => call.action)).toEqual(['observed.capture']);
+    expect(JSON.stringify([...f.stored.values()])).not.toContain('Later task');
+    await f.manager.afterPersisted(f.scope.sessionId);
+    expect(f.onEpisode).toHaveBeenCalledOnce();
+  });
+
+  it.each(['disabled', 'profile', 'boundary', 'native-session'] as const)('revokes committed capture when shutdown storage consent confirms %s changed', async change => {
+    const f = fixture(true, true), capture = deferred();
+    f.captureGate(capture.promise); await f.manager.afterPersisted(f.scope.sessionId);
+    f.append([{ type: 'prompt.submitted', text: 'Accepted task', via: 'native' }, { type: 'model.completed', text: 'Accepted response' }]);
+    const admission = f.manager.afterPersisted(f.scope.sessionId);
+    await vi.waitFor(() => expect(f.stored.size).toBe(1));
+    const closing = f.manager.close();
+    f.source.mockResolvedValue(undefined);
+    if (change === 'disabled') f.update({ enabled: false });
+    else f.update({ scope: { ...f.scope, ...(change === 'profile' ? { profileId: 'profile-two' }
+      : change === 'boundary' ? { boundary: hash('changed-boundary') } : { nativeSessionId: 'native-two' }) } });
+    capture.resolve(); await Promise.all([admission, closing]);
+    expect(f.storageSource).toHaveBeenCalledExactlyOnceWith(f.scope.sessionId);
+    expect(f.onEpisode).not.toHaveBeenCalled(); expect(f.stored.size).toBe(0);
+    expect(f.calls.map(call => call.action)).toEqual(['observed.capture', 'observed.revoke']);
+    expect(f.onRevoked).toHaveBeenCalledExactlyOnceWith(f.scope);
+  });
+
+  it.each(['unavailable', 'failed'] as const)('retains a committed episode without handoff when shutdown storage authority is %s', async state => {
+    const f = fixture(true, true), capture = deferred();
+    f.captureGate(capture.promise); await f.manager.afterPersisted(f.scope.sessionId);
+    f.append([{ type: 'prompt.submitted', text: 'Accepted task', via: 'native' }, { type: 'model.completed', text: 'Accepted response' }]);
+    const admission = f.manager.afterPersisted(f.scope.sessionId);
+    await vi.waitFor(() => expect(f.stored.size).toBe(1));
+    const closing = f.manager.close();
+    if (state === 'unavailable') f.storageSource.mockResolvedValue(undefined);
+    else f.storageSource.mockRejectedValue(new Error('Storage authority unavailable'));
+    capture.resolve(); await Promise.all([admission, closing]);
+    expect(f.storageSource).toHaveBeenCalledOnce();
+    expect(f.onEpisode).not.toHaveBeenCalled(); expect(f.onRevoked).not.toHaveBeenCalled();
+    expect(f.stored.size).toBe(1); expect(f.calls.map(call => call.action)).toEqual(['observed.capture']);
+  });
+
+  it('switches to fresh storage authority when shutdown races the ordinary post-capture source lookup', async () => {
+    const f = fixture(true, true), capture = deferred(), sourceRead = deferred();
+    f.captureGate(capture.promise); await f.manager.afterPersisted(f.scope.sessionId);
+    f.append([{ type: 'prompt.submitted', text: 'Accepted task', via: 'native' }, { type: 'model.completed', text: 'Accepted response' }]);
+    const admission = f.manager.afterPersisted(f.scope.sessionId);
+    await vi.waitFor(() => expect(f.stored.size).toBe(1));
+    let lookupEntered = false;
+    f.source.mockImplementationOnce(async () => { lookupEntered = true; await sourceRead.promise; return undefined; });
+    capture.resolve(); await vi.waitFor(() => expect(lookupEntered).toBe(true));
+    expect(f.storageSource).not.toHaveBeenCalled();
+    const closing = f.manager.close(); sourceRead.resolve();
+    await Promise.all([admission, closing]);
+    expect(f.storageSource).toHaveBeenCalledExactlyOnceWith(f.scope.sessionId);
+    expect(f.onEpisode).toHaveBeenCalledOnce(); expect(f.onRevoked).not.toHaveBeenCalled();
+    expect(f.stored.size).toBe(1); expect(f.calls.map(call => call.action)).toEqual(['observed.capture']);
   });
 
   it('does not revoke a known scope when a queued source lookup resolves unavailable after shutdown', async () => {

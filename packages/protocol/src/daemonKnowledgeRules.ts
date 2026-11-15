@@ -24,6 +24,9 @@ const syncMode = def('KnowledgeSyncMode', enumeration(KNOWLEDGE_SYNC_MODES));
 const edgeType = def('KnowledgeEdgeType', enumeration(KNOWLEDGE_EDGE_TYPES));
 const title = text(LIMITS.title);
 const nodeRef = def('KnowledgeNodeRef', object({ nodeId: nodeId.ref, path: vaultPath.ref, title }));
+const relatedUpdate = object({ nodeId: nodeId.ref, path: vaultPath.ref, title,
+  relation: enumeration(['updates', 'contradicts', 'supersedes']), line: positive,
+  sourceSha256: digest, excerpt: text(LIMITS.relatedUpdateExcerpt), trustStatus: enumeration(['untrusted']) });
 const counts = def('KnowledgeCounts', object({ notes: count, edges: count, unresolvedLinks: count, skipped: count }));
 const summary = def('KnowledgeSyncSummary', object({
   mode: syncMode.ref, at: timestamp, generation: count, notes: count, added: count, updated: count, removed: count, unchanged: count,
@@ -198,7 +201,8 @@ const ORDINARY_RESULTS: Record<DaemonKnowledgeOrdinaryOp, Rule> = {
   }),
   'knowledge.node': object({
     generation: count, node: node.ref, body: optional(multiline(LIMITS.bodyBytes, false)), bodyStatus: enumeration(KNOWLEDGE_BODY_STATUSES),
-    bodyTruncated: boolean,
+    bodyTruncated: boolean, relatedUpdates: optional(array(relatedUpdate, false, 0, LIMITS.relatedUpdates)),
+    relatedUpdatesTruncated: optional(boolean),
   }),
   'knowledge.links': linkPage.ref,
   'knowledge.backlinks': linkPage.ref,

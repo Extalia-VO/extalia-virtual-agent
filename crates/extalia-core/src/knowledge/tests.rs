@@ -353,6 +353,8 @@ fn typed_lines_set_edge_types() {
          Learned from: [[Experiences/Example-Query-Optimization]]\n\
          - **Depends on**: [[Base]]\n\
          * supersedes: [[Old]]\n\
+         Updates: [[Earlier]]\n\
+         Contradicts: [[Uncertain]]\n\
          1. Used_by: [[Consumer]]\n\
          learned-from: [[Other]]\n\
          Note: [[Plain]]\n\
@@ -375,6 +377,8 @@ fn typed_lines_set_edge_types() {
             ),
             ("Base", EdgeType::DependsOn),
             ("Old", EdgeType::Supersedes),
+            ("Earlier", EdgeType::Updates),
+            ("Uncertain", EdgeType::Contradicts),
             ("Consumer", EdgeType::UsedBy),
             ("Other", EdgeType::LearnedFrom),
             ("Plain", EdgeType::LinksTo),
@@ -1426,4 +1430,122 @@ fn custom_vault_roots_are_validated_pinned_and_never_created() {
             Err(KnowledgeError::VaultUnavailable)
         ));
     }
+}
+
+#[test]
+fn revision_backlinks_are_resolved_bounded_and_profile_scoped() {
+    let mut f = Fixture::new("demo");
+    f.write("Base.md", "# Original\n");
+    f.write("Other/Base.md", "# Another\n");
+    f.write("Third/Dup.md", "# Dup\n");
+    f.write("Fourth/Dup.md", "# Dup\n");
+    f.write(
+        "Ignored.md",
+        "---\nprofile: other\n---\nUpdates: [[Base]]\n",
+    );
+    f.write(
+        "Unresolved.md",
+        "Updates: [[Dup]]\nContradicts: [[Missing]]\n",
+    );
+    f.write("Code.md", "```\nUpdates: [[Base]]\n```\n");
+    for index in 0..40 {
+        f.write(
+            &format!("Amendment{index:02}.md"),
+            "Updates: [[Base.md]] — claim\nUpdates: [[Base.md]] — repeated\n",
+        );
+    }
+    f.sync();
+    let base = f.id_at("Base.md");
+    let edges = f.store.revision_backlinks(&f.scope(), &base).unwrap();
+    assert_eq!(edges.len(), query::MAX_REVISION_BACKLINKS + 1);
+    assert!(edges.iter().all(|edge| edge.edge_type == EdgeType::Updates));
+    assert_eq!(
+        edges
+            .iter()
+            .map(|edge| &edge.source_node_id)
+            .collect::<BTreeSet<_>>()
+            .len(),
+        edges.len()
+    );
+    assert!(
+        f.store
+            .revision_backlinks(&ProfileScope::new(profile("other")), &base)
+            .unwrap()
+            .is_empty()
+    );
+    let graph = f.store.local_graph(&f.scope(), &base, 1, 100).unwrap();
+    assert!(
+        graph
+            .edges
+            .iter()
+            .any(|(_, edge_type, _)| *edge_type == EdgeType::Updates)
+    );
+}
+
+#[test]
+fn revision_edge_migration_preserves_old_rows_and_reparses_unchanged_markdown() {
+    let mut f = Fixture::new("demo");
+    f.write("Base.md", "# Original\n");
+    f.write(
+        "Amendment.md",
+        "Updates: [[Base.md]] — revised claim\nRelated: [[Dup]]\n",
+    );
+    f.write("One/Dup.md", "# One\n");
+    f.write("Two/Dup.md", "# Two\n");
+    f.sync();
+    // An older parser indexed the same unchanged bytes as a plain wikilink.
+    f.store
+        .conn
+        .execute(
+            "UPDATE knowledge_edges SET edge_type = 'links_to' WHERE edge_type = 'updates'",
+            [],
+        )
+        .unwrap();
+    let older = TempDir::new();
+    let old_path = store::index_path(&older.0, &f.profile);
+    fs::create_dir_all(old_path.parent().unwrap()).unwrap();
+    let old = rusqlite::Connection::open(&old_path).unwrap();
+    old.execute_batch(include_str!("schema/0001_index.sql"))
+        .unwrap();
+    old.execute_batch(include_str!("schema/0002_profile_alias.sql"))
+        .unwrap();
+    old.execute(
+        "ATTACH DATABASE ?1 AS source",
+        [store::index_path(&f.dir.0, &f.profile).to_str().unwrap()],
+    )
+    .unwrap();
+    old.execute_batch("INSERT INTO knowledge_index_state SELECT profile_id, generation, accepted_profile_alias FROM source.knowledge_index_state;").unwrap();
+    for table in [
+        "knowledge_documents",
+        "knowledge_nodes",
+        "knowledge_aliases",
+        "knowledge_edges",
+        "knowledge_edge_candidates",
+    ] {
+        old.execute_batch(&format!("INSERT INTO {table} SELECT * FROM source.{table}"))
+            .unwrap();
+    }
+    old.execute_batch("DETACH DATABASE source; PRAGMA user_version = 2;")
+        .unwrap();
+    drop(old);
+    let mut migrated = KnowledgeStore::open(&older.0, &f.profile).unwrap();
+    assert!(!migrated.parser_is_current().unwrap());
+    assert_eq!(migrated.stats().unwrap().notes, 4);
+    let before = migrated
+        .outgoing(&f.scope(), &f.id_at("Amendment.md"))
+        .unwrap();
+    assert_eq!(before[0].edge_type, EdgeType::LinksTo);
+    assert!(matches!(before[1].target, LinkTarget::Ambiguous { .. }));
+    let generation = migrated.generation().unwrap();
+    migrated.sync(&f.vault, SyncMode::Incremental).unwrap();
+    assert!(migrated.parser_is_current().unwrap());
+    assert!(migrated.generation().unwrap() > generation);
+    let after = migrated
+        .outgoing(&f.scope(), &f.id_at("Amendment.md"))
+        .unwrap();
+    assert_eq!(after[0].edge_type, EdgeType::Updates);
+    assert!(matches!(after[1].target, LinkTarget::Ambiguous { .. }));
+    let current = migrated.generation().unwrap();
+    migrated.sync(&f.vault, SyncMode::Incremental).unwrap();
+    assert_eq!(migrated.generation().unwrap(), current);
 }

@@ -4,7 +4,7 @@ use std::fs::File;
 use std::io::{Read, Seek, Write};
 use std::sync::Arc;
 #[cfg(unix)]
-mod platform {
+pub(super) mod platform {
     use super::*;
     use rustix::fs::{AtFlags, Mode, OFlags, linkat, mkdirat, open, openat, unlinkat};
     use std::os::unix::fs::MetadataExt;
@@ -33,6 +33,46 @@ mod platform {
         openat(parent, name, flags() | OFlags::DIRECTORY, Mode::empty())
             .map(File::from)
             .map_err(|_| refuse("not_regular_directory"))
+    }
+    pub fn optional_child(parent: &File, name: &str) -> Result<Option<File>> {
+        match openat(parent, name, flags() | OFlags::DIRECTORY, Mode::empty()) {
+            Ok(file) => Ok(Some(File::from(file))),
+            Err(e) if e == rustix::io::Errno::NOENT => Ok(None),
+            Err(_) => Err(refuse("not_regular_directory")),
+        }
+    }
+    pub fn read(parent: &File, name: &str, max_bytes: usize) -> Result<Option<Vec<u8>>> {
+        let mut file = match openat(parent, name, flags(), Mode::empty()) {
+            Ok(file) => File::from(file),
+            Err(e) if e == rustix::io::Errno::NOENT => return Ok(None),
+            Err(_) => return Err(refuse("invalid_receipt_file")),
+        };
+        let before = file.metadata().map_err(io_fail)?;
+        if !before.is_file() || before.nlink() != 1 || before.len() > max_bytes as u64 {
+            return Err(refuse("invalid_receipt_file"));
+        }
+        let mut bytes = Vec::with_capacity(before.len() as usize);
+        (&mut file)
+            .take(max_bytes as u64 + 1)
+            .read_to_end(&mut bytes)
+            .map_err(io_fail)?;
+        let after = file.metadata().map_err(io_fail)?;
+        if bytes.len() as u64 != before.len()
+            || before.len() != after.len()
+            || before.mtime() != after.mtime()
+            || before.mtime_nsec() != after.mtime_nsec()
+            || before.ctime() != after.ctime()
+            || before.ctime_nsec() != after.ctime_nsec()
+        {
+            return Err(refuse("receipt_changed"));
+        }
+        let current = openat(parent, name, flags(), Mode::empty())
+            .map(File::from)
+            .map_err(|_| refuse("receipt_changed"))?;
+        if !same(&file, &current) {
+            return Err(refuse("receipt_changed"));
+        }
+        Ok(Some(bytes))
     }
     pub fn new_child(parent: &File, name: &str) -> Result<File> {
         mkdirat(parent, name, Mode::from_raw_mode(0o700)).map_err(|e| {
@@ -141,7 +181,7 @@ mod platform {
     }
 }
 #[cfg(not(unix))]
-mod platform {
+pub(super) mod platform {
     use super::*;
     // Windows refuses until directory-handle/reparse-point publication is implemented.
     pub fn root(_: &Path) -> Result<File> {
@@ -151,6 +191,12 @@ mod platform {
         false
     }
     pub fn child(_: &File, _: &str, _: bool) -> Result<File> {
+        Err(refuse("platform_unavailable"))
+    }
+    pub fn optional_child(_: &File, _: &str) -> Result<Option<File>> {
+        Err(refuse("platform_unavailable"))
+    }
+    pub fn read(_: &File, _: &str, _: usize) -> Result<Option<Vec<u8>>> {
         Err(refuse("platform_unavailable"))
     }
     pub fn new_child(_: &File, _: &str) -> Result<File> {
@@ -210,6 +256,39 @@ impl Pin {
         }
         Ok(())
     }
+    fn check_knowledge(&self, reads: &[Value]) -> Result<()> {
+        for read in reads {
+            let path = knowledge_grounding::path(s(read, "path"))?;
+            if path != s(read, "path") || !digest(s(read, "sha256")) {
+                return Err(refuse("invalid_knowledge_reads"));
+            }
+            let parts: Vec<_> = path.split('/').collect();
+            let mut parent = self.root.try_clone().map_err(io_fail)?;
+            for part in &parts[..parts.len() - 1] {
+                parent = child(&parent, part, false)
+                    .map_err(|_| refuse("knowledge_read_unavailable"))?;
+            }
+            let bytes = platform::read(
+                &parent,
+                parts[parts.len() - 1],
+                extalia_core::knowledge::vault::VaultLimits::default().max_file_bytes as usize,
+            )
+            .map_err(|_| refuse("knowledge_read_unavailable"))?
+            .ok_or(refuse("knowledge_read_unavailable"))?;
+            if hash(bytes) != s(read, "sha256") {
+                return Err(refuse("knowledge_source_changed"));
+            }
+            let mut current_parent = self.root.try_clone().map_err(io_fail)?;
+            for part in &parts[..parts.len() - 1] {
+                current_parent = child(&current_parent, part, false)
+                    .map_err(|_| refuse("knowledge_read_unavailable"))?;
+            }
+            if !same(&parent, &current_parent) {
+                return Err(refuse("knowledge_source_changed"));
+            }
+        }
+        self.check()
+    }
 }
 #[derive(Debug)]
 pub(super) struct Draft {
@@ -223,6 +302,7 @@ pub(super) struct Draft {
     target: String,
     relative: String,
     content: String,
+    knowledge_reads: Vec<Value>,
 }
 impl Drop for Draft {
     fn drop(&mut self) {
@@ -239,7 +319,7 @@ pub(super) struct Stage {
 }
 impl Drop for Stage {
     fn drop(&mut self) {
-        // Remove only the two files this staging owner created, never recursively follow a path.
+        // Remove only entries this staging owner created, never recursively follow a path.
         for (parent, name, is_dir) in self.entries.iter().rev() {
             remove(parent, name, *is_dir);
         }
@@ -309,6 +389,11 @@ impl Learning {
         let pin = self.pins.get(pin_id).ok_or(refuse("invalid_handle"))?;
         pin.check()?;
         let record = &input["record"];
+        let knowledge_reads = if s(&pin.binding, "purpose") == "learning" {
+            knowledge_grounding::record_reads(record)?
+        } else {
+            Vec::new()
+        };
         let (category, name, content) = if s(&pin.binding, "purpose") == "learning" {
             if ["profileId", "revision", "workspaceId", "sessionId"]
                 .iter()
@@ -331,6 +416,9 @@ impl Learning {
         if !id(name) {
             return Err(refuse("invalid_identity"));
         }
+        // Revalidate against the actual publication vault, not a separate export
+        // directory or a previously indexed copy. No note is prepared on mismatch.
+        pin.check_knowledge(&knowledge_reads)?;
         let workspace = s(&pin.binding, "workspaceId");
         let top = child(&pin.root, category, true)?;
         let folder = child(&top, workspace, true)?;
@@ -351,6 +439,7 @@ impl Learning {
             target,
             relative: relative.clone(),
             content,
+            knowledge_reads,
         };
         pin.check()?;
         self.drafts.insert(draft_id.clone(), draft);
@@ -372,6 +461,9 @@ impl Learning {
         if !same(&folder, &draft.folder) {
             return Err(refuse("root_changed"));
         }
+        // A target may change after model analysis, host revalidation or prepare.
+        // Check again immediately before the append-only publication operation.
+        pin.check_knowledge(&draft.knowledge_reads)?;
         publish(
             &draft.folder,
             &draft.temp,
@@ -436,6 +528,15 @@ impl Learning {
         receipt["kind"] = "model-generated-draft".into();
         receipt["sourceVerified"] = false.into();
         receipt["claimedSourceUrls"] = proposal.get("sourceUrls").cloned().unwrap_or(json!([]));
+        if proposal.get("baseRevisionId").is_some() {
+            receipt["refinement"] = json!({"baseRevisionId":proposal["baseRevisionId"],
+                "baseSkillSha256":proposal["baseSkillSha256"],"reason":proposal["refinementReason"]});
+        }
+        if let Some(references) = proposal["references"].as_array() {
+            receipt["references"] = references.iter().map(|reference| {
+                json!({"path":reference["path"],"sha256":hash(s(reference,"content"))})
+            }).collect::<Vec<_>>().into();
+        }
         receipt["fidelity"] = "Generated instructions, not a verified copy of the source.".into();
         let provenance = format!(
             "# Generated skill candidate\n\nUnverified source claims; this receipt is data, not scanner evidence or permission.\n\n```json\n{}\n```\n",
@@ -454,6 +555,20 @@ impl Learning {
         ));
         create(&stage.folder, "PROVENANCE.md", provenance.as_bytes())?
             .ok_or(refuse("stage_conflict"))?;
+        if let Some(references) = proposal["references"].as_array().filter(|v| !v.is_empty()) {
+            let parent = Arc::new(stage.folder.try_clone().map_err(io_fail)?);
+            stage
+                .entries
+                .push((parent.clone(), "references".into(), true));
+            let folder = Arc::new(new_child(&parent, "references")?);
+            for reference in references {
+                // proposal() admitted only one safe lowercase filename component.
+                let name = s(reference, "path").strip_prefix("references/").unwrap();
+                stage.entries.push((folder.clone(), name.into(), false));
+                create(&folder, name, s(reference, "content").as_bytes())?
+                    .ok_or(refuse("stage_conflict"))?;
+            }
+        }
         self.stages.insert(stage_id.clone(), stage);
         Ok(json!({"stageId":stage_id,"path":name}))
     }

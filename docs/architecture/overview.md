@@ -94,6 +94,18 @@ results. Conflicting foreground work fences maintenance and drains its entered e
 Office portals the shared countdown above its prompt while keeping source-context
 selection independent from the global character board and automatic camera.
 
+[Operational work memory](../adr/0089-operational-work-memory-and-context-reuse.md)
+adds a Rust-owned profile/workspace-scoped SQLite/FTS5 index for attributed Native
+and opted-in Observe outcomes. A bounded host outbox retries exact local captures;
+it does not replay inference or uncertain artifact publication. Before Native
+lead/worker requests, the host prepares mandatory skills, retrieves bounded
+operational evidence and freshly read Knowledge excerpts, then revalidates access
+and admits only optional context that fits. Curators receive historical context
+separately from current evidence. Native runtime compaction can replace older
+tool bodies in a request projection only after a separate scoped archive reader
+and durable publication acknowledgement exist. Full stored history stays intact;
+Windows archive compaction and general external runtime injection remain unavailable.
+
 The skill registry uses that same lazy profile daemon independently of mission
 backend selection. [Pinned SkillSpector inspection](../adr/0068-pinned-skillspector-inspection.md)
 runs in a separate bounded Rust-owned worker, with a bundled Python/scanner
@@ -136,6 +148,21 @@ MCP readers expose only the notes/snapshots pinned by an explicit handover,
 with expiring hash-only grants, live privacy checks and no future-work access.
 Native agents receive bounded read tools only after handover. Old generated
 capsules are replaced in model history without deleting conversation events.
+The continuity journal acknowledges POSIX directory publication before dispatch,
+and exact external archive-read tool identities are excluded from fresh evidence.
+The [four-stage acceptance contract](../bench/cross-agent-continuity-acceptance.md)
+keeps synthetic host regressions, local artifact verification and genuine native
+provider evidence separate. Windows power-loss durability, the scope-bound memory
+barrier and installed Gemini compaction observation remain explicit limits.
+
+[Repeatable Observe handover](../adr/0090-repeatable-observe-handover.md) pins a
+reviewed checkpoint while its source continues, validates access separately from
+transcript progress, and retains immutable evidence deltas. Explicit lineage joins
+preserve old canonical archive grants without granting future evidence. Scoped
+Native destination writes avoid global workspace mutation flags. Stable CLI
+pairing survives normal transcript growth; Hermes exact stored-session resume and
+explicit idempotent creation use verified native profile/project capabilities.
+Passive destination discovery does not attach a gateway or start an agent.
 
 Saved native mission checkpoints and canonical native control events use
 host-owned SQLite WAL under the profile lock, with one-time import of legacy

@@ -1,3 +1,6 @@
+/** Internal attribution for unbound observed conversations; never a filesystem grant. */
+export const GLOBAL_OBSERVE_WORKSPACE_ID = 'global-observe';
+
 /** A real discussion and its independently acknowledged knowledge export. */
 export interface LearningMeetingResult {
   outcome: 'completed' | 'cancelled' | 'failed' | 'unknown';
@@ -5,6 +8,8 @@ export interface LearningMeetingResult {
   knowledge: 'saved' | 'unavailable' | 'failed';
   /** Present only after the exporter acknowledged the durable note. */
   notePath?: string;
+  /** Index refresh after the saved note; absence does not confirm indexing. */
+  indexed?: boolean;
   problem?: string;
 }
 
@@ -31,6 +36,8 @@ export interface LearningSkillNotice {
 export interface LearningScheduleResult {
   meeting?: LearningMeetingResult;
   skill?: LearningSkillNotice;
+  knowledge?: { status: 'saved' | 'failed' | 'skipped'; path?: string; indexed?: boolean };
+  problem?: 'connection' | 'provider' | 'timeout' | 'invalid-request' | 'authority' | 'publication';
 }
 
 /** Host admission timers; learning execution and artifact publication remain Rust-owned. */
@@ -44,7 +51,7 @@ export interface LearningScheduleJob {
   kind?: 'learning' | 'knowledge-meeting';
   workspaceName?: string;
   sessionName?: string;
-  state: 'scheduled' | 'running' | 'completed' | 'failed' | 'cancelled';
+  state: 'scheduled' | 'running' | 'completed' | 'partial' | 'failed' | 'cancelled';
   /** Effective only while waitingForIdle is false; the UI never dispatches on this deadline. */
   dueAt: string;
   /** A full selected quiet interval starts once actual foreground work settles. */
@@ -55,6 +62,13 @@ export interface LearningScheduleJob {
   createdAt: string;
   /** Positive receipts survive a later executor, export or cleanup failure. */
   result?: LearningScheduleResult;
+  /** Retained checkpoint metadata. Queued, resumable and publication states permit explicit admission. */
+  recovery?: {
+    state: 'queued' | 'resumable' | 'publication' | 'uncertain' | 'expired';
+    modelRequests: number;
+    reads: number;
+    skillReviewRequired: boolean;
+  };
 }
 
 export interface LearningScheduleSnapshot {
@@ -62,12 +76,16 @@ export interface LearningScheduleSnapshot {
   jobs: LearningScheduleJob[];
   delaySeconds: 60;
   snoozeSeconds: 600;
+  /** Scheduling still works; retained checkpoints could not be inspected. */
+  recoveryUnavailable?: boolean;
+  /** Visible work is usable; other records are unreadable or outside the bounded listing. */
+  recoveryIncomplete?: boolean;
 }
 
 export interface LearningScheduleAction {
   id: string;
   revision: string;
-  action: 'snooze' | 'run-now';
+  action: 'snooze' | 'run-now' | 'resume';
 }
 
 export function normalizeLearningScheduleAction(value: unknown): LearningScheduleAction {
@@ -75,6 +93,6 @@ export function normalizeLearningScheduleAction(value: unknown): LearningSchedul
   const input = value as Record<string, unknown>;
   const text = (item: unknown): item is string => typeof item === 'string' && item.length > 0 && item.length <= 200 && !/\p{Cc}/u.test(item);
   if (Object.keys(input).some(key => !['id', 'revision', 'action'].includes(key)) || !text(input.id) || !text(input.revision)
-    || !['snooze', 'run-now'].includes(input.action as string)) throw new Error('Invalid scheduled learning action.');
+    || !['snooze', 'run-now', 'resume'].includes(input.action as string)) throw new Error('Invalid scheduled learning action.');
   return { id: input.id, revision: input.revision, action: input.action as LearningScheduleAction['action'] };
 }

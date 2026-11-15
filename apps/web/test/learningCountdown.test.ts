@@ -6,6 +6,50 @@ import { createLearningNoticeMemory, LearningCountdownView, learningCountdownDur
 import { MESSAGES, type Language } from '../src/i18n';
 
 const at = Date.parse('2026-11-11T06:00:00.000Z');
+
+describe('retained learning checkpoints', () => {
+  it.each(['en', 'id'] as const)('distinguishes saved unstarted work from interrupted analysis (%s)', language => {
+    const t = MESSAGES[language].learningCountdown;
+    const value = snapshot('cancelled');
+    value.jobs[0]!.reason = 'shutdown';
+    value.jobs[0]!.delaySeconds = 600;
+    value.jobs[0]!.recovery = { state: 'queued', modelRequests: 0, reads: 0, skillReviewRequired: false };
+    const html = render(value, language);
+    expect(html).toContain(t.recoveryStates.queued);
+    expect(html).toContain(t.queueSaved);
+    expect(html).toContain(t.recoveryProgress(0, 0));
+    expect(html).not.toContain(t.resume);
+    expect(html).not.toContain(t.interrupted);
+    expect(html).not.toContain(t.recoverySkillReview);
+    expect(html).not.toContain('<time');
+  });
+
+  it.each(['en', 'id'] as const)('offers resume only for safe retained work (%s)', language => {
+    const t = MESSAGES[language].learningCountdown;
+    for (const state of ['resumable', 'publication', 'uncertain', 'expired'] as const) {
+      const value = snapshot('cancelled');
+      value.jobs[0]!.recovery = { state, modelRequests: 2, reads: 3, skillReviewRequired: true };
+      const html = render(value, language);
+      expect(html).toContain(t.recoveryStates[state]);
+      expect(html).toContain(t.recoveryProgress(2, 3));
+      expect(html).toContain(t.recoverySkillReview);
+      if (state === 'resumable' || state === 'publication') expect(html).toContain(t.resume);
+      else expect(html).not.toContain(t.resume);
+      expect(html).not.toContain(t.runNow);
+    }
+  });
+  it('shows an unavailable recovery catalog even with no scheduled jobs', () => {
+    const value = snapshot(); value.jobs = []; value.recoveryUnavailable = true;
+    expect(render(value)).toContain(MESSAGES.en.learningCountdown.recoveryUnavailable);
+  });
+  it.each(['en', 'id'] as const)('explains an incomplete catalog without hiding other work (%s)', language => {
+    const value = snapshot(); value.recoveryIncomplete = true;
+    expect(render(value, language)).toContain(MESSAGES[language].learningCountdown.recoveryIncomplete);
+    expect(render(value, language)).toContain(MESSAGES[language].learningCountdown.runNow);
+    value.jobs = [];
+    expect(render(value, language)).toContain(MESSAGES[language].learningCountdown.recoveryIncomplete);
+  });
+});
 function snapshot(state: LearningScheduleSnapshot['jobs'][number]['state'] = 'scheduled'): LearningScheduleSnapshot {
   return { revision: 'r1', delaySeconds: 60, snoozeSeconds: 600, jobs: [{ id: 'job', workspaceId: 'workspace', profileId: 'profile', profileName: 'Research', sessionId: 'session',
     state, dueAt: new Date(at + 60_000).toISOString(), createdAt: new Date(at).toISOString() }] };
@@ -18,6 +62,19 @@ const receipt = (change: 'new' | 'revised' | 'saved' = 'saved') => ({ id: 'recei
   state: 'quarantined', change, activationPerformed: false as const });
 
 describe('learning countdown notification', () => {
+  for (const language of ['en', 'id'] as const) it(`shows Knowledge confirmation independently of partial skill failure in ${language}`, () => {
+    const value = snapshot('partial');
+    value.jobs[0]!.workspaceId = 'global-observe';
+    value.jobs[0]!.result = { knowledge: { status: 'saved', path: 'Learning/global-observe/run.md', indexed: false }, problem: 'publication' };
+    const html = render(value, language), text = MESSAGES[language].learningCountdown;
+    expect(html).toContain(text.partial); expect(html).toContain(text.learningNoteSaved);
+    expect(html).toContain(text.globalObserve); expect(html).toContain(text.indexPending);
+    expect(html).not.toContain(text.knowledgeSaved); expect(html).not.toContain(text.failed);
+    expect(html).not.toContain(text.runNow);
+    value.jobs[0]!.state = 'completed'; value.jobs[0]!.result = { knowledge: { status: 'saved', path: 'Learning/global-observe/run.md', indexed: true } };
+    expect(render(value, language)).toContain(text.completed);
+  });
+
   it('formats the host deadline without a negative countdown or claiming a dispatch', () => {
     expect(learningCountdownTime(new Date(at + 59_001).toISOString(), at)).toBe('1:00');
     expect(learningCountdownTime(new Date(at + 59_000).toISOString(), at)).toBe('0:59');
@@ -131,6 +188,12 @@ describe('learning countdown notification', () => {
     expect(render(value)).not.toContain(text.knowledgeSaved);
     job.result.meeting = { outcome: 'completed', knowledge: 'saved', notePath: 'meetings/example.md' };
     expect(render(value)).toContain(text.knowledgeSaved);
+    expect(render(value)).not.toContain(text.indexPending);
+    job.state = 'partial'; job.result.meeting.indexed = false;
+    expect(render(value)).toContain(text.partial);
+    expect(render(value)).toContain(text.indexPending);
+    expect(render(value)).toContain(text.knowledgePartial);
+    expect(render(value)).not.toContain(text.meetingCompleted);
     job.state = 'failed';
     job.result.meeting.outcome = 'failed';
     expect(render(value)).toContain(text.knowledgePartial);

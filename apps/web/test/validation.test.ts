@@ -5,6 +5,23 @@ import {
 } from '../src/setup/validation';
 
 describe('connection drafts', () => {
+  it('preserves the selected local engine and never carries its executable into disabled input', () => {
+    const local = { ...draftFromPreset('ollama'), model: 'local-model' };
+    expect(local.contextOptimization).toBe('local');
+    expect(toConnectionInput(local).input.contextOptimization).toBeUndefined();
+    const engine = { ...local, contextOptimization: 'caveman' as const, cavemanExecutable: '/opt/example/caveman-engine' };
+    expect(validateConnection(engine)).toEqual({});
+    expect(toConnectionInput(engine).input.contextOptimization).toEqual({ mode: 'caveman', executable: engine.cavemanExecutable });
+    expect(draftFromPreset('custom', engine)).toMatchObject({ contextOptimization: 'caveman', cavemanExecutable: engine.cavemanExecutable });
+    expect(toConnectionInput({ ...engine, contextOptimization: 'off' }).input.contextOptimization).toEqual({ mode: 'off' });
+    for (const cavemanExecutable of ['', 'caveman-engine', './caveman-engine', '/opt/example/caveman\nargument']) {
+      expect(validateConnection({ ...engine, cavemanExecutable }).cavemanExecutable).toBe('cavemanExecutableInvalid');
+    }
+    const view: ConnectionView = { ...toConnectionInput(engine).input, id: 'c1', credential: { kind: 'none' }, credentialStatus: 'not-needed',
+      orchestration: { enabled: true, maxDelegations: 3, tiers: {} }, createdAt: '2026-01-31T10:00:00.000Z', updatedAt: '2026-01-31T10:00:00.000Z' };
+    expect(draftFromConnection(view)).toMatchObject({ contextOptimization: 'caveman', cavemanExecutable: engine.cavemanExecutable });
+  });
+
   it('starts from the preset and requires a key only where the preset needs one', () => {
     const openai = draftFromPreset('openai');
     expect(openai).toMatchObject({ name: 'OpenAI', baseUrl: 'https://api.openai.com/v1', memory: 'extalia', orchestration: { enabled: true, maxDelegations: '3' } });

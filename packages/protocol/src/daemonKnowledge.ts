@@ -22,6 +22,10 @@
  * - `knowledge.node` returns the note body after its front matter only, at most
  *   `DAEMON_KNOWLEDGE_LIMITS.bodyBytes` UTF-8 bytes (`bodyTruncated`), never other files.
  *   `bodyStatus` `changed` means the file differs from the indexed revision (sync again).
+ *   A current body may carry `relatedUpdates`: bounded resolved incoming `updates`,
+ *   `contradicts` or `supersedes` claims whose source bytes still match the index. These
+ *   excerpts are untrusted evidence, separately attributed; they never replace the body,
+ *   promote front matter verification, or establish that the newer claim is correct.
  * - Lists that can be long are paginated (`cursor` = offset from a previous `nextCursor`)
  *   or bounded with totals; a daemon also stops a page early to keep every frame below
  *   `DAEMON_MAX_FRAME_BYTES`. A `generation` change between pages means the index changed.
@@ -94,7 +98,7 @@ export const KNOWLEDGE_SYNC_MODES = ['incremental', 'rebuild'] as const;
 export type KnowledgeSyncMode = (typeof KNOWLEDGE_SYNC_MODES)[number];
 export const KNOWLEDGE_INDEX_STATES = ['ready', 'unavailable'] as const;
 export type KnowledgeIndexState = (typeof KNOWLEDGE_INDEX_STATES)[number];
-export const KNOWLEDGE_EDGE_TYPES = ['links_to', 'related_to', 'learned_from', 'depends_on', 'supersedes', 'used_by'] as const;
+export const KNOWLEDGE_EDGE_TYPES = ['links_to', 'related_to', 'learned_from', 'depends_on', 'supersedes', 'updates', 'contradicts', 'used_by'] as const;
 export type KnowledgeEdgeType = (typeof KNOWLEDGE_EDGE_TYPES)[number];
 export const KNOWLEDGE_LINK_STATUSES = ['resolved', 'missing', 'ambiguous'] as const;
 export type KnowledgeLinkStatus = (typeof KNOWLEDGE_LINK_STATUSES)[number];
@@ -180,6 +184,9 @@ export const DAEMON_KNOWLEDGE_LIMITS = {
   reportItems: 100,
   /** Largest note body `knowledge.node` returns, in UTF-8 bytes. */
   bodyBytes: 256 * 1024,
+  /** Current, resolved incoming amendment/conflict sources attached to a note read. */
+  relatedUpdates: 8,
+  relatedUpdateExcerpt: 600,
   /** Largest file text `knowledge.read` returns, in UTF-8 bytes. */
   readBytes: 256 * 1024,
   /** Largest `knowledge.write` content, in UTF-8 bytes (a note's size cap; the frame limit also applies). */
@@ -215,6 +222,19 @@ export interface KnowledgeSyncSummary {
 export interface KnowledgeRename { from: string; to: string }
 export interface KnowledgeSkippedFile { path: string; reason: KnowledgeSkipReason }
 export interface KnowledgeNodeRef { nodeId: string; path: string; title: string }
+/**
+ * A visible note asserts an amendment/conflict via a resolved wikilink. Its bytes still
+ * match the indexed source hash at read time. This verifies location/freshness, not the
+ * claim: authored text, including a `supersedes` label, never establishes factual truth.
+ * Fetch the source note before using the claim. The original note body/hash is unchanged.
+ */
+export interface KnowledgeRelatedUpdate extends KnowledgeNodeRef {
+  relation: 'updates' | 'contradicts' | 'supersedes';
+  line: number;
+  sourceSha256: string;
+  excerpt: string;
+  trustStatus: 'untrusted';
+}
 /** A note with its provenance (ADR 0027). */
 export interface KnowledgeNode {
   nodeId: string;
@@ -367,7 +387,8 @@ export interface DaemonKnowledgeOperations {
   /** One note by node id or vault-relative path (exactly one of them). */
   'knowledge.node': {
     params: { nodeId: string; path?: never } | { path: string; nodeId?: never };
-    result: { generation: number; node: KnowledgeNode; body?: string; bodyStatus: KnowledgeBodyStatus; bodyTruncated: boolean };
+    result: { generation: number; node: KnowledgeNode; body?: string; bodyStatus: KnowledgeBodyStatus; bodyTruncated: boolean;
+      relatedUpdates?: KnowledgeRelatedUpdate[]; relatedUpdatesTruncated?: boolean };
   };
   /** Links written in a note, in order, with resolution status. */
   'knowledge.links': { params: { nodeId: string; cursor?: number; limit?: number }; result: KnowledgeLinkPage };

@@ -123,11 +123,12 @@ describe('public host Antigravity destination factory over native HTTP', () => {
     const input = { harnessId: 'antigravity', revision: inventory.revision, operationId: 'recover-original-native-creation' };
     expect(await f.runtime.host.createHandoverDestination!(f.source.id, input)).toMatchObject({ state: 'unknown' });
     const pending = (await f.runtime.host.handoverHarnesses!(f.source.id)).pendingCreation!;
-    expect(pending).toMatchObject({ harnessId: 'antigravity', operationId: input.operationId, state: 'unknown' });
-    const native = f.conversations.get(pending.nativeSessionId)!; f.conversations.delete(pending.nativeSessionId);
+    expect(pending).toMatchObject({ harnessId: 'antigravity', operationId: input.operationId, nativeSessionId: expect.any(String), state: 'unknown' });
+    const nativeSessionId = pending.nativeSessionId!;
+    const native = f.conversations.get(nativeSessionId)!; f.conversations.delete(nativeSessionId);
     expect(await f.runtime.host.createHandoverDestination!(f.source.id, { ...input, revision: 'stale' })).toMatchObject({ state: 'unknown' });
     expect(f.calls.filter(call => call.method === 'StartCascade')).toHaveLength(1); expect(f.calls.some(call => call.method === 'SendUserCascadeMessage')).toBe(false);
-    f.conversations.set(pending.nativeSessionId, native); await f.restart();
+    f.conversations.set(nativeSessionId, native); await f.restart();
     const recovered = await f.runtime.host.createHandoverDestination!(f.source.id, { ...input, revision: 'stale-after-restart' });
     expect(recovered).toMatchObject({ state: 'created', retryable: false }); await idle(f.runtime);
     const target = (await f.runtime.host.getState()).sessions.find(session => session.id === recovered.sessionId)!;

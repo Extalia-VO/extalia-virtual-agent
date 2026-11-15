@@ -45,6 +45,8 @@ pub mod limits {
     pub const OVERVIEW_TAG: usize = 64;
     pub const REPORT_ITEMS: usize = 100;
     pub const BODY_BYTES: usize = 256 * 1024;
+    pub const RELATED_UPDATES: usize = 8;
+    pub const RELATED_UPDATE_EXCERPT: usize = 600;
     pub const READ_BYTES: usize = 256 * 1024;
     pub const CONTENT_BYTES: usize = 1024 * 1024;
     pub const HISTORY_LIMIT: u64 = 50;
@@ -64,6 +66,8 @@ const EDGE_TYPES: &[&str] = &[
     "learned_from",
     "depends_on",
     "supersedes",
+    "updates",
+    "contradicts",
     "used_by",
 ];
 const LINK_STATUSES: &[&str] = &["resolved", "missing", "ambiguous"];
@@ -979,6 +983,59 @@ fn node(check: &mut Check, value: Option<&Value>, path: &str) -> bool {
     .is_some()
 }
 
+fn related_update(check: &mut Check, value: &Value, path: &str) -> bool {
+    let at = |key: &str| format!("{path}.{key}");
+    let Some(fields) = check.object(
+        value,
+        path,
+        &[
+            "nodeId",
+            "path",
+            "title",
+            "relation",
+            "line",
+            "sourceSha256",
+            "excerpt",
+            "trustStatus",
+        ],
+        &[],
+    ) else {
+        return false;
+    };
+    all(&[
+        node_id(check, fields.get("nodeId"), &at("nodeId")),
+        vault_path(check, fields.get("path"), &at("path")),
+        text(check, fields.get("title"), &at("title"), TITLE),
+        one_of(
+            check,
+            fields.get("relation"),
+            &at("relation"),
+            &["updates", "contradicts", "supersedes"],
+        ),
+        count(check, fields.get("line"), &at("line"), 1, MAX_SAFE_INTEGER),
+        pattern(
+            check,
+            fields.get("sourceSha256"),
+            &at("sourceSha256"),
+            is_digest,
+            "expected a lowercase SHA-256 digest",
+        ),
+        text(
+            check,
+            fields.get("excerpt"),
+            &at("excerpt"),
+            RELATED_UPDATE_EXCERPT,
+        ),
+        one_of(
+            check,
+            fields.get("trustStatus"),
+            &at("trustStatus"),
+            &["untrusted"],
+        ),
+    ])
+    .is_some()
+}
+
 fn link(check: &mut Check, value: &Value, path: &str) -> bool {
     let at = |key: &str| format!("{path}.{key}");
     let Some(fields) = check.object(
@@ -1434,7 +1491,7 @@ pub(super) fn result(check: &mut Check, op: Op, result: &Value) -> Option<Respon
                 result,
                 RESULT,
                 &["generation", "node", "bodyStatus", "bodyTruncated"],
-                &["body"],
+                &["body", "relatedUpdates", "relatedUpdatesTruncated"],
             )?;
             all(&[
                 count(
@@ -1461,6 +1518,22 @@ pub(super) fn result(check: &mut Check, op: Op, result: &Value) -> Option<Respon
                     BODY_STATUSES,
                 ),
                 boolean(check, fields.get("bodyTruncated"), &at("bodyTruncated")),
+                optional(
+                    check,
+                    fields,
+                    "relatedUpdates",
+                    RESULT,
+                    |check, value, path| {
+                        items(
+                            check,
+                            value,
+                            path,
+                            (0, RELATED_UPDATES, false),
+                            &related_update,
+                        )
+                    },
+                ),
+                optional(check, fields, "relatedUpdatesTruncated", RESULT, boolean),
             ])
         }
         Op::KnowledgeLinks | Op::KnowledgeBacklinks => link_page(check, result),

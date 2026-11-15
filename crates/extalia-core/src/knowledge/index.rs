@@ -218,7 +218,7 @@ impl KnowledgeStore {
         if vault.profile() != &self.profile {
             return Err(KnowledgeError::WrongProfile);
         }
-        let mode = if self.profile_alias_matches(alias)? {
+        let mode = if self.profile_alias_matches(alias)? && self.parser_is_current()? {
             mode
         } else {
             SyncMode::Rebuild
@@ -246,7 +246,7 @@ impl KnowledgeStore {
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         let p = profile.as_str();
         tx.execute(
-            "UPDATE knowledge_index_state SET accepted_profile_alias = ?2 WHERE profile_id = ?1",
+            "UPDATE knowledge_index_state SET accepted_profile_alias = ?2, parser_revision = 1 WHERE profile_id = ?1",
             params![p, alias.map(ProfileId::as_str)],
         )?;
         if mode == SyncMode::Rebuild {

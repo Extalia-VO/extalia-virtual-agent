@@ -197,7 +197,7 @@ export class ContinuityAccess {
         return { grant: copy(grant), offset, limit };
       });
       if (admission.status) return admission.status;
-      const result = await this.options.read(sessionId, { snapshotId: input.snapshotId!, offset: admission.offset!, limit: admission.limit! });
+      const result = await this.options.read(sessionId, { snapshotId: input.snapshotId!, canonicalId: admission.grant!.canonicalId, offset: admission.offset!, limit: admission.limit! });
       return this.serial(async () => {
         // Revocation, expiry, retention and live target identity can all change during archive I/O.
         const grant = await this.authorized(sessionId, input);
@@ -217,6 +217,19 @@ export class ContinuityAccess {
       if (this.grants!.some(grant => grant.canonicalId === canonicalId && grant.persistent)) {
         await this.save(this.grants!.map(grant => grant.canonicalId === canonicalId ? { ...grant, persistent: false } : grant));
       }
+    });
+  }
+  /** Undo only this exact reviewed packet's access after a refused or not-yet-entered delivery. */
+  revokePacket(packet: string, sessionId: string): Promise<void> {
+    return this.serial(async () => {
+      const codes = packet.match(EXTRACT) ?? [];
+      if (!codes.length) return;
+      if (codes.length !== 1) throw denied();
+      const digest = hash(codes[0]!), packetDigest = hash(packet);
+      const active = this.grants!.find(grant => equal(grant.digest, digest)), pending = this.pending.get(digest);
+      for (const grant of [active, pending?.grant]) if (grant && (grant.sessionId !== sessionId || !equal(grant.packetDigest, packetDigest))) throw denied();
+      if (active) await this.save(this.grants!.filter(grant => grant !== active));
+      this.pending.delete(digest);
     });
   }
   revoke(sessionId?: string): Promise<void> {

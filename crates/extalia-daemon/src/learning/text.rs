@@ -29,11 +29,36 @@ fn format_char(c: char) -> bool {
 pub(super) fn trim(v: &str) -> &str {
     v.trim_matches(|c:char| matches!(c as u32,0x09..=0x0d|0x20|0xa0|0x1680|0x2000..=0x200a|0x2028|0x2029|0x202f|0x205f|0x3000|0xfeff))
 }
-fn plain(v: &str, multiline: bool) -> bool {
+pub(super) fn plain(v: &str, multiline: bool) -> bool {
     v.chars()
         .all(|c| (!c.is_control() || multiline && "\r\n\t".contains(c)) && !format_char(c))
 }
+pub(super) fn evidence_label(value: &str) -> String {
+    value
+        .replace('\\', "\\\\")
+        .replace('[', "\\[")
+        .replace(']', "\\]")
+        .replace(['\r', '\n'], " ")
+}
 pub(super) fn proposal(v: &Value) -> Result<Value> {
+    if v.as_object().is_none_or(|o| {
+        o.keys().any(|key| {
+            ![
+                "name",
+                "description",
+                "instructions",
+                "sourceUrls",
+                "references",
+                "baseRevisionId",
+                "baseSkillSha256",
+                "baseReadReceipt",
+                "refinementReason",
+            ]
+            .contains(&key.as_str())
+        })
+    }) {
+        return Err(refuse("invalid_skill_proposal"));
+    }
     let name = s(v, "name");
     let description = s(v, "description");
     let instructions = s(v, "instructions");
@@ -59,7 +84,11 @@ pub(super) fn proposal(v: &Value) -> Result<Value> {
     let mut out =
         json!({"name":name,"description":trim(description),"instructions":trim(instructions)});
     if let Some(urls) = v.get("sourceUrls") {
-        for url in urls.as_array().ok_or(refuse("invalid_source_url"))? {
+        let urls = urls.as_array().ok_or(refuse("invalid_source_url"))?;
+        if urls.len() > 8 {
+            return Err(refuse("invalid_source_url"));
+        }
+        for url in urls {
             let url = url.as_str().ok_or(refuse("invalid_source_url"))?;
             let rest = url
                 .strip_prefix("https://")
@@ -76,7 +105,73 @@ pub(super) fn proposal(v: &Value) -> Result<Value> {
                 return Err(refuse("invalid_source_url"));
             }
         }
-        out["sourceUrls"] = urls.clone();
+        out["sourceUrls"] = json!(urls);
+    }
+    let base_fields = [
+        "baseRevisionId",
+        "baseSkillSha256",
+        "baseReadReceipt",
+        "refinementReason",
+    ];
+    if base_fields.iter().any(|key| v.get(key).is_some()) {
+        if !base_fields.iter().all(|key| v.get(key).is_some())
+            || !s(v, "baseRevisionId")
+                .strip_prefix("skr_")
+                .is_some_and(digest)
+            || !digest(s(v, "baseSkillSha256"))
+            || !digest(s(v, "baseReadReceipt"))
+            || trim(s(v, "refinementReason")).is_empty()
+            || s(v, "refinementReason").encode_utf16().count() > 500
+            || !plain(s(v, "refinementReason"), false)
+            || s(v, "refinementReason").contains(['\u{2028}', '\u{2029}'])
+        {
+            return Err(refuse("invalid_skill_refinement"));
+        }
+        for key in base_fields {
+            out[key] = v[key].clone();
+        }
+        out["refinementReason"] = trim(s(v, "refinementReason")).into();
+    }
+    if let Some(references) = v.get("references") {
+        let references = references
+            .as_array()
+            .ok_or(refuse("invalid_skill_reference"))?;
+        if references.len() > 4 {
+            return Err(refuse("invalid_skill_reference"));
+        }
+        let mut seen = HashSet::new();
+        let mut bytes = 0;
+        let mut normalized = Vec::new();
+        for reference in references {
+            let path = s(reference, "path");
+            let slug = path
+                .strip_prefix("references/")
+                .and_then(|v| v.strip_suffix(".md"));
+            let content = trim(s(reference, "content"));
+            bytes += s(reference, "content").len();
+            if reference.as_object().is_none_or(|o| o.len() != 2)
+                || slug.is_none_or(|v| {
+                    v.is_empty()
+                        || v.len() > 64
+                        || !v.as_bytes()[0].is_ascii_alphanumeric()
+                        || !v
+                            .bytes()
+                            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+                })
+                || !seen.insert(path)
+                || content.is_empty()
+                || s(reference, "content").len() > 16 * 1024
+                || bytes > 48 * 1024
+                || !plain(content, true)
+            {
+                return Err(refuse("invalid_skill_reference"));
+            }
+            normalized.push(json!({"path":path,"content":content}));
+        }
+        normalized.sort_by(|a, b| s(a, "path").cmp(s(b, "path")));
+        if !normalized.is_empty() {
+            out["references"] = normalized.into();
+        }
     }
     Ok(out)
 }
@@ -112,23 +207,47 @@ pub(super) fn proposal_json(v: &Value) -> String {
     if let Some(urls) = v.get("sourceUrls") {
         out.push_str(&format!(",\"sourceUrls\":{urls}"));
     }
+    // A per-read capability proves review but is not artifact content or lineage.
+    for key in [
+        "references",
+        "baseRevisionId",
+        "baseSkillSha256",
+        "refinementReason",
+    ] {
+        if let Some(value) = v.get(key) {
+            out.push_str(&format!(",\"{key}\":{value}"));
+        }
+    }
     out.push('}');
     out
 }
 pub(super) fn content_hash(v: &Value) -> String {
-    hash(format!(
-        "{{\"lesson\":{},\"skill\":{}}}",
+    let mut content = format!(
+        "{{\"lesson\":{},\"skill\":{}",
         v["lesson"],
         v.get("skill")
             .map(proposal_json)
             .unwrap_or_else(|| "null".into())
-    ))
+    );
+    if let Some(related) = v.get("relatedNotes") {
+        content.push_str(&format!(",\"relatedNotes\":{related}"));
+    }
+    content.push('}');
+    hash(content)
 }
 pub(super) fn submission(v: &Value, evidence: &[Value]) -> Result<Value> {
     let o = v.as_object().ok_or(refuse("invalid_submission"))?;
-    if o.keys()
-        .any(|k| !["title", "lesson", "evidenceIds", "skill", "skipReason"].contains(&k.as_str()))
-    {
+    if o.keys().any(|k| {
+        ![
+            "title",
+            "lesson",
+            "evidenceIds",
+            "skill",
+            "skipReason",
+            "relatedNotes",
+        ]
+        .contains(&k.as_str())
+    }) {
         return Err(refuse("invalid_submission"));
     }
     if let Some(skip) = v.get("skipReason") {
@@ -163,7 +282,20 @@ pub(super) fn submission(v: &Value, evidence: &[Value]) -> Result<Value> {
         let mut skill = proposal(raw)?;
         skill["description"] = clean(s(&skill, "description"), 500).into();
         skill["instructions"] = clean(s(&skill, "instructions"), 65536).into();
-        out["skill"] = skill;
+        if let Some(reason) = skill.get("refinementReason") {
+            skill["refinementReason"] = clean(reason.as_str().unwrap(), 500).into();
+        }
+        if let Some(references) = skill.get_mut("references").and_then(Value::as_array_mut) {
+            for reference in references {
+                reference["content"] = clean(s(reference, "content"), 16 * 1024).into();
+            }
+        }
+        // Redaction can expand a short credential into a longer marker. Reapply
+        // byte bounds now so a ready submission never fails only at staging.
+        out["skill"] = proposal(&skill)?;
+    }
+    if let Some(related) = v.get("relatedNotes") {
+        out["relatedNotes"] = related.clone();
     }
     Ok(out)
 }
@@ -201,12 +333,49 @@ pub(super) fn learning_markdown(v: &Value) -> Result<String> {
     ] {
         rows.push(format!("{key}: {}", v[field]));
     }
-    rows.extend(["---".into(),"".into(),format!("# {}",s(v,"title")),"".into(),"Generated findings from a completed source turn. Evidence is limited to successful tool results captured in that invocation; these findings are not independently verified.".into(),"".into(),"## Lesson".into(),"".into(),s(v,"lesson").into(),"".into(),"## Current-turn evidence".into(),"".into()]);
+    let source_notice = if evidence
+        .iter()
+        .any(|e| s(e, "name").starts_with("observed_"))
+    {
+        "Generated findings from an observed source episode. Transcript claims are attributed to their original source; idle, reported completion and claimed tool outcomes are not independently verified."
+    } else if evidence
+        .iter()
+        .any(|e| s(e, "name").starts_with("conversation_"))
+    {
+        "Generated findings from bounded current-turn evidence and attributed conversation claims. User and assistant statements are not tool results or independent verification; these findings remain unverified."
+    } else {
+        "Generated findings from a completed source turn. Evidence is limited to successful tool results captured in that invocation; these findings are not independently verified."
+    };
+    rows.extend([
+        "---".into(),
+        "".into(),
+        format!("# {}", s(v, "title")),
+        "".into(),
+        source_notice.into(),
+        "".into(),
+        "## Lesson".into(),
+        "".into(),
+        s(v, "lesson").into(),
+        "".into(),
+    ]);
+    rows.extend(knowledge_grounding::relation_markdown(v)?);
+    rows.extend(["## Current-turn evidence".into(), "".into()]);
     for e in evidence {
+        // Evidence remains quoted data: wikilinks or Markdown supplied by a source
+        // must not create generated relationships outside the grounding validator.
+        let content = s(e, "content");
+        let longest = content.split(|c| c != '`').map(str::len).max().unwrap_or(0);
+        let fence = "`".repeat(longest.max(2) + 1);
         rows.extend([
-            format!("### {} · {}", s(e, "id"), s(e, "name")),
+            format!(
+                "### {} · {}",
+                evidence_label(s(e, "id")),
+                evidence_label(s(e, "name"))
+            ),
             "".into(),
-            s(e, "content").into(),
+            fence.clone(),
+            content.into(),
+            fence,
             "".into(),
         ]);
     }

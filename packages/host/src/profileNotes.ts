@@ -16,7 +16,8 @@ const identity = (value: string) => { if (!identifier.test(value)) throw new Err
 function failure(error: unknown): never {
   if (error instanceof DaemonRequestError) {
     const reason = error.reason ?? error.code;
-    const message = /exist|overwrit|conflict/.test(reason) ? 'A different note already exists; it was not overwritten.'
+    const message = reason.startsWith('knowledge_') ? 'A referenced Knowledge note changed or could not be confirmed. Review the finding again.'
+      : /exist|overwrit|conflict/.test(reason) ? 'A different note already exists; it was not overwritten.'
       : /identity|changed|replaced/.test(reason) ? 'The notes destination changed on disk.'
         : /symlink|directory|unsafe|path/.test(reason) ? 'The notes destination is not a regular directory.'
           : /participant/.test(reason) ? 'The note contains an unknown participant.' : 'The native core refused the note evidence.';

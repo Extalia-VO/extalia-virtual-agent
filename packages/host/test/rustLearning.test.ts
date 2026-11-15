@@ -70,4 +70,42 @@ describe('connection-bound Rust learning client', () => {
     await expect(backend.process('evidence.release', { intakeId: 'intake-one' })).rejects.toMatchObject({ code: 'missing_capability' });
     expect(connect).toHaveBeenCalledOnce(); expect(replacement.request).not.toHaveBeenCalled();
   });
+
+  it('captures on its intake owner, then binds queued admission to the fresh daemon', async () => {
+    const jobId = 'c'.repeat(64);
+    const original = client(action => action === 'evidence.begin' ? { intakeId: 'intake-one' } : { record: { jobId }, created: true });
+    const replacement = client(action => action === 'queue.admit' || action === 'job.enter' ? { job: { jobId } } : { claimed: true });
+    const connect = vi.fn().mockResolvedValueOnce(original).mockResolvedValue(replacement), backend = new RustLearningBackend(connect);
+    const binding = { profileId: 'default', workspaceId: 'workspace', sessionId: 'session', runId: 'run', promptSha256: 'a'.repeat(64),
+      destinationRevision: 'vault-r1', routeFingerprint: 'b'.repeat(64), policy: { enabled: true, skills: true, notes: true } };
+    await backend.process('evidence.begin', {});
+    await backend.process('queue.capture', { ...binding, revision: binding.destinationRevision, intakeId: 'intake-one' });
+    expect(connect).toHaveBeenCalledOnce();
+    original.usable = false;
+    await expect(backend.process('evidence.release', { intakeId: 'intake-one' })).rejects.toMatchObject({ code: 'missing_capability' });
+    await backend.process('queue.admit', { ...binding, jobId, queueRevision: 'd'.repeat(64), tools: [] });
+    await backend.process('job.enter', { jobId, effectId: `${jobId}-1` });
+    await backend.process('receipt.claim', { profileId: binding.profileId, runId: binding.runId, contentSha256: 'e'.repeat(64) });
+    expect(connect).toHaveBeenCalledTimes(2);
+    expect(replacement.request.mock.calls.map(call => call[1].action)).toEqual(['queue.admit', 'job.enter', 'receipt.claim']);
+  });
+
+  it('requires explicit recovery to bind a saved job and its receipts to a replacement daemon', async () => {
+    const jobId = 'c'.repeat(64);
+    const original = client(() => ({ job: { jobId } }));
+    const replacement = client(action => action === 'job.recover' || action === 'job.enter' ? { job: { jobId } } : { claimed: true });
+    const connect = vi.fn().mockResolvedValueOnce(original).mockResolvedValue(replacement);
+    const backend = new RustLearningBackend(connect);
+    const binding = { profileId: 'default', workspaceId: 'workspace', sessionId: 'session', runId: 'run', promptSha256: 'a'.repeat(64),
+      destinationRevision: 'vault-r1', routeFingerprint: 'b'.repeat(64), policy: { enabled: true, skills: true, notes: true }, tools: [] };
+    await backend.process('job.begin', { ...binding, revision: binding.destinationRevision, evidence: [] });
+    original.usable = false;
+    await expect(backend.process('job.enter', { jobId, effectId: `${jobId}-1` })).rejects.toMatchObject({ code: 'missing_capability' });
+    expect(connect).toHaveBeenCalledOnce();
+    await backend.process('job.recover', { ...binding, jobId });
+    await backend.process('job.enter', { jobId, effectId: `${jobId}-1` });
+    await backend.process('receipt.claim', { profileId: binding.profileId, runId: binding.runId, contentSha256: 'd'.repeat(64) });
+    expect(connect).toHaveBeenCalledTimes(2);
+    expect(replacement.request.mock.calls.map(call => call[1].action)).toEqual(['job.recover', 'job.enter', 'receipt.claim']);
+  });
 });

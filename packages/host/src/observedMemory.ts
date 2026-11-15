@@ -8,11 +8,20 @@ export interface ObservedMemorySource {
   scope: ObservedMemoryScope; revision: string; events: readonly ExtaliaEvent[];
   running: boolean; pending: boolean; enabled: boolean;
 }
+export interface ObservedWorkEvidence {
+  episodeId: string; revision: string; outcome: 'completed' | 'failed' | 'cancelled';
+  entries: ObservedMemoryEntry[]; coverage: ObservedMemoryCoverage;
+}
 interface Options {
   backend: RustLearningPort;
   source(id: string): Promise<ObservedMemorySource | undefined>;
+  /** Storage consent for an already accepted capture while ordinary execution closes. */
+  storageSource?(id: string): Promise<ObservedMemorySource | undefined>;
   list(workspaceId: string): Promise<readonly string[]>;
+  /** Storage handoff only: must not admit provider work after host shutdown starts. */
   onEpisode?(episode: ObservedMemoryEpisode): void | Promise<void>;
+  /** Independent durable operational capture, including failed/cancelled work. Never schedules paid curation. */
+  onWorkEvidence?(source: ObservedMemorySource, evidence: ObservedWorkEvidence): void | Promise<void>;
   onRevoked?(scope: ObservedMemoryScope): void | Promise<void>;
   onIdle?(): void;
   /** Ownership changed; a host may recheck profile-scoped admission without claiming global idle. */
@@ -21,9 +30,10 @@ interface Options {
 /** Host-proven admission ownership only; this does not authorize memory access or bind a source. */
 export type ObservedMemoryWorkHint = string | { profileId: string };
 interface WorkScope { workspaces: Set<string>; profiles: Set<string>; unknown: boolean }
-interface Frame { promptId: string; entries: ObservedMemoryEntry[]; resultId?: string; failed: boolean; omitted: number; truncated: boolean; limits: string[] }
+interface Frame { promptId: string; entries: ObservedMemoryEntry[]; resultId?: string; terminalId?: string; failed: boolean; outcome?: 'failed' | 'cancelled'; omitted: number; truncated: boolean; limits: string[] }
 interface State {
   owner: string; scope: ObservedMemoryScope; revision: string; seen: Set<string>; frame?: Frame;
+  closedFrames: Frame[]; omittedClosedFrames: number;
   state: 'baseline' | 'waiting' | 'capturing' | 'stored' | 'skipped' | 'uncertain' | 'disabled';
   lastEpisode?: ObservedMemoryEpisode; problem?: string;
 }
@@ -31,6 +41,7 @@ export interface ObservedMemoryHit { sessionId: string; episode: ObservedMemoryE
 export interface ObservedMemorySearch { hits: ObservedMemoryHit[]; omitted: number; incomplete: boolean; sources: number; omittedSources: number; unavailableSources: number; limits: string[] }
 export interface ObservedMemoryReadInput { sessionId: string; episodeId: string; revision: string; offset?: number; limit?: number }
 const MAX_EVENTS = 2048, MAX_SOURCES = 32, MAX_STATES = 64;
+const MAX_CLOSED_FRAMES = 8;
 const CAPTURE_TRANSPORT_BYTES = 96 * 1024;
 const unavailable = 'Observed memory is unavailable for this workspace or source revision.';
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -54,6 +65,8 @@ function evidence(event: ExtaliaEvent): { entry?: ObservedMemoryEntry; clipped: 
   if (entry) return { entry: { ...entry, text: entry.text.slice(0, 8000) }, clipped: entry.text.length > 8000 || framed.coverage.limits.length > 1, limits: framed.coverage.limits.slice(1) };
   if (event.body.type === 'turn.completed') return { entry: { id: event.id, kind: 'status', at: event.at,
     text: `The observed runtime reported turn completion. This is not independently verified task success.${event.body.summary ? ` Summary: ${event.body.summary.slice(0, 7000)}` : ''}` }, clipped: (event.body.summary?.length ?? 0) > 7000, limits: [] };
+  if (event.body.type === 'session.ended' && /cancel|abort|stop|error/i.test(event.body.reason ?? '')) return { entry: { id: event.id, kind: 'status', at: event.at,
+    text: `Observed session ended: ${(event.body.reason ?? '').slice(0, 7000)}. Unfinished work is not a successful task.` }, clipped: (event.body.reason?.length ?? 0) > 7000, limits: [] };
   return { clipped: false, limits: [] };
 }
 /** Bound wire framing, including JSON escaping and UTF-8, before Rust performs semantic storage work. */
@@ -93,8 +106,8 @@ export class ObservedMemory {
   private readonly reads = new Map<Promise<unknown>, WorkScope>();
   private closed = false;
   constructor(private readonly options: Options) {}
-  private async source(id: string): Promise<ObservedMemorySource | undefined> {
-    const value = await this.options.source(id);
+  private async source(id: string, storageAuthority = false): Promise<ObservedMemorySource | undefined> {
+    const value = await (storageAuthority && this.options.storageSource ? this.options.storageSource(id) : this.options.source(id));
     if (!value || !validScope(value.scope) || value.scope.sessionId !== id || typeof value.revision !== 'string' || !value.revision || value.revision.length > 512 || !Array.isArray(value.events)) return undefined;
     return { ...value, scope: { ...value.scope }, events: value.events.filter(event => event.sessionId === id).slice(-MAX_EVENTS) };
   }
@@ -161,7 +174,7 @@ export class ObservedMemory {
     for (const [id, value] of this.owners) if (value === key) this.owners.delete(id);
   }
   private baseline(id: string, source: ObservedMemorySource): State {
-    const key = scopeKey(source.scope), state: State = { owner: id, scope: { ...source.scope }, revision: source.revision, seen: new Set(source.events.map(event => event.id)), state: 'baseline' };
+    const key = scopeKey(source.scope), state: State = { owner: id, scope: { ...source.scope }, revision: source.revision, seen: new Set(source.events.map(event => event.id)), state: 'baseline', closedFrames: [], omittedClosedFrames: 0 };
     this.states.set(key, state); this.owners.set(id, key);
     while (this.states.size > MAX_STATES) this.forget(this.states.keys().next().value!);
     return state;
@@ -204,36 +217,89 @@ export class ObservedMemory {
     state.revision = source.revision; state.seen = new Set(source.events.map(event => event.id));
     for (const event of fresh) {
       if (event.body.type === 'prompt.submitted') {
+        const previous = state.frame;
+        if (this.options.onWorkEvidence && previous && (previous.terminalId || previous.resultId) && previous.entries.some(entry => entry.kind === 'user')) {
+          // A later prompt closes the preceding reported turn; preserve it for
+          // local operational capture even when several turns arrive in one poll.
+          if (state.closedFrames.length === MAX_CLOSED_FRAMES) { state.closedFrames.shift(); state.omittedClosedFrames++; }
+          state.closedFrames.push({ ...previous, entries: previous.entries.map(entry => ({ ...entry, text: entry.text.slice(0, 2000) })),
+            truncated: previous.truncated || previous.entries.some(entry => entry.text.length > 2000), limits: [...previous.limits] });
+        }
         state.frame = { promptId: event.id, entries: [], failed: false, omitted: 0, truncated: false, limits: [] }; state.state = 'waiting';
       }
       const frame = state.frame; if (!frame) continue;
-      if (event.body.type === 'turn.failed' || event.body.type === 'session.ended' && /cancel|abort|stop|error/i.test(event.body.reason ?? '')) frame.failed = true;
+      if (event.body.type === 'turn.failed') {
+        frame.failed = true; frame.terminalId = event.id;
+        frame.outcome = event.body.reason === 'interrupted' || /^(?:cancelled|canceled|aborted|stopped by (?:the )?user)\b/i.test(event.body.error) ? 'cancelled' : 'failed';
+      } else if (event.body.type === 'session.ended' && /cancel|abort|stop|error/i.test(event.body.reason ?? '')) {
+        frame.failed = true; frame.terminalId = event.id;
+        frame.outcome = /cancel|abort|stop/i.test(event.body.reason ?? '') ? 'cancelled' : 'failed';
+      }
       if (event.body.type === 'model.completed' && event.body.text.trim() || event.body.type === 'turn.completed') frame.resultId = event.id;
+      if (event.body.type === 'turn.completed') frame.terminalId = event.id;
+      // An assistant message followed by more tools is an intermediate report.
+      // It cannot close an unfinished turn merely because a poll appears idle.
+      if (!frame.terminalId && ['tool.started', 'tool.completed', 'tool.output', 'command.started', 'command.output', 'command.completed'].includes(event.body.type)) frame.resultId = undefined;
       const item = evidence(event);
-      if (!item.entry || frame.entries.some(entry => entry.id === item.entry!.id)) continue;
-      if (frame.entries.length >= 32) { frame.entries.splice(1, 1); frame.omitted++; }
-      frame.entries.push(item.entry); frame.truncated ||= item.clipped;
-      for (const limit of item.limits) if (!frame.limits.includes(limit) && frame.limits.length < 5) frame.limits.push(limit.slice(0, 500));
+      if (item.entry && !frame.entries.some(entry => entry.id === item.entry!.id)) {
+        if (frame.entries.length >= 32) { frame.entries.splice(1, 1); frame.omitted++; }
+        frame.entries.push(item.entry); frame.truncated ||= item.clipped;
+        for (const limit of item.limits) if (!frame.limits.includes(limit) && frame.limits.length < 5) frame.limits.push(limit.slice(0, 500));
+      }
+      if (event.body.type === 'session.ended' && !frame.failed && !frame.resultId) { state.frame = undefined; state.state = 'skipped'; }
+    }
+    if (source.running || source.pending) return;
+    let omittedClosedFrames = state.omittedClosedFrames;
+    state.omittedClosedFrames = 0;
+    while (state.closedFrames.length) {
+      const closedFrame = state.closedFrames.shift()!; // Consume before the callback's uncertain external effect.
+      if (!await this.captureFrame(id, state, source, closedFrame, false, omittedClosedFrames)) return;
+      omittedClosedFrames = 0;
     }
     const frame = state.frame;
-    if (!frame || source.running || source.pending) return;
-    if (frame.failed) { state.frame = undefined; state.state = 'skipped'; return; }
-    if (!frame.resultId || !frame.entries.some(entry => entry.kind === 'user')) return;
+    if (!frame) return;
+    const terminalId = frame.failed ? frame.terminalId : frame.resultId;
+    if (!terminalId || !frame.entries.some(entry => entry.kind === 'user')) return;
     state.frame = undefined; state.state = 'capturing'; // Consume this frame before any uncertain backend effect.
+    await this.captureFrame(id, state, source, frame, true, omittedClosedFrames);
+  }
+  private async captureFrame(id: string, state: State, source: ObservedMemorySource, frame: Frame, legacy: boolean, omittedClosedFrames: number): Promise<boolean> {
+    const key = scopeKey(state.scope), terminalId = frame.failed ? frame.terminalId : frame.resultId;
+    if (!terminalId) return true;
     const admitted = await this.source(id);
-    if (this.closed) return;
-    if (!admitted?.enabled || scopeKey(admitted.scope) !== key) { await this.revoke(state.scope); this.forget(key); return; }
+    if (this.closed) return false;
+    if (!admitted?.enabled || scopeKey(admitted.scope) !== key) { await this.revoke(state.scope); this.forget(key); return false; }
     const coverage: ObservedMemoryCoverage = { mode: 'partial', omittedEntries: frame.omitted, truncated: frame.truncated,
-      limits: ['Only newly observed prompt-to-result evidence is included; hidden or omitted harness history is unknown.', 'Reported idle, replies and terminal events are untrusted claims, not independently verified task completion.', ...frame.limits].slice(0, 8) };
-    const result = await this.options.backend.process('observed.capture', boundCapture({ scope: state.scope, episodeId: frame.resultId, sourceRevision: source.revision, entries: frame.entries, coverage }));
-    // Shutdown withdraws publication, not storage consent. Keep an already committed record.
-    if (this.closed) return;
-    const current = await this.source(id);
-    if (this.closed) return;
-    if (!current?.enabled || scopeKey(current.scope) !== key) { await this.revoke(state.scope); this.forget(key); return; }
+      limits: ['Only newly observed prompt-to-result evidence is included; hidden or omitted harness history is unknown.', 'Reported idle, replies and terminal events are untrusted claims, not independently verified task completion.',
+        ...(omittedClosedFrames ? [`${omittedClosedFrames} earlier terminal episodes exceeded the bounded polling backlog; inspect the original history.`] : []), ...frame.limits].slice(0, 8) };
+    coverage.truncated ||= omittedClosedFrames > 0;
+    const capture = boundCapture({ scope: state.scope, episodeId: terminalId, sourceRevision: source.revision, entries: frame.entries, coverage });
+    let operationalFailure = false;
+    if (this.options.onWorkEvidence) {
+      try { await this.options.onWorkEvidence(admitted, { episodeId: terminalId, revision: hash([key, terminalId, frame.entries, frame.failed ? frame.outcome : 'completed']),
+        outcome: frame.failed ? frame.outcome ?? 'failed' : 'completed', entries: capture.entries, coverage: capture.coverage }); }
+      catch { operationalFailure = true; state.problem = 'Operational work memory could not acknowledge this episode. The original observed history remains available.'; }
+    }
+    // Failed/cancelled episodes enter operational memory only. They must never be
+    // presented to the completed-task curator as a successful observed episode.
+    if (frame.failed || !legacy) { state.state = operationalFailure ? 'uncertain' : 'skipped'; return true; }
+    const result = await this.options.backend.process('observed.capture', capture);
+    // An already accepted local capture drains its durable handoff during shutdown.
+    // Ordinary execution is closed; exact storage consent still has to match.
+    if (this.closed && !this.options.storageSource) return false;
+    const storageOnly = this.closed;
+    let current = await this.source(id, storageOnly);
+    if (this.closed && !storageOnly) {
+      if (!this.options.storageSource) return false;
+      current = await this.source(id, true);
+    }
+    // Missing shutdown authority is not an explicit withdrawal of stored consent.
+    if (this.closed && !current) return false;
+    if (!current?.enabled || scopeKey(current.scope) !== key) { await this.revoke(state.scope); this.forget(key); return false; }
     if (!validEpisode(result.episode, state.scope) || typeof result.created !== 'boolean') throw new Error(unavailable);
-    state.lastEpisode = result.episode; state.state = 'stored'; delete state.problem;
-    if (!this.closed && result.created) await this.options.onEpisode?.(result.episode);
+    state.lastEpisode = result.episode; state.state = operationalFailure ? 'uncertain' : 'stored'; if (!operationalFailure) delete state.problem;
+    if (result.created) await this.options.onEpisode?.(result.episode);
+    return true;
   }
   private track<T>(workspaceId: string, operation: () => Promise<T>): Promise<T> {
     // Reserve before even the operation's first source/list lookup can begin.

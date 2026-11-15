@@ -1,4 +1,5 @@
 import type { AgentHostApi, ObservedMemoryEpisode, ObservedMemoryPage, ObservedMemorySearchResult, SessionSummary } from '@extalia/platform';
+import { GLOBAL_OBSERVE_WORKSPACE_ID } from '@extalia/platform';
 import { useEffect, useId, useLayoutEffect, useState, useSyncExternalStore } from 'react';
 import type { Messages } from '../i18n';
 import { isUnsupportedMessage } from '../knowledge/knowledgeModel';
@@ -9,7 +10,9 @@ export interface ObservedMemoryViewState {
   query: string; unsupported?: boolean; busy?: 'search' | 'read'; result?: ObservedMemorySearchResult; page?: ObservedMemoryPage; error?: 'search' | 'read';
 }
 const QUERY_LIMIT = 500, SEARCH_LIMIT = 8, PAGE_LIMIT = 20;
-const sourceKey = (session: SessionSummary, scopeKey = '') => JSON.stringify([scopeKey, session.id, session.workspaceId, session.connectionId, session.observation?.sourceId, session.observation?.nativeSessionId, session.observation?.projectPath]);
+const memoryWorkspace = (session: SessionSummary) => session.observation?.workspaceLinkState === 'invalid' || session.observation?.workspaceLinkState === 'ambiguous'
+  ? undefined : session.workspaceId || (session.observation?.workspaceLinkState === 'unbound' ? GLOBAL_OBSERVE_WORKSPACE_ID : undefined);
+const sourceKey = (session: SessionSummary, scopeKey = '') => JSON.stringify([scopeKey, session.id, session.workspaceId, session.connectionId, session.observation?.sourceId, session.observation?.nativeSessionId, session.observation?.projectPath, session.observation?.workspaceLinkState]);
 const sameEpisode = (a: ObservedMemoryEpisode, b: ObservedMemoryEpisode) => a.id === b.id && a.revision === b.revision
   && (['profileId', 'workspaceId', 'sessionId', 'sourceId', 'nativeSessionId', 'boundary'] as const).every(key => a.scope[key] === b.scope[key]);
 function validEpisode(episode: ObservedMemoryEpisode, workspaceId: string): boolean {
@@ -42,29 +45,31 @@ export class ObservedMemoryController {
   edit(query: string) { this.editing++; this.publish({ query, result: undefined, page: undefined, error: undefined }); }
   async search(): Promise<void> {
     const agents = this.agents, session = this.session, query = this.value.query.trim(), generation = this.generation, editing = this.editing;
-    if (!agents?.observedMemorySearch || !agents.observedMemoryRead || !session || this.pending || this.value.unsupported || !query || query.length > QUERY_LIMIT) return;
+    const workspaceId = session && memoryWorkspace(session);
+    if (!agents?.observedMemorySearch || !agents.observedMemoryRead || !session || !workspaceId || this.pending || this.value.unsupported || !query || query.length > QUERY_LIMIT) return;
     this.pending = true; this.publish({ busy: 'search', result: undefined, page: undefined, error: undefined });
     const current = () => generation === this.generation && editing === this.editing;
     try {
-      const result = await agents.observedMemorySearch(session.workspaceId, { query, limit: SEARCH_LIMIT });
+      const result = await agents.observedMemorySearch(workspaceId, { query, limit: SEARCH_LIMIT });
       if (!current()) return;
-      if (!Array.isArray(result?.hits) || result.hits.length > SEARCH_LIMIT || result.hits.some(hit => !validEpisode(hit.episode, session.workspaceId) || typeof hit.excerpt !== 'string')) throw new Error();
+      if (!Array.isArray(result?.hits) || result.hits.length > SEARCH_LIMIT || result.hits.some(hit => !validEpisode(hit.episode, workspaceId) || typeof hit.excerpt !== 'string')) throw new Error();
       this.publish({ result });
     } catch (failure) { if (current()) this.publish(isUnsupportedMessage(failure instanceof Error ? failure.message : '') ? { unsupported: true, error: undefined } : { error: 'search' }); }
     finally { this.pending = false; if (this.agents) this.publish({ busy: undefined }); }
   }
   async read(id: string, more = false): Promise<void> {
     const agents = this.agents, session = this.session, generation = this.generation, editing = this.editing;
+    const workspaceId = session && memoryWorkspace(session);
     const hit = this.value.result?.hits.find(item => item.episode.id === id), episode = hit?.episode, previous = this.value.page;
     const authorizedSessionId = hit && 'sessionId' in hit && typeof hit.sessionId === 'string' && hit.sessionId ? hit.sessionId : episode?.scope.sessionId;
-    if (!agents?.observedMemoryRead || !session || !episode || this.pending || this.value.unsupported || more && (!previous || !sameEpisode(previous.episode, episode) || previous.nextOffset === undefined)) return;
+    if (!agents?.observedMemoryRead || !session || !workspaceId || !episode || this.pending || this.value.unsupported || more && (!previous || !sameEpisode(previous.episode, episode) || previous.nextOffset === undefined)) return;
     const offset = more ? previous!.nextOffset! : 0;
     this.pending = true; this.publish({ busy: 'read', page: undefined, error: undefined });
     const current = () => generation === this.generation && editing === this.editing;
     try {
-      const page = await agents.observedMemoryRead(session.workspaceId, { sessionId: authorizedSessionId!, episodeId: episode.id, revision: episode.revision, offset, limit: PAGE_LIMIT });
+      const page = await agents.observedMemoryRead(workspaceId, { sessionId: authorizedSessionId!, episodeId: episode.id, revision: episode.revision, offset, limit: PAGE_LIMIT });
       if (!current()) return;
-      if (!validEpisode(page?.episode, session.workspaceId) || !sameEpisode(page.episode, episode) || !Array.isArray(page.entries)
+      if (!validEpisode(page?.episode, workspaceId) || !sameEpisode(page.episode, episode) || !Array.isArray(page.entries)
         || page.entries.length > PAGE_LIMIT || page.offset !== offset || !Number.isSafeInteger(page.total) || page.total < offset + page.entries.length
         || page.nextOffset !== undefined && (!Number.isSafeInteger(page.nextOffset) || page.nextOffset <= offset || page.nextOffset > page.total) || page.entries.some(entry => !entry || typeof entry.text !== 'string' || !['user', 'assistant', 'tool', 'file', 'status'].includes(entry.kind))) throw new Error();
       this.publish({ page });

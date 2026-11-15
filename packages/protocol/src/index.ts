@@ -54,6 +54,7 @@ export function mcpToolName(name: string): string | undefined {
 }
 
 export * from './daemonLearning.js';
+export * from './daemonWorkMemory.js';
 export * from './providerModels.js';
 export * from './providerComplete.js';
 export * from './providerWorker.js';

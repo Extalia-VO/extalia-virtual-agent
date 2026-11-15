@@ -181,11 +181,47 @@ describe('runTurn', () => {
 
   it('stops at the step limit', async () => {
     const provider = scripted(Array.from({ length: 3 }, () => ({ text: '', toolCalls: [{ id: 'c', name: 'write_file', input: { path: 'a', content: '' } }], stop: 'tool_use' as const })));
+    const written: string[] = [];
     const result = await runTurn({
-      provider, system: '', history: [], prompt: 'loop', tools: [writeTool([])], permissions: { fileWrite: 'allow', commands: 'allow' }, sessionGrants: new Set(),
+      provider, system: '', history: [], prompt: 'loop', tools: [writeTool(written)], permissions: { fileWrite: 'allow', commands: 'allow' }, sessionGrants: new Set(),
       emit: () => undefined, requestApproval: async () => 'once', signal: new AbortController().signal, maxSteps: 2,
     });
     expect(result.outcome).toBe('step-limit');
+    expect(written).toEqual(['a', 'a']);
+    expect(provider.requests.every(request => request.tools.length === 1)).toBe(true);
+  });
+
+  it('prepares the reserved final response without tools and refuses unexpected mutations', async () => {
+    const h = harness([toolCallStep(), toolCallStep({ path: 'unexpected.txt', content: 'not written' })]);
+    const prepared: number[] = [];
+    const result = await runTurn({
+      provider: h.provider, system: '', history: [], prompt: 'Bounded work', tools: [writeTool(h.written)],
+      permissions: { fileWrite: 'allow', commands: 'allow' }, sessionGrants: h.grants,
+      emit: body => h.events.push(body), requestApproval: async () => 'once', signal: h.controller.signal,
+      maxSteps: 2, reserveFinalResponse: true,
+      prepareRequest: async request => { prepared.push(request.tools.length); return request.system; },
+    });
+    expect(result).toMatchObject({ outcome: 'step-limit', error: expect.stringContaining('No additional tools were run') });
+    expect(h.written).toEqual(['a.txt']);
+    expect(prepared).toEqual([1, 0]);
+    expect(h.provider.requests[1]?.tools).toEqual([]);
+    expect(h.provider.requests[1]?.system).toContain('final bounded response');
+    expect(result.history.at(-1)).toMatchObject({ role: 'assistant', toolCalls: [] });
+    expect(h.events.some(event => event.type === 'turn.completed')).toBe(false);
+  });
+
+  it('allows a one-step reserved response to finish directly from supplied evidence', async () => {
+    const h = harness([finalStep]);
+    const result = await runTurn({
+      provider: h.provider, system: '', history: [], prompt: 'Summarize supplied evidence', tools: [writeTool(h.written)],
+      permissions: { fileWrite: 'allow', commands: 'allow' }, sessionGrants: h.grants,
+      emit: body => h.events.push(body), requestApproval: async () => 'once', signal: h.controller.signal,
+      maxSteps: 1, reserveFinalResponse: true,
+    });
+    expect(result.outcome).toBe('completed');
+    expect(h.provider.requests).toHaveLength(1);
+    expect(h.provider.requests[0]?.tools).toEqual([]);
+    expect(h.written).toEqual([]);
   });
 });
 

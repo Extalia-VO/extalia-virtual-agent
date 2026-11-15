@@ -39,6 +39,7 @@
 //! ever falls back to the source copy.
 
 pub mod builtin;
+pub mod candidates;
 pub mod consent;
 pub mod inspect;
 pub mod lifecycle;

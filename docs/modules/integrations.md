@@ -24,6 +24,8 @@ finding an installed CLI never grants control of that application.
 | Session-bound native, queue and cooperative control | Implemented, capability-specific | Codex/Hermes attachments, source queues, direct supported source adapters and paired tool inboxes have different authority and receipts. No universal attach/approval contract. |
 | Shared Chat/Observe/Office messages, file previews and answers | Implemented | File reads retain host scope checks; display formatting creates no execution authority. Native request controls require a real current adapter capability. |
 | Canonical work records and reviewed handover | Implemented | Visible snapshots are not hidden harness context. Queued/submitted/manual-ready records do not prove model consumption or physical settlement. |
+| Repeatable Observe checkpoints and Native adoption | Implemented for local review | [ADR 0090](../adr/0090-repeatable-observe-handover.md): frozen active-source evidence, reviewed lineage joins, immutable deltas, scoped destination writes and explicit Observe workspace enablement. Live installed application acceptance remains separate. |
+| Stable CLI pairing and Hermes stored/new sessions | Implemented for local review | Pairing survives transcript growth; Hermes uses verified profile/project exact resume and explicit idempotent empty-session creation. Existing authenticated native capabilities remain required; Codex/Claude direct creation is not added. |
 | Real vendor/version/platform certification and owned generic CLI launch | Incomplete / future scope | [Observe PRD](../product/prd-observed-agent-control.md) retains separate acceptance issues; no PTY/ACP managed runtime is implied. |
 
 ## Source and regression map

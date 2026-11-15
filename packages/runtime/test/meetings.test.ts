@@ -50,6 +50,81 @@ function harness(script?: (id: string, request: ModelRequest) => Promise<ModelRe
 }
 
 describe('conduct_team_meeting', () => {
+  it('creates optional private context owners once for each entered participant and round', async () => {
+    const h = harness(), owners: string[] = [];
+    h.options.contextForWorker = (selected, agentId) => { expect(selected?.id).toBe(agentId); owners.push(agentId); return undefined; };
+    expect((await createConductTeamMeetingTool(h.options).run({ topic: 'Review evidence', members: ['member-0', 'member-1'] }, h.context)).ok).toBe(true);
+    expect(owners.sort()).toEqual(['member-0', 'member-0', 'member-1', 'member-1']);
+    expect(h.requests.every(({ request }) => !request.tools.some(tool => tool.name === 'context_archive_read'))).toBe(true);
+  });
+
+  it('reserves bounded synthesis so an evidence-heavy participant can finish both manual rounds', async () => {
+    const h = harness((_id, request) => request.tools.length
+      ? { text: '', toolCalls: [{ id: `read-${request.messages.length}`, name: 'read_file', input: {} }], stop: 'tool_use' }
+      : reply('Attributed findings; remaining questions need more evidence.'), 1);
+    const result = await createConductTeamMeetingTool(h.options).run({ topic: 'Review evidence', members: ['member-0'] }, h.context);
+    expect(result.ok).toBe(true);
+    expect(h.requests).toHaveLength(12);
+    expect(h.requests.filter(({ request }) => !request.tools.length)).toHaveLength(2);
+    expect(h.requests[5]!.request.system).toContain('final bounded response');
+    expect(h.requests[0]!.request.messages[0]).toMatchObject({ role: 'user', text: expect.stringContaining('5 evidence steps') });
+    expect(h.minutes[0]).toMatchObject({ outcome: 'completed', contributions: [{ round: 1 }, { round: 2 }] });
+  });
+
+  it('does not execute tools or fabricate success when a participant ignores bounded synthesis', async () => {
+    let reads = 0;
+    const h = harness(() => ({ text: '', toolCalls: [{ id: `call-${reads}`, name: 'read_file', input: {} }], stop: 'tool_use' }), 1);
+    h.options.team.workerToolsForMember = () => [{ ...tool('read_file', 'read'), run: async () => { reads++; return { ok: true, output: 'evidence' }; } }];
+    const result = await createConductTeamMeetingTool(h.options).run({ topic: 'Review evidence', members: ['member-0'] }, h.context);
+    expect(result.ok).toBe(false);
+    expect(reads).toBe(5);
+    expect(h.requests).toHaveLength(6);
+    expect(h.minutes[0]?.outcome).toBe('failed');
+  });
+
+  it('reserves the last host-selected step and describes its actual one-round budget', async () => {
+    const h = harness((_id, request) => request.tools.length
+      ? { text: '', toolCalls: [{ id: `read-${request.messages.length}`, name: 'read_file', input: {} }], stop: 'tool_use' }
+      : reply('A bounded source-attributed finding.'), 1);
+    h.options.limits = { rounds: 1, maxWorkerSteps: 3 };
+    const result = await createConductTeamMeetingTool(h.options).run({ topic: 'Review supplied evidence', members: ['member-0'] }, h.context);
+    expect(result.ok).toBe(true);
+    expect(h.requests).toHaveLength(3);
+    expect(h.requests[0]!.request.messages[0]).toMatchObject({ role: 'user', text: expect.stringContaining('2 evidence steps') });
+    expect(h.requests[2]!.request.tools).toEqual([]);
+    expect(h.minutes[0]).toMatchObject({ outcome: 'completed', contributions: [{ round: 1 }] });
+  });
+
+  it('supports a host-selected one-round review without changing manual meeting defaults', async () => {
+    const h = harness();
+    h.options.limits = { rounds: 1, maxWorkerSteps: 3 };
+    const meeting = createConductTeamMeetingTool(h.options);
+    expect(meeting.description).toContain('One read-only round');
+    expect((await meeting.run({ topic: 'Review supplied evidence', members: ['member-0', 'member-1'] }, h.context)).ok).toBe(true);
+    expect(h.requests).toHaveLength(2);
+    expect(h.minutes[0]?.contributions).toHaveLength(2);
+    expect(h.minutes[0]?.contributions.every(item => item.round === 1)).toBe(true);
+    expect(h.requests.every(({ request }) => request.messages[0]?.role === 'user' && request.messages[0].text.includes('Round 1 of 1'))).toBe(true);
+  });
+
+  it('caps review worker steps using host options that model arguments cannot widen', async () => {
+    let calls = 0;
+    const h = harness(() => ({ text: '', stop: 'tool_use', toolCalls: [{ id: `read-${++calls}`, name: 'read_file', input: {} }] }), 1);
+    h.options.limits = { rounds: 1, maxWorkerSteps: 3 };
+    const meeting = createConductTeamMeetingTool(h.options);
+    expect(meeting.parameters.properties).not.toHaveProperty('limits');
+    expect((await meeting.run({ topic: 'Review', members: ['member-0'] }, h.context)).ok).toBe(false);
+    expect(h.requests).toHaveLength(3);
+    expect(h.minutes[0]?.outcome).toBe('failed');
+    expect(h.workers.size).toBe(0);
+  });
+
+  it.each([0, 7, Number.NaN, 1.5])('refuses invalid host worker step limit %s', maxWorkerSteps => {
+    const h = harness();
+    expect(() => createConductTeamMeetingTool({ ...h.options, limits: { maxWorkerSteps } })).toThrow('worker steps');
+    expect(h.requests).toEqual([]);
+  });
+
   it('prepares each participant independently in both rounds without widening discussion tools', async () => {
     const h = harness(), prepared: string[] = [];
     h.options.prepareWorkerRequest = (selected, agentId) => async request => {
@@ -62,6 +137,46 @@ describe('conduct_team_meeting', () => {
     expect(prepared.sort()).toEqual(['member-0', 'member-0', 'member-1', 'member-1']);
     for (const request of h.requests) expect(request.request.system).toContain(`prepared-for:${request.id}`);
   });
+
+  it('allows scoped work/observed retrieval without memory writers or another participant connection capabilities', async () => {
+    const readers = ['work_memory_search', 'work_memory_read', 'observed_memory_search', 'observed_memory_read'];
+    const read: string[] = [], mutated: string[] = [];
+    const h = harness((id, request) => {
+      const last = request.messages.at(-1);
+      if (last?.role === 'user') {
+        const offered = request.tools.map(tool => tool.name);
+        expect(offered).not.toContain('memory_write'); expect(offered).not.toContain('work_memory_delete');
+        if (id === 'member-0') for (const name of readers) expect(offered).toContain(name);
+        else for (const name of readers) expect(offered).not.toContain(name);
+        const names = id === 'member-0' ? [...readers, 'memory_write', 'work_memory_delete'] : ['work_memory_search'];
+        return { text: '', stop: 'tool_use', toolCalls: names.map(name => ({ id: `${id}-${name}`, name, input: {} })) };
+      }
+      expect(last?.role).toBe('tool');
+      if (last?.role === 'tool') {
+        if (id === 'member-0') {
+          expect(last.results.slice(0, 4).every(result => !result.isError)).toBe(true);
+          expect(last.results.slice(4).every(result => result.isError)).toBe(true);
+        } else expect(last.results).toMatchObject([{ name: 'work_memory_search', isError: true }]);
+      }
+      return reply(id === 'member-0' ? 'Prior evidence retrieved; no memory writes occurred.' : 'Memory access is unavailable on this participant connection.');
+    });
+    h.options.limits = { rounds: 1, maxWorkerSteps: 3 };
+    h.options.team.workerToolsForMember = selected => [tool('read_file', 'read'),
+      ...(selected.id === 'member-0' ? readers.map(name => ({ ...tool(name, 'memory'), kind: 'knowledge' as const,
+        run: async () => { read.push(`${selected.id}:${name}`); return { ok: true, output: `Attributed ${name} evidence.` }; },
+      })) : []),
+      ...['memory_write', 'work_memory_delete'].map(name => ({ ...tool(name, 'memory'),
+        run: async () => { mutated.push(name); return { ok: true, output: 'Mutation must not execute.' }; },
+      })),
+    ];
+    expect((await createConductTeamMeetingTool(h.options).run({ topic: 'Review previous work', members: ['member-0', 'member-1'] }, h.context)).ok).toBe(true);
+    expect(read).toEqual(readers.map(name => `member-0:${name}`));
+    expect(mutated).toEqual([]);
+    expect(h.minutes[0]?.contributions.map(contribution => contribution.text)).toEqual([
+      'Prior evidence retrieved; no memory writes occurred.', 'Memory access is unavailable on this participant connection.',
+    ]);
+  });
+
   it('runs two real rounds with shared first-round evidence and only read tools even for writers', async () => {
     const h = harness();
     const meeting = createConductTeamMeetingTool(h.options);

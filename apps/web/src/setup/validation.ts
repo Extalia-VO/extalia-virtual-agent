@@ -1,7 +1,7 @@
 import {
   DEFAULT_MAX_DELEGATIONS, DEFAULT_PERMISSIONS, DEFAULT_WORKSPACE_CROSS_ACCESS, ENV_VARIABLE_PATTERN, INTEGRATION_GATE_LIMITS, MAX_WORKSPACE_FOLDERS, RUNTIME_MODEL_PATTERN, RUNTIME_PROFILE_PATTERN, TASK_TIERS, defaultOrchestration, presetById,
-  isInputTokenLimit, supportsPromptCache, workspaceCrossAccess, workspaceRuntime,
-  type Effort, type FeatureOwner, type Orchestration, type ProviderPresetId, type RuntimeId, type TaskTier, type Workspace, type WorkspacePermissions, type WorkspaceCrossAccess,
+  isContextOptimizerExecutable, isInputTokenLimit, supportsPromptCache, workspaceCrossAccess, workspaceRuntime,
+  type ContextOptimizationMode, type Effort, type FeatureOwner, type Orchestration, type ProviderPresetId, type RuntimeId, type TaskTier, type Workspace, type WorkspacePermissions, type WorkspaceCrossAccess,
 } from '@extalia/core';
 import type { ConnectionInput, ConnectionView, WorkspaceInput } from '@extalia/platform';
 import type { ConnectionErrorKey, WorkspaceErrorKey } from '../i18n';
@@ -33,6 +33,8 @@ export interface ConnectionDraft {
   promptCache: boolean;
   /** Explicit estimated input ceiling as typed; empty leaves it unset. */
   inputTokenLimit: string;
+  contextOptimization?: ContextOptimizationMode;
+  cavemanExecutable?: string;
   effort: Effort;
   orchestration: OrchestrationDraft;
 }
@@ -73,6 +75,8 @@ export function draftFromPreset(id: ProviderPresetId, previous?: ConnectionDraft
     history: previous?.history ?? true,
     promptCache: false,
     inputTokenLimit: previous?.inputTokenLimit ?? '',
+    contextOptimization: previous?.contextOptimization ?? 'local',
+    cavemanExecutable: previous?.cavemanExecutable ?? '',
     effort: preset.defaults.effort ?? 'high',
     // Tier models follow the provider; the on/off choice and limit are the user's.
     orchestration: {
@@ -99,6 +103,8 @@ export function draftFromConnection(view: ConnectionView): ConnectionDraft {
     history: view.features.history !== false,
     promptCache: view.features.promptCache === true && supportsPromptCache(view),
     inputTokenLimit: view.inputTokenLimit === undefined ? '' : String(view.inputTokenLimit),
+    contextOptimization: view.contextOptimization?.mode ?? 'local',
+    cavemanExecutable: view.contextOptimization?.mode === 'caveman' ? view.contextOptimization.executable : '',
     effort: view.effort ?? preset.defaults.effort ?? 'high',
     orchestration: orchestrationDraft(view.orchestration),
   };
@@ -114,7 +120,7 @@ export function checkBaseUrl(value: string): ConnectionErrorKey | undefined {
   return undefined;
 }
 
-export type ConnectionField = 'name' | 'baseUrl' | 'apiKey' | 'envVariable' | 'model' | 'maxDelegations' | 'inputTokenLimit';
+export type ConnectionField = 'name' | 'baseUrl' | 'apiKey' | 'envVariable' | 'model' | 'maxDelegations' | 'inputTokenLimit' | 'cavemanExecutable';
 
 const parseLimit = (value: string): number | undefined => /^\s*\d{1,2}\s*$/.test(value) && Number(value) <= 20 ? Number(value) : undefined;
 const parseInputTokenLimit = (value: string): number | undefined => /^\s*\d{1,7}\s*$/.test(value) && isInputTokenLimit(Number(value)) ? Number(value) : undefined;
@@ -135,6 +141,7 @@ export function validateConnection(draft: ConnectionDraft): Partial<Record<Conne
   if (!draft.model.trim()) errors.model = 'modelRequired';
   if (draft.orchestration.enabled && parseLimit(draft.orchestration.maxDelegations) === undefined) errors.maxDelegations = 'maxDelegationsInvalid';
   if (draft.inputTokenLimit.trim() && parseInputTokenLimit(draft.inputTokenLimit) === undefined) errors.inputTokenLimit = 'inputTokenLimitInvalid';
+  if (draft.contextOptimization === 'caveman' && !isContextOptimizerExecutable(draft.cavemanExecutable?.trim())) errors.cavemanExecutable = 'cavemanExecutableInvalid';
   return errors;
 }
 
@@ -163,6 +170,8 @@ export function toConnectionInput(draft: ConnectionDraft): { input: ConnectionIn
     },
     ...(preset.api === 'anthropic-messages' ? { effort: draft.effort } : {}),
     ...(inputTokenLimit !== undefined ? { inputTokenLimit } : {}),
+    ...(draft.contextOptimization === 'off' ? { contextOptimization: { mode: 'off' as const } }
+      : draft.contextOptimization === 'caveman' ? { contextOptimization: { mode: 'caveman' as const, executable: draft.cavemanExecutable?.trim() ?? '' } } : {}),
     orchestration: {
       enabled: draft.orchestration.enabled,
       maxDelegations: parseLimit(draft.orchestration.maxDelegations) ?? DEFAULT_MAX_DELEGATIONS,

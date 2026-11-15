@@ -7,6 +7,7 @@ import { guardMemberTools } from './memberAccess.js';
 import type { ModelMessage, ModelProvider } from './model.js';
 import type { AnyTool, ToolAccess, ToolDefinition } from './tools.js';
 import { EXTERNAL_SKILL_GUIDANCE, operatingProfileGuidance, type SharedOperatingProfile } from './prompt.js';
+import type { ContextCompactionOptions } from './contextCompaction.js';
 
 /**
  * Orchestration for the Extalia Native agent: the primary agent hands bounded,
@@ -45,6 +46,13 @@ export interface DelegationOptions {
   operatingProfile?: SharedOperatingProfile;
   /** Prepare only the selected worker's context; never inherit the lead's loaded bodies. */
   prepareWorkerRequest?(member: TeamMember | undefined, agentId: string): NonNullable<TurnOptions['prepareRequest']>;
+  /** One private archive owner per actual worker invocation; never inherit the lead's archive tool. */
+  contextForWorker?(member: TeamMember | undefined, agentId: string): {
+    tools: readonly AnyTool[];
+    compaction: ContextCompactionOptions;
+    /** The selected worker connection's explicit ceiling, never inferred from model names. */
+    maxInputTokens?: number;
+  } | undefined;
   /** Provider for a tier; created lazily so unused tiers cost nothing. */
   providerFor(tier: TaskTier): ModelProvider;
   /** Read-only tools available to workers (must not include delegation itself). */
@@ -62,6 +70,8 @@ export interface DelegationOptions {
   /** Actual final worker text, before presentation wrappers; never a synthetic success message. */
   onWorkerResult?(agentId: string, outcome: TurnOutcome, text: string): void;
   maxWorkerSteps?: number;
+  /** Optional final response reservation; ordinary delegation keeps its existing tool budget. */
+  reserveWorkerFinalResponse?: boolean;
   /** The session's subagent team, when it is enabled. */
   team?: DelegationTeam;
   /** Workspace permissions for write members' edits and commands (default: ask for both). */
@@ -258,7 +268,9 @@ export function createDelegationTool(options: DelegationOptions): ToolDefinition
     if (member) options.emit({ type: 'subagent.state', subagentId, state: 'working', summary: input.task.replace(/\s+/g, ' ').trim().slice(0, 200) });
     const prompt = input.context ? `${input.task}\n\nContext from the primary agent:\n${input.context}` : input.task;
     let provider: ModelProvider;
+    let workerContext: ReturnType<NonNullable<DelegationOptions['contextForWorker']>>;
     try {
+      workerContext = options.contextForWorker?.(member, subagentId);
       if (member && options.team) {
         const team = options.team;
         const models = member.models.length ? member.models : team.modelsForMember?.(member) ?? team.leadModels;
@@ -277,6 +289,10 @@ export function createDelegationTool(options: DelegationOptions): ToolDefinition
       return { ok: false, output };
     }
     const writeTools = writer && member ? guardMemberTools(options.team?.writeToolsForMember?.(member) ?? options.team?.writeTools ?? [], member) : [];
+    const contextTools = workerContext?.tools.filter(tool => tool.access === 'read'
+      || tool.access === 'memory' && tool.name === (workerContext?.compaction.readToolName ?? 'context_archive_read')) ?? [];
+    const readTools = (member ? options.team?.workerToolsForMember?.(member) ?? options.workerTools : options.workerTools)
+      .filter(tool => tool.name !== 'context_archive_read' && !contextTools.some(contextTool => contextTool.name === tool.name));
     const commands = writeTools.some(tool => tool.access === 'execute');
     let workerErrorEmitted = false;
     // State updates drive the roster; public transcript events retain the worker's identity.
@@ -285,13 +301,15 @@ export function createDelegationTool(options: DelegationOptions): ToolDefinition
       system: workerSystemPrompt(options.workspace, member, member ? options.team?.rules ?? [] : [], { commands, operatingProfile: options.operatingProfile }),
       history: [],
       prompt,
-      tools: [...(member ? options.team?.workerToolsForMember?.(member) ?? options.workerTools : options.workerTools), ...writeTools],
+      tools: [...readTools, ...contextTools, ...writeTools],
+      ...(workerContext ? { compaction: workerContext.compaction, maxInputTokens: workerContext.maxInputTokens } : {}),
       ...(options.prepareWorkerRequest ? { prepareRequest: options.prepareWorkerRequest(member, subagentId) } : {}),
       permissions: options.permissions ?? { fileWrite: 'ask', commands: 'ask' },
       sessionGrants: writer ? options.sessionGrants ?? new Set() : new Set(),
       permissionMode: options.permissionMode,
       signal,
       maxSteps: options.maxWorkerSteps ?? (writer ? 40 : 25),
+      reserveFinalResponse: options.reserveWorkerFinalResponse,
       requestApproval: async request => (writer && options.requestApproval ? options.requestApproval(request, subagentId) : 'reject'),
       emit: body => {
         if (body.type === 'agent.state') {

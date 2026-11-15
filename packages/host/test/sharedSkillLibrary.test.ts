@@ -3,6 +3,7 @@ import { chmod, lstat, mkdir, readFile, readdir, writeFile } from 'node:fs/promi
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { createAgentHost } from '../src/service.js';
+import type { SkillCandidateListResult, SkillCandidateReadPage } from '../src/skillCandidateReview.js';
 import { DAEMON_BINARY, HAS_DAEMON } from './daemonBackend.js';
 import { useTempDirs } from './helpers.js';
 
@@ -19,7 +20,7 @@ async function unlock(directory: string): Promise<void> {
 }
 
 describe.skipIf(!HAS_DAEMON || process.platform === 'win32')('shared skills and isolated project context through Native', () => {
-  it('adds and updates one library from isolated workspaces without sharing their Knowledge, memory or files', async () => {
+  it('shares one physical library while requiring scoped reads to refine and keeping Knowledge, memory and files isolated', async () => {
     const root = await temp('extalia-shared-skills-'), data = path.join(root, 'data'), home = path.join(root, 'home');
     await mkdir(home);
     const projectA = path.join(root, 'alpha'), projectB = path.join(root, 'beta');
@@ -33,9 +34,29 @@ describe.skipIf(!HAS_DAEMON || process.platform === 'win32')('shared skills and 
         const body = JSON.parse(String(init?.body)) as Body; requests.push(body);
         const prompt = body.messages.filter(m => m.role === 'user').at(-1)?.content ?? '';
         const results = body.messages.filter(m => m.role === 'tool');
-        if (prompt.startsWith('CREATE') || prompt.startsWith('UPDATE')) return results.length ? reply(requests.length)
-          : reply(requests.length, 'skill_propose', { name: 'shared-input-validation', description: 'Validate input before publishing',
-            instructions: prompt.startsWith('UPDATE') ? 'Validate every input before publishing. A dry run validates without writing.' : 'Validate every input before publishing.' });
+        if (prompt.startsWith('REFINE_ALPHA')) {
+          if (!results.length) return reply(requests.length, 'skill_candidate_list', { query: 'shared-input-validation', limit: 1 });
+          if (results.length === 1) {
+            const listed = JSON.parse(results[0]!.content!) as SkillCandidateListResult;
+            expect(listed.candidates).toHaveLength(1);
+            return reply(requests.length, 'skill_candidate_read', { revisionId: listed.candidates[0]!.revisionId });
+          }
+          const last = JSON.parse(results.at(-1)!.content!) as SkillCandidateReadPage;
+          if (last.path === 'SKILL.md') {
+            if (!last.readComplete) return reply(requests.length, 'skill_candidate_read', { revisionId: last.revisionId, offset: last.nextOffset });
+            expect(last.untrusted).toBe(true);
+            return reply(requests.length, 'skill_propose', { name: 'shared-input-validation', description: 'Validate input before publishing',
+              instructions: 'Validate every input before publishing. A dry run validates without writing.',
+              baseRevisionId: last.revisionId, baseSkillSha256: last.skillMdSha256, baseReadReceipt: last.reviewReceipt,
+              refinementReason: 'Document the verified dry-run behavior after reading the current candidate.' });
+          }
+          return reply(requests.length);
+        }
+        if (prompt.startsWith('CREATE') || prompt.startsWith('UNREAD_UPDATE')) return results.length ? reply(requests.length)
+          : reply(requests.length, 'skill_propose', { name: prompt.startsWith('CREATE_BETA') ? 'shared-output-validation' : 'shared-input-validation',
+            description: prompt.startsWith('CREATE_BETA') ? 'Validate output before publishing' : 'Validate input before publishing',
+            instructions: prompt.startsWith('UNREAD_UPDATE') ? 'An unread replacement from another isolated workspace.'
+              : prompt.startsWith('CREATE_BETA') ? 'Check the generated output before publishing it.' : 'Validate every input before publishing.' });
         if (prompt.startsWith('CHECK')) {
           const actions = [
             ['knowledge_search', { query: 'Project' }], ['knowledge_read', { path: 'Project.md' }],
@@ -62,12 +83,27 @@ describe.skipIf(!HAS_DAEMON || process.platform === 'win32')('shared skills and 
       const first = await host.createSession(alpha!.id); await host.sendPrompt(first.id, 'CREATE a reusable input validation candidate.', { learnSkill: true }); await idle();
       const original = (await host.skillRegistry()).revisions.find(r => r.packageId === 'shared-input-validation')!; expect(original).toBeDefined();
       const originalPath = path.join(skillStoragePaths(data).objects, original.treeSha256, 'SKILL.md'); const originalText = await readFile(originalPath, 'utf8');
-      const second = await host.createSession(beta!.id); await host.sendPrompt(second.id, 'UPDATE the reusable validation candidate with dry-run instructions.', { learnSkill: true }); await idle();
+      // The user library is shared, but a generated revision still requires an
+      // exact read in the originating profile/workspace before it can be refined.
+      const second = await host.createSession(alpha!.id); await host.sendPrompt(second.id, 'REFINE_ALPHA the reusable validation candidate with dry-run instructions.', { learnSkill: true }); await idle();
       const revisions = (await host.skillRegistry()).revisions.filter(r => r.packageId === original.packageId);
       expect(revisions).toHaveLength(2); expect(revisions.every(r => !r.active && r.state === 'quarantined')).toBe(true);
       const updated = revisions.find(r => r.revisionId !== original.revisionId)!;
       expect(await readFile(path.join(skillStoragePaths(data).objects, updated.treeSha256, 'SKILL.md'), 'utf8')).toContain('dry run');
       expect(await readFile(originalPath, 'utf8')).toBe(originalText);
+      const third = await host.createSession(beta!.id); await host.sendPrompt(third.id, 'CREATE_BETA a reusable output validation candidate.', { learnSkill: true }); await idle();
+      const shared = (await host.skillRegistry()).revisions;
+      expect(shared.map(revision => revision.packageId).sort()).toEqual(['shared-input-validation', 'shared-input-validation', 'shared-output-validation']);
+      expect(shared.every(revision => !revision.active && revision.state === 'quarantined')).toBe(true);
+      const betaCandidate = shared.find(revision => revision.packageId === 'shared-output-validation')!;
+      expect(await readFile(path.join(skillStoragePaths(data).objects, betaCandidate.treeSha256, 'SKILL.md'), 'utf8')).toContain('Check the generated output');
+      const refusalStart = requests.length, unread = await host.createSession(beta!.id);
+      await host.sendPrompt(unread.id, 'UNREAD_UPDATE the existing input validation candidate without reading its base.', { learnSkill: true }); await idle();
+      const refusals = requests.slice(refusalStart).at(-1)!.messages.filter(message => message.role === 'tool').map(message => String(message.content));
+      expect(refusals).toHaveLength(1);
+      expect(refusals[0]).toMatch(/already exists.*Read the current candidate/s);
+      expect((await host.skillRegistry()).revisions.map(revision => revision.revisionId).sort()).toEqual(shared.map(revision => revision.revisionId).sort());
+      expect(await readFile(path.join(skillStoragePaths(data).objects, updated.treeSha256, 'SKILL.md'), 'utf8')).toContain('dry run');
       const profileA = (await host.listVaultProfiles!()).workspaces.find(w => w.id === alpha!.id)!.profileId;
       const profileB = (await host.listVaultProfiles!()).workspaces.find(w => w.id === beta!.id)!.profileId;
       expect(profileA).not.toBe(profileB);

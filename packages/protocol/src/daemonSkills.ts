@@ -198,12 +198,22 @@ export type SkillPreflightReport = {
   | { status: 'consistent'; issues: []; truncated: false; plan: SkillPreflightPackage[] }
 );
 
+/** Verified bytes for review only. Never admitted to the active skill catalog. */
+export interface SkillCandidateReadResult {
+  revisionId: string; packageId: string; path: string; size: number; sha256: string; content: string;
+  skillMdSha256: string; untrusted: true; reviewReceipt: string;
+  provenance: { profileId: string; workspaceId: string; sessionId: string; promptSha256: string };
+  referencePaths: string[];
+}
+
 export interface DaemonSkillOperations {
   'skill.routingPreview': { params: SkillRoutingInput; result: SkillRoutingReport };
   'skill.preflight': { params: SkillPreflightInput; result: SkillPreflightReport };
   /** Stage a package from the import inbox into quarantine and run the installed inspector. */
   'skill.import': {
-    params: { origin: SkillImportOrigin; path: string; sourceRef?: string; /** Optional immutable preview pin, checked before registry insertion. */ expectedTreeSha256?: string };
+    params: { origin: SkillImportOrigin; path: string; sourceRef?: string; /** Optional immutable preview pin, checked before registry insertion. */ expectedTreeSha256?: string;
+      /** All four or none; immutable refinement compares the current package head under the insertion transaction. */
+      expectedBaseRevisionId?: string; expectedBaseSkillSha256?: string; learningProfileId?: string; learningWorkspaceId?: string };
     result: { packageId: string; revisionId: string; treeSha256: string; version: string; state: SkillRevisionState; stateReason?: string; created: boolean };
   };
   /** Explicit user request to scan an existing quarantined revision; never a details read. */
@@ -260,11 +270,16 @@ export interface DaemonSkillOperations {
     params: { revisionId: string; path: string };
     result: { revisionId: string; packageId: string; path: string; size: number; sha256: string; content: string };
   };
+  /** Exactly scoped generated Markdown, including inactive or quarantined candidates; no execution permission. */
+  'skill.reviewRead': {
+    params: { revisionId: string; path: string; profileId: string; workspaceId: string };
+    result: SkillCandidateReadResult;
+  };
   /** The installed inspector and policy version; read-only, never runs the scanner. */
   'skill.scanner': { params: Record<string, never>; result: SkillScannerReport };
 }
 export type DaemonSkillOp = keyof DaemonSkillOperations;
 export const DAEMON_SKILL_OPS = [
   'skill.import', 'skill.rescan', 'skill.list', 'skill.inspect', 'skill.review', 'skill.approve', 'skill.activate', 'skill.deactivate', 'skill.rollback',
-  'skill.revoke', 'skill.read', 'skill.scanner', 'skill.preflight', 'skill.routingPreview',
+  'skill.revoke', 'skill.read', 'skill.reviewRead', 'skill.scanner', 'skill.preflight', 'skill.routingPreview',
 ] as const satisfies readonly DaemonSkillOp[];

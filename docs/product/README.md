@@ -28,6 +28,7 @@ Knowledge acceptance. There is no evidence-based aggregate completion percentage
 | --- | --- |
 | [App flow and live agents](prd-app-flow-and-live-agents.md) | Current app-flow requirements and implementation tracker |
 | [Observed agent control](prd-observed-agent-control.md) | Source-bound control requirements and provider acceptance |
+| [Repeatable Observe handover](prd-repeatable-handover.md) | Active checkpoints, repeated lineage, destination setup and runtime-specific acceptance |
 | [Master PRD v1.1 / patch v1.1.1](master-prd-v1.1/README.md) | Preserved imported specification; use the gap map for current implementation |
 | [PRD v2 source audit](prd-v2-audit.md) | Historical intake/compatibility audit plus current reconciliation |
 | [Native orchestration handoff](native-orchestration-v1-handoff.md) | Incremental mission contracts and dated gate evidence |

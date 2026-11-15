@@ -1388,3 +1388,224 @@ fn scoped_cache_eviction_reopens_the_correct_profile() {
     .unwrap();
     assert_eq!(result["nodes"][0]["title"], "Profile 0");
 }
+
+#[test]
+fn note_reads_recall_current_amendments_and_conflicts_without_promoting_authored_claims() {
+    let dir = TempDir::new();
+    let original = "---\naliases: [Original decision]\n---\n# Decision\n## Limits\nThe earlier value is provisional. ^limit\n";
+    dir.notes("default", &[
+        ("Design/Decision.md", original),
+        ("Learning/Update.md", "# New observation\nUpdates: [[Design/Decision.md#Limits|earlier limit]] — changed after a measured run\nUpdates: [[Design/Decision.md]] — repeat\n"),
+        ("Learning/Conflict.md", "---\nverification: verified\n---\n# Open disagreement\nContradicts: [[Original decision#^limit]] — another source differs\n"),
+        ("Learning/Ordinary.md", "# Context\nRelated: [[Design/Decision]]\n"),
+        ("Learning/Code.md", "# Example\n```\nUpdates: [[Design/Decision]]\n```\n"),
+        ("Learning/Hidden.md", "---\nprofile: different\n---\nUpdates: [[Design/Decision]]\n"),
+    ]);
+    let mut session = start(&dir, "default");
+    sync(&mut session, "incremental");
+    let note = op(
+        &mut session,
+        "knowledge.node",
+        json!({"path":"Design/Decision.md"}),
+    )
+    .unwrap();
+    assert_eq!(
+        note["body"],
+        "# Decision\n## Limits\nThe earlier value is provisional. ^limit\n"
+    );
+    assert_eq!(note["node"]["trustStatus"], "untrusted");
+    let updates = note["relatedUpdates"].as_array().unwrap();
+    assert_eq!(updates.len(), 2);
+    for update in updates {
+        assert_eq!(update["trustStatus"], "untrusted");
+        let source = op(
+            &mut session,
+            "knowledge.node",
+            json!({"path":update["path"]}),
+        )
+        .unwrap();
+        assert_eq!(update["sourceSha256"], source["node"]["sourceSha256"]);
+        assert_eq!(source["node"]["trustStatus"], "untrusted");
+    }
+    assert!(
+        updates
+            .iter()
+            .any(|item| item["relation"] == "updates" && item["path"] == "Learning/Update.md")
+    );
+    assert!(updates.iter().any(|item| item["relation"] == "contradicts" && item["path"] == "Learning/Conflict.md"));
+    assert_eq!(note["relatedUpdatesTruncated"], false);
+    let graph = op(
+        &mut session,
+        "knowledge.graph",
+        json!({"nodeId":note["node"]["nodeId"]}),
+    )
+    .unwrap();
+    assert!(
+        graph["edges"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|edge| edge["edgeType"] == "updates")
+    );
+    assert!(
+        graph["edges"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|edge| edge["edgeType"] == "contradicts")
+    );
+    assert_eq!(
+        fs::read_to_string(dir.vault("default").join("Design/Decision.md")).unwrap(),
+        original
+    );
+}
+
+#[test]
+fn recalled_sources_disappear_on_edit_delete_or_profile_exclusion_until_refreshed() {
+    let dir = TempDir::new();
+    dir.notes(
+        "default",
+        &[
+            ("Base.md", "# Initial\n"),
+            ("Update.md", "Updates: [[Base]] — first finding\n"),
+        ],
+    );
+    let mut session = start(&dir, "default");
+    sync(&mut session, "incremental");
+    let read =
+        |session: &mut Session| op(session, "knowledge.node", json!({"path":"Base.md"})).unwrap();
+    assert_eq!(
+        read(&mut session)["relatedUpdates"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    dir.notes(
+        "default",
+        &[(
+            "Update.md",
+            "Updates: [[Base]] — unindexed private replacement\n",
+        )],
+    );
+    let changed = read(&mut session);
+    assert_eq!(changed["relatedUpdates"], json!([]));
+    assert!(!changed.to_string().contains("private replacement"));
+    sync(&mut session, "incremental");
+    assert!(
+        read(&mut session)["relatedUpdates"][0]["excerpt"]
+            .as_str()
+            .unwrap()
+            .contains("replacement")
+    );
+    dir.notes(
+        "default",
+        &[(
+            "Update.md",
+            "---\nprofile: another\n---\nUpdates: [[Base]] — excluded finding\n",
+        )],
+    );
+    assert_eq!(read(&mut session)["relatedUpdates"], json!([]));
+    sync(&mut session, "incremental");
+    assert_eq!(read(&mut session)["relatedUpdates"], json!([]));
+    dir.notes(
+        "default",
+        &[("Update.md", "Updates: [[Base]] — visible again\n")],
+    );
+    sync(&mut session, "incremental");
+    assert_eq!(
+        read(&mut session)["relatedUpdates"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    fs::remove_file(dir.vault("default").join("Update.md")).unwrap();
+    assert_eq!(read(&mut session)["relatedUpdates"], json!([]));
+    dir.notes("default", &[("Base.md", "# Changed target\n")]);
+    let stale = read(&mut session);
+    assert_eq!(stale["bodyStatus"], "changed");
+    assert!(stale.get("relatedUpdates").is_none());
+}
+
+#[test]
+fn related_updates_are_bounded_and_isolated_across_default_scoped_and_restarted_reads() {
+    let dir = TempDir::new();
+    let first = "vp-00000000-0000-4000-8000-000000000011";
+    let second = "vp-00000000-0000-4000-8000-000000000012";
+    dir.notes(
+        "default",
+        &[
+            ("Base.md", "# Global\n"),
+            ("Global.md", "Updates: [[Base]] — global finding\n"),
+        ],
+    );
+    dir.notes(
+        first,
+        &[
+            ("Base.md", "# Isolated\n"),
+            ("Private.md", "Contradicts: [[Base]] — isolated finding\n"),
+        ],
+    );
+    dir.notes(second, &[("Base.md", "# Other\n")]);
+    for index in 0..40 {
+        dir.notes(
+            second,
+            &[(
+                &format!("Update{index:02}.md"),
+                "Updates: [[Base]] — bounded finding\n",
+            )],
+        );
+    }
+    {
+        let mut session = start(&dir, "default");
+        sync(&mut session, "incremental");
+        let global = op(&mut session, "knowledge.node", json!({"path":"Base.md"})).unwrap();
+        assert_eq!(ids(&global["relatedUpdates"], "path"), ["Global.md"]);
+        let a = scoped(
+            &mut session,
+            first,
+            None,
+            "knowledge.node",
+            json!({"path":"Base.md"}),
+        )
+        .unwrap();
+        assert_eq!(ids(&a["relatedUpdates"], "path"), ["Private.md"]);
+        assert_eq!(a["relatedUpdates"][0]["relation"], "contradicts");
+        let b = scoped(
+            &mut session,
+            second,
+            None,
+            "knowledge.node",
+            json!({"path":"Base.md"}),
+        )
+        .unwrap();
+        assert_eq!(b["relatedUpdates"].as_array().unwrap().len(), 8);
+        assert_eq!(b["relatedUpdatesTruncated"], true);
+        assert!(!b.to_string().contains("isolated finding"));
+    }
+    let mut restarted = start(&dir, "default");
+    let a = scoped(
+        &mut restarted,
+        first,
+        None,
+        "knowledge.node",
+        json!({"path":"Base.md"}),
+    )
+    .unwrap();
+    assert_eq!(ids(&a["relatedUpdates"], "path"), ["Private.md"]);
+    let root = dir.0.join("replacement-vault");
+    fs::create_dir(&root).unwrap();
+    private(&root);
+    fs::write(root.join("Base.md"), "# New selected vault\n").unwrap();
+    let rebound = scoped(
+        &mut restarted,
+        first,
+        Some(&root),
+        "knowledge.node",
+        json!({"path":"Base.md"}),
+    )
+    .unwrap();
+    assert_eq!(rebound["relatedUpdates"], json!([]));
+    assert!(!rebound.to_string().contains("isolated finding"));
+}

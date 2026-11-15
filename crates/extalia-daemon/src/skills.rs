@@ -50,7 +50,7 @@ mod preflight;
 mod routing;
 
 /// Skill operations served when a core store is open, advertised in the `hello` result.
-pub const CAPABILITIES: [Op; 14] = [
+pub const CAPABILITIES: [Op; 15] = [
     Op::SkillImport,
     Op::SkillList,
     Op::SkillInspect,
@@ -62,6 +62,7 @@ pub const CAPABILITIES: [Op; 14] = [
     Op::SkillRollback,
     Op::SkillRevoke,
     Op::SkillRead,
+    Op::SkillReviewRead,
     Op::SkillScanner,
     Op::SkillPreflight,
     Op::SkillRoutingPreview,
@@ -253,6 +254,7 @@ impl Skills {
             path,
             source_ref,
             expected_tree_sha256,
+            refinement,
         } = request
         else {
             let context = self.context();
@@ -283,15 +285,18 @@ impl Skills {
             }
             let mut registry = self.registry(missions.store_mut());
             let receipt = registry
-                .import_expected(
+                .import_with_base(
                     &source,
                     *origin,
                     source_ref.as_deref().unwrap_or(path),
                     now_millis(),
                     expected_tree_sha256.as_deref(),
+                    refinement.as_ref().map(|base| base.as_core()),
                 )
                 .map_err(|error| refusal(&error))?;
-            let prepared = if receipt.state == RevisionState::Quarantined {
+            let prepared = if receipt.state == RevisionState::Quarantined
+                && (refinement.is_none() || receipt.created)
+            {
                 Some(
                     registry
                         .begin_inspection(
@@ -405,17 +410,21 @@ impl Skills {
                 path,
                 source_ref,
                 expected_tree_sha256,
+                refinement,
             } => {
                 let source = self.resolve_import(path)?;
                 let mut registry = self.registry(store);
-                let mut receipt = registry.import_expected(
+                let mut receipt = registry.import_with_base(
                     &source,
                     *origin,
                     source_ref.as_deref().unwrap_or(path),
                     now,
                     expected_tree_sha256.as_deref(),
+                    refinement.as_ref().map(|base| base.as_core()),
                 )?;
-                if receipt.state == RevisionState::Quarantined {
+                if receipt.state == RevisionState::Quarantined
+                    && (refinement.is_none() || receipt.created)
+                {
                     let inspected = registry.inspect(
                         &receipt.revision_id,
                         self.inspector.as_ref(),
@@ -597,6 +606,55 @@ impl Skills {
                     "size": entry.size,
                     "sha256": entry.sha256,
                     "content": content,
+                }))
+            }
+            SkillRequest::ReviewRead {
+                revision_id,
+                path,
+                profile_id,
+                workspace_id,
+            } => {
+                let review = self.registry(store).read_candidate_file(
+                    revision_id,
+                    path,
+                    profile_id,
+                    workspace_id,
+                )?;
+                let content = String::from_utf8(review.file.bytes)
+                    .ok()
+                    .filter(|text| {
+                        text.chars().all(|character| {
+                            matches!(character, '\t' | '\n' | '\r')
+                                || (character as u32 >= 32 && character as u32 != 127)
+                        })
+                    })
+                    .ok_or(SkillError::Denied("binary_content"))?;
+                // A receipt identifies this observed read; authorization additionally
+                // requires the host-held receipt and current job's actual tool output.
+                use sha2::{Digest, Sha256};
+                static READ_SEQUENCE: std::sync::atomic::AtomicU64 =
+                    std::sync::atomic::AtomicU64::new(0);
+                let nonce = format!(
+                    "{}:{:?}:{}:{}:{}:{}:{}",
+                    std::process::id(),
+                    std::time::SystemTime::now(),
+                    READ_SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+                    revision_id,
+                    path,
+                    profile_id,
+                    workspace_id
+                );
+                let receipt = Sha256::digest(nonce.as_bytes())
+                    .iter()
+                    .map(|byte| format!("{byte:02x}"))
+                    .collect::<String>();
+                Ok(json!({
+                    "revisionId": revision_id, "packageId": review.file.package_id, "path": path,
+                    "size": review.file.entry.size, "sha256": review.file.entry.sha256,
+                    "skillMdSha256": review.skill_md_sha256, "untrusted": true, "reviewReceipt": receipt,
+                    "provenance": { "profileId": review.provenance.profile_id, "workspaceId": review.provenance.workspace_id,
+                        "sessionId": review.provenance.session_id, "promptSha256": review.provenance.prompt_sha256 },
+                    "referencePaths": review.reference_paths, "content": content,
                 }))
             }
         }

@@ -40,7 +40,7 @@ function useInertOutside(keep: HTMLElement | null) {
  * while shown stays readable with an explanation. The page renders at most one,
  * keyed by character, from a single dialog slot (`officeSelection`).
  */
-export function AgentSessionDialog({ t, language, agents, state, onState, session, agent, role, workspace, look, appearance, tab, onTab, onClose, onLocate, onOpenInChat, onOpenMissions, onSelectCharacter, officeNames, savedLooks, viewport }: {
+export function AgentSessionDialog({ t, language, agents, state, onState, session, agent, role, workspace, look, appearance, tab, onTab, onClose, onLocate, onOpenInChat, onOpenMissions, onSelectCharacter, officeNames, savedLooks, viewport, onOpenSettings }: {
   t: Messages;
   language: string;
   agents: AgentHostApi;
@@ -58,6 +58,7 @@ export function AgentSessionDialog({ t, language, agents, state, onState, sessio
   onClose(): void;
   onLocate?: (() => void) | undefined;
   onOpenInChat?: ((session: SessionSummary) => void) | undefined;
+  onOpenSettings?: (() => void) | undefined;
   /** v0.0.43 missions: shown for managed Extalia Native sessions only. */
   onOpenMissions?: ((session: SessionSummary) => void) | undefined;
   /** Another character of the session, e.g. a worker picked from the team list. */
@@ -196,7 +197,7 @@ export function AgentSessionDialog({ t, language, agents, state, onState, sessio
       <div className="session-dialog-body">
         {shownSession && <CharacterConversation key={shownAgent.id} t={t} language={language} agents={agents} state={state} session={shownSession} agent={shownAgent}
           onState={onState} appearance={ended ? undefined : appearance} tab={tab} onTab={onTab} readOnlyReason={ended}
-          onLocate={ended ? undefined : onLocate} onSelectCharacter={onSelectCharacter} onToolsStateChange={onToolsStateChange} onHandoverReady={onOpenInChat} />}
+          onLocate={ended ? undefined : onLocate} onSelectCharacter={onSelectCharacter} onToolsStateChange={onToolsStateChange} onHandoverReady={onOpenInChat} onOpenSettings={onOpenSettings} />}
       </div>
       {teamOpen && teamLead && <TeamSetupDialog t={t} agents={agents} workspaceId={teamLead.workspaceId} sessionId={teamLead.id} leadName={shownAgent.displayName} officeNames={officeNames} savedLooks={savedLooks}
         onClose={() => setTeamOpen(false)} onState={onState} onSaved={() => { void agents.getState().then(onState, () => undefined); }} />}

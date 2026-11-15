@@ -2,6 +2,7 @@ import type { AgentHostApi, ContinuityNotes, ContinuityReadPage, ContinuityView,
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
+import { MESSAGES } from '../src/i18n';
 import {
   HandoverDialogController, SessionHandoverDialogView, handoverDialogSourceKey, handoverRouteOptions,
   type HandoverMessages, type SessionHandoverDialogViewProps,
@@ -105,6 +106,14 @@ describe('handover dialog ownership and explicit actions', () => {
     pending.resolve(receipt()); await request;
     expect(h.applied).not.toHaveBeenCalled(); expect(h.owner.value.receipt).toBeUndefined();
   });
+  it('does not retain an entered receipt if an observed native source is remapped under the same session ID', async () => {
+    const h = harness(); await h.owner.load(); await h.owner.review({ kind: 'manual', label: 'Claude' });
+    const pending = deferred<HandoverReceipt>(); h.host.applyHandover.mockReturnValueOnce(pending.promise);
+    const request = h.owner.apply(true, 'operation-one');
+    h.owner.bind(h.agents, { ...session, observation: { ...session.observation!, nativeSessionId: 'replacement-native-source' } });
+    pending.resolve(receipt()); await request;
+    expect(h.applied).not.toHaveBeenCalled(); expect(h.owner.value.receipt).toBeUndefined();
+  });
 
   it('clears uncertain failed apply review and never retries it automatically', async () => {
     const h = harness(); await h.owner.load(); await h.owner.review({ kind: 'manual', label: 'Claude' });
@@ -193,9 +202,57 @@ describe('handover dialog ownership and explicit actions', () => {
       expect(handoverDialogSourceKey(next)).not.toBe(handoverDialogSourceKey(session));
     }
   });
+
+  it('keeps a reviewed checkpoint across transcript and activity progress while preserving exact capture intent', async () => {
+    const h = harness(); h.owner.bind(h.agents, session, true, 'workspace-scope', 'profile-scope'); await h.owner.load();
+    h.host.previewHandover.mockResolvedValueOnce({ ...preview(), capture: 'checkpoint', checkpoint: { capturedAt: snapshot.capturedAt, activity: 'active', observedThrough: 'event-20' } });
+    await h.owner.review({ kind: 'manual', label: 'Claude' }, { capture: 'checkpoint' });
+    const advanced = { ...session, lastActiveAt: '2026-11-12T02:00:00Z', running: true, model: 'new-reported-model', effort: 'high' as const, context: { usedTokens: 6000, estimated: true, compactions: 2, updatedAt: '2026-11-12T02:00:00Z' } };
+    h.owner.bind(h.agents, advanced, true, 'workspace-scope', 'profile-scope');
+    expect(h.owner.matches(h.agents, advanced, true, 'workspace-scope')).toBe(true);
+    expect(h.owner.value.preview).toMatchObject({ packet: 'Immutable reviewed packet', checkpoint: { observedThrough: 'event-20' } });
+    expect(h.host.previewHandover).toHaveBeenCalledExactlyOnceWith(session.id, { target: { kind: 'manual', label: 'Claude' }, notes, capture: 'checkpoint' });
+    await h.owner.apply(true, 'checkpoint-transfer');
+    expect(h.host.applyHandover).toHaveBeenCalledExactlyOnceWith(session.id, { reviewId: 'review-exact', operationId: 'checkpoint-transfer' });
+  });
+
+  it.each(['workspace', 'source', 'privacy', 'profile'] as const)('invalidates checkpoint reviews at an actual %s boundary', async boundary => {
+    const h = harness(); h.owner.bind(h.agents, session, true, 'workspace-scope', 'profile-scope'); await h.owner.load();
+    await h.owner.review({ kind: 'manual', label: 'Claude' }, { capture: 'checkpoint' });
+    const next = boundary === 'workspace' ? { ...session, workspaceId: 'other-workspace' }
+      : boundary === 'source' ? { ...session, observation: { ...session.observation!, nativeSessionId: 'other-native' } }
+        : boundary === 'privacy' ? { ...session, observation: { ...session.observation!, watching: false } } : session;
+    h.owner.bind(h.agents, next, true, boundary === 'profile' ? 'other-workspace-scope' : 'workspace-scope', boundary === 'profile' ? 'other-profile' : 'profile-scope');
+    expect(h.owner.value.preview).toBeUndefined();
+    await h.owner.apply(true, 'stale-checkpoint'); expect(h.host.applyHandover).not.toHaveBeenCalled();
+  });
+
+  it('retains an entered Native enablement receipt when that exact apply changes workspace mode', async () => {
+    const h = harness(), pending = deferred<HandoverReceipt>();
+    h.owner.bind(h.agents, session, true, 'observe-workspace', 'same-profile'); await h.owner.load();
+    const target = { kind: 'native' as const, connectionId: 'connection-a', enableManagedWorkspace: true as const };
+    h.host.previewHandover.mockResolvedValueOnce({ ...preview(), target }); await h.owner.review(target, { capture: 'checkpoint' });
+    h.host.applyHandover.mockReturnValueOnce(pending.promise); const applying = h.owner.apply(true, 'native-enablement');
+    h.owner.bind(h.agents, session, true, 'managed-workspace', 'same-profile');
+    pending.resolve({ ...receipt('native-ready'), target, targetSessionId: 'native-destination' }); await applying;
+    expect(h.applied).toHaveBeenCalledOnce(); expect(h.owner.value.receipt?.targetSessionId).toBe('native-destination');
+  });
+
+  it('requires a new exact merge review before a destination with established work can be applied', async () => {
+    const h = harness(); await h.owner.load();
+    const target = { kind: 'observed' as const, sessionId: 'claude-session', capabilityId: 'current-route' };
+    const targetChain = { canonicalId: 'destination-work', revision: 7, snapshots: 4, handovers: 2, requiresConsent: true };
+    h.host.previewHandover.mockResolvedValueOnce({ ...preview(), target, targetChain }); await h.owner.review(target, { capture: 'checkpoint' });
+    await h.owner.apply(true, 'unreviewed-merge'); expect(h.host.applyHandover).not.toHaveBeenCalled();
+    h.host.previewHandover.mockResolvedValueOnce({ ...preview(), reviewId: 'merged-review', target, targetChain: { ...targetChain, requiresConsent: false } });
+    await h.owner.review(target, { capture: 'checkpoint', mergeTargetChain: { canonicalId: 'destination-work', revision: 7 } });
+    expect(h.host.previewHandover).toHaveBeenLastCalledWith(session.id, { target, notes, capture: 'checkpoint', mergeTargetChain: { canonicalId: 'destination-work', revision: 7 } });
+    await h.owner.apply(true, 'reviewed-merge'); expect(h.host.applyHandover).toHaveBeenCalledExactlyOnceWith(session.id, { reviewId: 'merged-review', operationId: 'reviewed-merge' });
+  });
 });
 
 const text: HandoverMessages = {
+  flow: MESSAGES.en.sessionHandover.flow,
   title: 'Handover work', description: 'Continue with explicit context coverage.', close: 'Close', loading: 'Loading', unavailable: 'Unavailable', canonical: 'Continuity ID', source: 'Source', destination: 'Destination', native: 'Native model', observed: 'Existing conversation', manual: 'Manual packet', connection: 'Connection', model: 'Model', effort: 'Effort', defaultValue: 'Default', targetSession: 'Target session', route: 'Delivery route', refreshRoutes: 'Refresh routes', noRoute: 'No supported route. Use a manual packet.', manualLabel: 'Destination label', manualUnbound: 'Copy only, no linked session', notes: 'Working notes', sourceExcerpt: 'Review these source excerpts; they are not verified summaries.', fields: { goal: 'Goal', decisions: 'Decisions', completed: 'Completed', pending: 'Pending', verification: 'Verification', risks: 'Risks' }, coverage: 'Context coverage', coverageModes: { full: 'All observed entries', partial: 'Partial observations', unknown: 'Unknown coverage' }, observedThrough: 'Observed through', entries: 'Entries', omitted: 'Omitted', limits: 'Limits', unknown: 'Unknown', context: 'Reported context', estimated: 'Estimated', reported: 'Reported', compactions: 'Compactions', contextLimit: 'Only context visible to Extalia is represented; hidden runtime state is unknown.', chain: 'Handover chain', noHandovers: 'No prior handovers', delivery: 'Delivery', statuses: { 'native-ready': 'Native session ready', 'manual-ready': 'Manual packet ready', queued: 'Queued', submitted: 'Submitted', unknown: 'Outcome unknown', inspected: 'User inspected destination', rejected: 'Rejected' }, receiptLimit: 'Delivery acceptance does not prove the receiving model read or retained the packet.', transient: 'This continuity is not durable.', inspect: 'Inspect observed source', loadMore: 'Next source page', evidence: 'Observed evidence', review: 'Review exact packet', reviewing: 'Preparing review', apply: 'Apply reviewed handover', applying: 'Applying', confirm: 'Use this exact reviewed packet and destination.', packet: 'Reviewed packet', digest: 'Packet digest', expires: 'Review expires', copy: 'Copy packet', copied: 'Copied', copyFailed: 'Clipboard unavailable', copyAfterApply: 'Apply before copying so the destination and scoped archive access are recorded.', cancel: 'Close', edit: 'Edit before review', sourceChanged: 'Source changed; review again.', recoveryTitle: 'Inspect uncertain handover', recoveryDescription: 'Inspect the destination and previous agent state. No resend or execution authority is inferred.', recoveryConfirm: 'I inspected the destination and previous agent state.', recoveryAccepted: 'Recorded in destination', recoveryNotDelivered: 'Not delivered', recovering: 'Recording inspection', userInspected: 'User-reported inspection only',
 };
 function viewProps(): SessionHandoverDialogViewProps {
@@ -204,6 +261,44 @@ function viewProps(): SessionHandoverDialogViewProps {
 const html = (p: SessionHandoverDialogViewProps) => renderToStaticMarkup(createElement(SessionHandoverDialogView, p));
 
 describe('handover coverage, chain and honest receipt presentation', () => {
+  it('shows the frozen source time and unfinished work warning without claiming execution stopped', () => {
+    const p = viewProps(); p.checkpoint = true; p.onCheckpoint = vi.fn();
+    p.state.preview = { ...preview(), capture: 'checkpoint', checkpoint: { capturedAt: '2026-11-12T01:00:00Z', activity: 'active', observedThrough: 'event-20' } };
+    const markup = html(p);
+    expect(markup).toContain(text.flow.checkpoint);
+    expect(markup).toContain('dateTime="2026-11-12T01:00:00Z"');
+    expect(markup).toContain(text.flow.sourceActive); expect(markup).toContain(text.flow.partial); expect(markup).toContain(text.flow.frozenHint);
+    expect(markup).toMatch(/type="checkbox" checked=""/);
+  });
+
+  it('shows separate merge consent and cannot apply the old preview merely by confirming delivery', () => {
+    const p = viewProps(); p.confirmed = true; p.mergeConfirmed = false;
+    p.state.preview = { ...preview(), targetChain: { canonicalId: 'destination-work', revision: 7, snapshots: 4, handovers: 2, requiresConsent: true } };
+    const markup = html(p);
+    expect(markup).toContain(text.flow.mergeConfirm); expect(markup).toContain(text.flow.reviewMerge);
+    expect(markup).toMatch(new RegExp(`<button[^>]*disabled=""[^>]*>${text.apply}</button>`));
+    expect(markup).not.toContain(text.confirm);
+    p.state.preview.targetChain!.requiresConsent = false;
+    expect(html(p)).toContain(text.flow.reviewedMerge); expect(html(p)).toContain(text.confirm);
+  });
+
+  it('keeps first-time CLI setup visible when the selected conversation has no ready route', () => {
+    const p = viewProps(); p.t = MESSAGES.en.sessionHandover; p.kind = 'observed'; p.observedId = 'claude-session';
+    p.harnesses = [{ id: 'claude', label: 'Claude', sessionIds: ['claude-session'], existing: 'setup-required' }]; p.harnessId = 'claude';
+    p.cliResumeSetup = vi.fn(compact => createElement('section', {}, compact ? 'Compact connected status' : 'Review and connect existing conversation'));
+    expect(html(p)).toContain('Review and connect existing conversation');
+    expect(p.cliResumeSetup).toHaveBeenCalledWith(false, expect.any(Function));
+    p.routes = [{ value: 'route', label: 'Official CLI continuation', target: { kind: 'observed', sessionId: 'claude-session', capabilityId: 'route' } }];
+    expect(html(p)).toContain('Compact connected status');
+  });
+
+  it('offers an explicit way to open the acknowledged destination and hand over again', () => {
+    const p = viewProps(); p.onOpenDestination = vi.fn(); p.state.receipt = { ...receipt('submitted'), targetSessionId: 'claude-session' };
+    expect(html(p)).toContain(text.flow.openDestination); expect(html(p)).toContain(text.flow.nextHandover);
+    p.state.receipt = { ...receipt('unknown'), targetSessionId: 'claude-session' };
+    expect(html(p)).not.toContain(text.flow.openDestination); expect(html(p)).not.toContain(text.flow.nextHandover);
+  });
+
   it('shows one canonical continuity across repeated Codex → Gemini → Claude handovers while preserving separate native IDs', () => {
     const p = viewProps(); p.state.continuity!.handovers = [
       { ...receipt('submitted'), operationId: 'hop-one', target: { kind: 'observed', sessionId: 'gemini-session', capabilityId: 'gemini-route' }, targetSessionId: 'gemini-session' },
@@ -266,7 +361,7 @@ describe('handover coverage, chain and honest receipt presentation', () => {
     expect(markup).toMatch(/disabled=""[^>]*>Recorded in destination/);
     expect(markup).not.toContain(text.edit);
     p.state.receipt = inspectedReceipt('accepted'); const resolved = html(p);
-    expect(resolved).toContain(text.userInspected); expect(resolved).toContain(text.edit);
+    expect(resolved).toContain(text.userInspected); expect(resolved).toContain(text.flow.nextHandover);
     expect(resolved).toContain(text.receiptLimit);
   });
 

@@ -30,6 +30,7 @@
 .learning-countdown-clock { flex: 0 0 auto; color: var(--accent); font-variant-numeric: tabular-nums; font-weight: 650; }
 .learning-countdown-status { margin: 5px 0 9px; }
 .learning-countdown-job[data-state='failed'] .learning-countdown-status { color: var(--error); }
+.learning-countdown-job[data-state='partial'] .learning-countdown-status { color: var(--muted); }
 .learning-countdown-actions { flex-wrap: wrap; justify-content: flex-end; }
 .learning-countdown-result { margin: 8px 0; padding-left: 9px; border-left: 2px solid var(--line); }
 .learning-countdown-result[data-saved] { border-color: var(--accent); }

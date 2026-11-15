@@ -22,7 +22,7 @@ import { NATIVE_MEMORY_METHODS, type NativeMemoryCatalog, type NativeMemoryReadO
 import { EFFORTS, MAX_GOAL_DOCUMENT_BYTES, MAX_GOAL_DOCUMENT_CHARS, MAX_TEAM_GOAL, MAX_TEAM_MEMBERS, MEMBER_GENDERS, SESSION_PERMISSION_MODES, decodeAgentTeam, type GoalDocument, type SessionPermissionMode } from '@extalia/core';
 import type {
   AgentTeam, MemberAccess, MemberGender, TeamMember, TeamPlan, TeamPlanRequest, TeamSpec, HermesTeamLimits,
-  CharacterAppearance, CharacterAppearances, Connection, CredentialSource, Effort, FeatureOwner, ImportMode, ImportPreview, LibrarySession, LocalState, Orchestration,
+  CharacterAppearance, CharacterAppearances, Connection, ContextOptimization, CredentialSource, Effort, FeatureOwner, ImportMode, ImportPreview, LibrarySession, LocalState, Orchestration,
   PortableSession, ProviderApi, ProviderPresetId, RuntimeId, Workspace, WorkspacePermissions, WorkspaceCrossAccess,
 } from '@extalia/core';
 import type { ExtaliaEvent } from '@extalia/protocol';
@@ -472,6 +472,8 @@ export interface ConnectionInput {
   features: { memory: FeatureOwner; skills: FeatureOwner; history?: boolean; promptCache?: boolean };
   /** Explicit estimated Native request-token ceiling; absent means no user-set token ceiling. */
   inputTokenLimit?: number;
+  /** Local Native context optimization; an external engine requires an explicit executable. */
+  contextOptimization?: ContextOptimization;
   effort?: Effort;
   /** Defaults to orchestration on with the preset's tier models. */
   orchestration?: Orchestration;

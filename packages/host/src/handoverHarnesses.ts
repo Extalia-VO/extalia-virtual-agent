@@ -3,7 +3,7 @@ import { stat } from 'node:fs/promises';
 import path from 'node:path';
 import type { HandoverHarnessDestination, HandoverHarnessInventory, ObservedControlStatus, SessionSummary } from '@extalia/platform';
 import { isExecutable } from './connect/util.js';
-import { findExecutable } from './executableDiscovery.js';
+import { environmentValue, findExecutable } from './executableDiscovery.js';
 
 const definitions = [
   { id: 'codex', sources: ['codex'], commands: ['codex'], app: 'Codex.app' },
@@ -24,6 +24,9 @@ interface Options {
   sessions: readonly SessionSummary[];
   nativeReady: boolean;
   antigravityCreateReady: boolean;
+  /** Passive local availability only; the explicit Create action must probe the authenticated gateway. */
+  hermesCreateSetup?: boolean;
+  hermesCreationProfile?: string;
   control(id: string): Promise<ObservedControlStatus>;
   applicationRoots?: readonly string[];
   /** Filesystem discovery probe; production retains the platform executable checks. */
@@ -41,10 +44,10 @@ export async function discoverHandoverHarnesses(options: Options): Promise<Hando
     const sessions = options.sessions.filter(session => session.control === 'observed' && definition.sources.some(source => source === session.observation?.sourceId));
     const evidence: HandoverHarnessDestination['evidence'] = [];
     if (definition.id === 'antigravity' && options.antigravityCreateReady) evidence.push('native-connection');
-    const override = options.env[`EXTALIA_${definition.id.toUpperCase()}_BIN`];
+    const override = environmentValue(options.env, `EXTALIA_${definition.id.toUpperCase()}_BIN`, options.platform);
     const check = options.checkExecutable ?? (file => isExecutable(file, options.platform));
-    if (override && await check(override) || (await Promise.all(definition.commands.map(command => findExecutable(command, {
-      env: options.env, platform: options.platform, homeDirectory: options.homeDirectory, check,
+    if ((await Promise.all(definition.commands.map(command => findExecutable(command, {
+      env: options.env, platform: options.platform, homeDirectory: options.homeDirectory, check, ...(override !== undefined ? { override } : {}),
     })))).some(Boolean)) evidence.push('executable');
     if ('app' in definition && options.platform === 'darwin') {
       const roots = options.applicationRoots ?? ['/Applications', path.join(options.homeDirectory, 'Applications')];
@@ -53,11 +56,14 @@ export async function discoverHandoverHarnesses(options: Options): Promise<Hando
     if (sessions.length) evidence.push('observed-session');
     if (!evidence.length) continue;
     const controls = await Promise.allSettled(sessions.map(session => options.control(session.id)));
-    const ready = controls.some(value => value.status === 'fulfilled' && value.value.routes.some(route => route.capabilities.some(capability => capability.available)));
+    const ready = controls.some((value, index) => value.status === 'fulfilled' && value.value.sessionId === sessions[index]?.id && value.value.state === 'ready'
+      && value.value.routes.some(route => route.state === 'ready' && route.capabilities.some(capability => capability.available && Boolean(capability.capabilityId))));
     const supported = definition.id !== 'kiro' && definition.id !== 'opencode';
-    const create = definition.id === 'antigravity' ? options.antigravityCreateReady ? 'ready' : 'unavailable' : 'unsupported';
+    const create = definition.id === 'antigravity' ? options.antigravityCreateReady ? 'ready' : 'unavailable'
+      : definition.id === 'hermes' && options.hermesCreateSetup !== undefined ? options.hermesCreateSetup ? 'setup-required' : 'unavailable' : 'unsupported';
     const existing = ready ? 'ready' : supported ? 'setup-required' : 'unsupported';
     harnesses.push({ id: definition.id, sourceIds: [...definition.sources], evidence, existing, create, sessionIds: sessions.map(session => session.id),
+      ...(definition.id === 'hermes' && typeof options.hermesCreationProfile === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(options.hermesCreationProfile) ? { creationProfile: options.hermesCreationProfile } : {}),
       ...(!ready && create !== 'ready' ? { reason: supported ? 'setup-required' as const : 'adapter-unavailable' as const } : {}) });
   }
   for (const sourceId of new Set(options.sessions.flatMap(session => session.control === 'observed' && session.observation?.sourceId ? [session.observation.sourceId] : []))) {

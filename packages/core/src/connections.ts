@@ -26,6 +26,27 @@ export const FEATURE_OWNERS: readonly FeatureOwner[] = ['extalia', 'provider', '
 export type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 export const EFFORTS: readonly Effort[] = ['low', 'medium', 'high', 'xhigh', 'max'];
 
+export type ContextOptimizationMode = 'off' | 'local' | 'caveman';
+export type ContextOptimization = { mode: 'off' | 'local' } | { mode: 'caveman'; executable: string };
+
+/** A single executable path, never a shell command or a PATH lookup. */
+export function isContextOptimizerExecutable(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 1 && value.length <= 4096
+    && value === value.trim() && !/[\p{Cc}\p{Cf}]/u.test(value)
+    && (value.startsWith('/') || /^[a-z]:[\\/]/i.test(value) || /^\\\\[^\\/]+[\\/][^\\/]+[\\/]/.test(value));
+}
+
+function decodeContextOptimization(raw: unknown): ContextOptimization {
+  const value = object(raw, 'contextOptimization');
+  const mode = oneOf(value.mode, ['off', 'local', 'caveman'] as const, 'contextOptimization.mode');
+  if (Object.keys(value).some(key => key !== 'mode' && (mode !== 'caveman' || key !== 'executable'))) {
+    throw new Error('contextOptimization: unexpected setting.');
+  }
+  if (mode !== 'caveman') return { mode };
+  if (!isContextOptimizerExecutable(value.executable)) throw new Error('contextOptimization.executable: expected an absolute executable path.');
+  return { mode, executable: value.executable };
+}
+
 /** Task tiers for orchestration: workers use the tier's model; an empty tier uses the connection's model. */
 export type TaskTier = 'complex' | 'standard' | 'quick';
 export const TASK_TIERS: readonly TaskTier[] = ['complex', 'standard', 'quick'];
@@ -99,6 +120,8 @@ export interface Connection {
   effort?: Effort;
   /** Explicit estimated input ceiling. Unset applies only the runtime's general safety guard. */
   inputTokenLimit?: number;
+  /** Native tool context only. Unset uses conservative local optimization. */
+  contextOptimization?: ContextOptimization;
   orchestration: Orchestration;
   createdAt: string;
   updatedAt: string;
@@ -195,6 +218,7 @@ export function decodeConnection(raw: unknown): DecodeResult<Connection> {
       updatedAt,
     };
     if (features.promptCache === true && supportsPromptCache(connection)) connection.features.promptCache = true;
+    if (value.contextOptimization !== undefined) connection.contextOptimization = decodeContextOptimization(value.contextOptimization);
     if (value.inputTokenLimit !== undefined) {
       if (!isInputTokenLimit(value.inputTokenLimit)) throw new Error(`inputTokenLimit: expected a whole number from ${INPUT_TOKEN_LIMITS.min} to ${INPUT_TOKEN_LIMITS.max}.`);
       connection.inputTokenLimit = value.inputTokenLimit;

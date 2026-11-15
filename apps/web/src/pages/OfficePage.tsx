@@ -617,7 +617,7 @@ export function OfficePage({ t, language, agents, hostDisconnected = false, stat
         officeNames={officeNames} savedLooks={looks.saved}
         session={dialogSession} agent={dialogAgent} role={dialogAgent ? roleOf(dialogAgent) : ''} workspace={state.workspaces.find(item => item.id === dialogSession?.workspaceId)?.name}
         look={looks.appearances[dialog.characterId]} appearance={appearanceOf(dialog.characterId)} tab={dialog.tab} onTab={tab => dispatch({ type: 'setTab', tab })}
-        onClose={closeDialog} onOpenInChat={onOpenSession} onOpenMissions={onOpenMissions}
+        onClose={closeDialog} onOpenInChat={onOpenSession} onOpenMissions={onOpenMissions} onOpenSettings={onOpenSettings}
         onLocate={() => { dispatch({ type: 'closeDialog' }); locateAgent(dialog.characterId); }}
         onSelectCharacter={id => { const member = presences.find(agent => agent.id === id); if (member) {
           activateCharacterContext(member);

@@ -35,6 +35,13 @@ fn frame_verdicts_match_the_typescript_contract() {
             .cloned(),
     );
     assert_eq!(fixtures["contract"], "daemonFrame");
+    fixtures["cases"].as_array_mut().unwrap().extend(
+        fixture("skill-candidates.json")["cases"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .cloned(),
+    );
     let mut compared = Vec::new();
     for case in fixtures["cases"].as_array().unwrap() {
         let name = case["name"].as_str().unwrap();

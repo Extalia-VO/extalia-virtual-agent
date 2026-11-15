@@ -23,7 +23,7 @@ export function subscribeCameraActivity(target: EventTarget, visibilityTarget: E
   for (const [type, listener] of listeners) target.addEventListener(type, listener, { capture: true, passive: type === 'wheel' || type === 'pointermove' });
   visibilityTarget.addEventListener('visibilitychange', visibility);
   return () => {
-    for (const [type, listener] of listeners) target.removeEventListener(type, listener, true);
+    for (const [type, listener] of listeners) target.removeEventListener(type, listener, { capture: true });
     visibilityTarget.removeEventListener('visibilitychange', visibility);
     pointers.clear(); onPointerChange(false);
   };

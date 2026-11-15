@@ -107,6 +107,66 @@ describe('reviewed official CLI resumes', () => {
     await expect(f.dispatch()).rejects.toThrow('executable changed');
     expect(f.children).toHaveLength(0);
   });
+  it.each(['codex', 'claude'] as const)('retains one reviewed %s pairing across appended progress and repeated handovers after restart', async family => {
+    const f = await fixture(family);
+    f.setTarget({ ...f.target(), authorityRevision: 'stable-native-configuration',
+      ...(family === 'claude' ? { resumeModel: 'configured-route', resumeModelSource: 'profile' as const } : {}) });
+    const paired = await f.pair(), firstSnapshot = (await f.service.driverStatus('observed-one'))!;
+    const complete = async (index: number) => {
+      await tick(); const child = f.children[index]!;
+      child.send(family === 'codex' ? { type: 'thread.started', thread_id: 'original-native-id' }
+        : { type: 'system', subtype: 'init', session_id: 'original-native-id' });
+      child.send(family === 'codex' ? { type: 'turn.completed' }
+        : { type: 'result', subtype: 'success', is_error: false, session_id: 'original-native-id' });
+      f.setTarget({ ...f.target(), revision: `progress-${index + 1}`,
+        ...(family === 'claude' ? { model: `reported-response-model-${index + 1}` } : {}) });
+      child.close();
+    };
+    expect(await f.dispatch('transfer-one')).toEqual({ state: 'queued' });
+    await complete(0); await settled(f.service);
+    expect(await f.service.status('observed-one')).toMatchObject({ state: 'ready', pairingId: paired.pairingId, lastOutcome: 'completed' });
+    await expect(f.service.dispatch('observed-one', { action: 'start', text: 'Continue second handover.', operationId: 'stale-transfer' }, firstSnapshot)).rejects.toThrow();
+    expect(f.children).toHaveLength(1);
+    expect(await f.dispatch('transfer-two')).toEqual({ state: 'queued' });
+    await complete(1); await settled(f.service); await f.service.close();
+    const restarted = new ObservedCliResumeService(f.options);
+    expect(await restarted.status('observed-one')).toMatchObject({ state: 'ready', pairingId: paired.pairingId, lastOutcome: 'completed' });
+    expect(await restarted.dispatch('observed-one', { action: 'start', text: 'Continue exactly where work stopped.', operationId: 'transfer-two' }, firstSnapshot)).toEqual({ state: 'resolved' });
+    expect(await restarted.dispatch('observed-one', { action: 'start', text: 'Continue third handover.', operationId: 'transfer-three' }, (await restarted.driverStatus('observed-one'))!)).toEqual({ state: 'queued' });
+    await complete(2); await settled(restarted);
+    expect(await restarted.status('observed-one')).toMatchObject({ state: 'ready', pairingId: paired.pairingId, lastOutcome: 'completed' });
+    expect(f.spawnMock.mock.calls.filter(call => call[1].includes('--version'))).toHaveLength(1);
+    expect(f.children).toHaveLength(3); await restarted.close();
+  });
+  it('still refuses changed pairing authority and a genuinely active source after its own continuation closes', async () => {
+    const f = await fixture(); f.setTarget({ ...f.target(), authorityRevision: 'config-one' }); await f.pair();
+    await f.dispatch(); await tick();
+    const child = f.children[0]!; child.send({ type: 'thread.started', thread_id: 'original-native-id' }); child.send({ type: 'turn.completed' });
+    f.setTarget({ ...f.target(), revision: 'appended-progress', idle: false }); child.close(); await settled(f.service);
+    expect(await f.service.status('observed-one')).toMatchObject({ state: 'unavailable', lastOutcome: 'completed' });
+    expect(await f.service.driverStatus('observed-one')).toBeUndefined();
+    f.setTarget({ ...f.target(), idle: true }); expect(await f.service.status('observed-one')).toMatchObject({ state: 'ready' });
+    f.setTarget({ ...f.target(), authorityRevision: 'config-two' });
+    expect(await f.service.status('observed-one')).toMatchObject({ state: 'unavailable' });
+    await expect(f.dispatch('changed-configuration')).rejects.toThrow(); expect(f.children).toHaveLength(1); await f.service.close();
+  });
+  it('requires one explicit review to upgrade a legacy pairing before accepting ordinary new progress', async () => {
+    const f = await fixture(); await f.pair();
+    f.setTarget({ ...f.target(), revision: 'later-progress', authorityRevision: 'stable-configuration' });
+    expect(await f.service.status('observed-one')).toMatchObject({ state: 'unavailable' });
+    const refreshed = await f.pair();
+    f.setTarget({ ...f.target(), revision: 'even-later-progress' });
+    expect(await f.service.status('observed-one')).toMatchObject({ state: 'ready', pairingId: refreshed.pairingId });
+    expect(f.children).toHaveLength(0); await f.service.close();
+  });
+  it('refuses source mutation during archive preparation despite unchanged pairing authority', async () => {
+    const f = await fixture(); f.setTarget({ ...f.target(), authorityRevision: 'stable-configuration' }); await f.pair();
+    f.options.archiveCommand = async () => {
+      f.setTarget({ ...f.target(), revision: 'new-progress-before-spawn' }); return { command: f.executable, args: ['archive-reader'] };
+    };
+    await expect(f.dispatch()).rejects.toThrow('source changed before submission');
+    expect(f.children).toHaveLength(0); await f.service.close();
+  });
   it('records positive failure before effect and never exposes raw spawn errors', async () => {
     const f = await fixture(); await f.pair(); f.failSpawn();
     await expect(f.dispatch()).rejects.toThrow('could not be started');

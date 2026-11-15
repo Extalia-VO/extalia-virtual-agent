@@ -205,12 +205,15 @@ export function App({ platform }: { platform: Platform }) {
   const update = (next: Preferences) => { setPreferences(next); savePreferences(next); };
   // With an agent host, preferences follow the shared Extalia profile (Web and Desktop); localStorage mirrors it.
   useProfileSync(hostState ? agents : undefined, preferences, update, hostState ? JSON.stringify([hostState.dataDirectory, hostState.host.instanceId]) : undefined);
-  // A conversation continued from another agent opens in Chat.
+  // Open the destination in its actual managed or observed surface after refreshing ownership.
   const continued = {
     onContinued: (sessionId: string, workspaceId: string) => {
-      agents?.getState().then(host.apply, () => undefined);
-      setSelection({ workspaceId, sessionId });
-      setPage('chat');
+      void agents?.getState().then(next => {
+        host.apply(next);
+        const destination = next.sessions.find(session => session.id === sessionId);
+        setSelection({ workspaceId: destination?.workspaceId ?? workspaceId, sessionId });
+        setPage(destination?.control === 'observed' ? 'observe' : 'chat');
+      }, () => undefined);
     },
     onOpenSettings: () => openSettings(hostState?.connections.length ? 'workspaces' : 'connections'),
   };
@@ -295,6 +298,7 @@ export function App({ platform }: { platform: Platform }) {
             )}
             {activePage === 'chat' && agents && hostState && (
               <ChatPage t={t} language={preferences.language} agents={agents} picker={hostState.host.kind === 'desktop' ? platform.capabilities.filesystem : undefined} state={hostState} onState={host.apply}
+                onOpenSession={session => { setSelection({ workspaceId: session.workspaceId, sessionId: session.id }); setPage(session.control === 'observed' ? 'observe' : 'chat'); }}
                 onLearningTarget={setChatLearningTarget}
                 selection={chatSelection} onSelect={setSelection} onOpenSettings={() => openSettings(hostState?.connections.length ? 'workspaces' : 'connections')} onReviewSkills={() => openSkills()} onOpenKnowledge={() => setPage('knowledge')} />
             )}

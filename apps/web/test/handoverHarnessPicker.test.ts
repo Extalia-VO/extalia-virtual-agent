@@ -2,17 +2,17 @@ import type { AgentHostApi, HandoverDestinationCreateReceipt, HandoverHarnessInv
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
-import { handoverHarnessCards, handoverHarnessInventoryCards, HandoverHarnessController, SessionHandoverDialogView, type SessionHandoverDialogViewProps } from '../src/chat/SessionHandoverDialog';
+import { handoverDestinationSessions, handoverHarnessCards, handoverHarnessInventoryCards, HandoverHarnessController, SessionHandoverDialogView, type SessionHandoverDialogViewProps } from '../src/chat/SessionHandoverDialog';
 import { MESSAGES } from '../src/i18n';
 
 const source = { id: 'source', workspaceId: 'work-a', control: 'observed', title: 'Current work', observation: { sourceId: 'codex', nativeSessionId: 'native-source' } } as SessionSummary;
 const observed = (id: string, sourceId: string, workspaceId = 'work-a') => ({ ...source, id, workspaceId, title: id, observation: { sourceId, nativeSessionId: `native-${id}` } }) as SessionSummary;
-const hostState = { sessions: [source, observed('claude-current', 'claude-code'), observed('gemini-other-workspace', 'gemini-cli', 'work-b')], connections: [{ id: 'native-connection', runtime: 'extalia-native', credentialStatus: 'ok', preset: 'kiro' }], workspaces: [] } as unknown as HostState;
+const hostState = { sessions: [source, observed('claude-current', 'claude-code'), observed('gemini-other-workspace', 'gemini-cli', 'work-b')], connections: [{ id: 'native-connection', runtime: 'extalia-native', credentialStatus: 'ok', preset: 'kiro' }], workspaces: [{ id: 'work-a', name: 'Example project', providerProfileId: 'native-connection' }] } as unknown as HostState;
 function props(language: 'en' | 'id' = 'en'): SessionHandoverDialogViewProps {
   return { t: MESSAGES[language].sessionHandover, state: { notes: { goal: 'Continue work', decisions: '', completed: '', pending: '', verification: '', risks: '' }, notesEdited: false, copied: false }, session: source, supported: true,
     kind: 'observed', onKind: vi.fn(), connectionId: '', connections: [], onConnection: vi.fn(), model: '', onModel: vi.fn(), effort: '', onEffort: vi.fn(),
     observedId: 'claude-current', observedSessions: [], onObserved: vi.fn(), routeId: '', routes: [], onRoute: vi.fn(), routeBusy: false, onRefreshRoutes: vi.fn(),
-    manualLabel: '', onManualLabel: vi.fn(), onNote: vi.fn(), confirmed: false, onConfirm: vi.fn(), canReview: false, onReview: vi.fn(), onApply: vi.fn(), onEdit: vi.fn(), onCopy: vi.fn(), onRead: vi.fn(), onClose: vi.fn(),
+    manualLabel: '', onManualLabel: vi.fn(), onManualFallback: vi.fn(), onNote: vi.fn(), confirmed: false, onConfirm: vi.fn(), canReview: false, onReview: vi.fn(), onApply: vi.fn(), onEdit: vi.fn(), onCopy: vi.fn(), onRead: vi.fn(), onClose: vi.fn(),
     harnesses: handoverHarnessCards(hostState, source, MESSAGES[language].sessionHandover.harness.names), harnessId: 'claude', onHarness: vi.fn(), harnessSessions: [{ value: 'claude-current', label: 'Existing Claude conversation' }] };
 }
 
@@ -63,6 +63,34 @@ describe('handover inventory and explicit destination creation ownership', () =>
     expect(h.owner.value.createdSession?.id).toBe(h.created.id); expect(h.host.getState).toHaveBeenCalledOnce();
     await h.owner.create('antigravity'); expect(h.host.createHandoverDestination).toHaveBeenCalledOnce();
   });
+  it('offers a newly acknowledged destination immediately while the passive inventory still predates creation', async () => {
+    const h = controller(); await h.owner.load(); await h.owner.create('antigravity');
+    expect(h.owner.value.inventory?.harnesses.find(item => item.id === 'antigravity')?.sessionIds).toEqual([]);
+    expect(handoverDestinationSessions(hostState, source, h.owner.value).map(item => item.id)).toContain(h.created.id);
+    expect(handoverDestinationSessions(hostState, source, { ...h.owner.value, receipt: { ...h.owner.value.receipt!, state: 'unknown' } }).map(item => item.id)).not.toContain(h.created.id);
+    expect(handoverDestinationSessions({ ...hostState, sessions: [...hostState.sessions, { ...h.created, workspaceId: 'other-workspace' }] }, source, h.owner.value).map(item => item.id)).not.toContain(h.created.id);
+  });
+  it('keeps Hermes gateway verification passive until the user explicitly requests its advertised creation', async () => {
+    const h = controller(), saved: HandoverHarnessInventory = { ...inventory(), harnesses: [{ id: 'hermes', sourceIds: ['hermes'], evidence: ['executable'], existing: 'unsupported', create: 'setup-required', creationProfile: 'research-profile', sessionIds: [] }] };
+    h.host.handoverHarnesses.mockResolvedValue(saved);
+    await h.owner.load(); await h.owner.load();
+    expect(h.host.createHandoverDestination).not.toHaveBeenCalled();
+    const cards = handoverHarnessInventoryCards(saved, hostState, source, MESSAGES.en.sessionHandover.harness);
+    expect(cards).toMatchObject([{ id: 'hermes', canCreate: true, createNeedsSetup: true, creationProfile: 'research-profile' }]);
+    await h.owner.create('hermes');
+    expect(h.host.createHandoverDestination).toHaveBeenCalledExactlyOnceWith(source.id, { harnessId: 'hermes', revision: saved.revision, operationId: expect.any(String) });
+  });
+  it('inspects an uncertain Hermes operation without inventing a native ID or starting a fresh operation', async () => {
+    const h = controller(), saved: HandoverHarnessInventory = { ...inventory(), pendingCreation: { harnessId: 'hermes', operationId: 'gateway-lost-ack', state: 'unknown' } };
+    saved.harnesses.push({ id: 'hermes', sourceIds: ['hermes'], evidence: ['executable'], existing: 'unsupported', create: 'unavailable', sessionIds: [] });
+    h.host.handoverHarnesses.mockResolvedValue(saved);
+    h.host.createHandoverDestination.mockImplementationOnce(async (_id, input) => ({ operationId: input.operationId, harnessId: input.harnessId, state: 'unknown', retryable: false }));
+    await h.owner.load(); await h.owner.create('hermes');
+    expect(h.host.createHandoverDestination).not.toHaveBeenCalled();
+    await h.owner.inspectPending();
+    expect(h.host.createHandoverDestination).toHaveBeenCalledExactlyOnceWith(source.id, { harnessId: 'hermes', revision: saved.revision, operationId: 'gateway-lost-ack' });
+    expect(h.owner.value.receipt?.state).toBe('unknown'); expect(h.owner.value.createdSession).toBeUndefined();
+  });
   it('deduplicates entered creation and ignores late source results', async () => {
     const h = controller(), pending = deferred<HandoverDestinationCreateReceipt>(); await h.owner.load();
     h.host.createHandoverDestination.mockReturnValueOnce(pending.promise); const creation = h.owner.create('antigravity'); await h.owner.create('antigravity');
@@ -107,24 +135,60 @@ describe('handover harness selection', () => {
     const cards = handoverHarnessCards(state, source, MESSAGES.en.sessionHandover.harness.names);
     expect(cards.every(card => !card.canCreate)).toBe(true); expect(cards.find(card => card.id === 'claude')?.createConnectionId).toBeUndefined();
   });
-  it('does not mistake an optional Observe curator for Native execution permission', () => {
-    const state = { ...hostState, workspaces: [{ id: source.workspaceId, mode: 'observe', providerProfileId: 'native-connection' }] } as HostState;
-    expect(handoverHarnessCards(state, source, MESSAGES.en.sessionHandover.harness.names)[0]!.canCreate).toBeUndefined();
-    expect(handoverHarnessInventoryCards(inventory(), state, source, MESSAGES.en.sessionHandover.harness).find(card => card.id === 'extalia')?.canCreate).toBe(false);
+  it('leaves detected unavailable harnesses selectable with a visible manual fallback and no fabricated creation', () => {
+    const p = props(); p.harnesses = [{ id: 'hermes', label: 'Hermes', sessionIds: [], existing: 'unsupported', canCreate: false }]; p.harnessId = 'hermes'; p.observedId = '';
+    const html = renderToStaticMarkup(createElement(SessionHandoverDialogView, p));
+    expect(html).toMatch(/<input[^>]*aria-label="Hermes"[^>]*value="hermes"/);
+    expect(html).not.toMatch(/<input[^>]*aria-label="Hermes"[^>]*disabled/);
+    expect(html).toContain(p.t.flow.manualOnly); expect(html).toContain(p.t.flow.manualAction);
+    expect(html).not.toContain(`>${p.t.harness!.create}</button>`);
   });
-  it.each(['en', 'id'] as const)('keeps technical setup out of the default preset-card layout in %s', language => {
+  it('offers a saved Native connection in Observe while disclosing that workspace enablement needs consent', () => {
+    const state = { ...hostState, workspaces: [{ id: source.workspaceId, mode: 'observe', providerProfileId: 'native-connection' }] } as HostState;
+    expect(handoverHarnessCards(state, source, MESSAGES.en.sessionHandover.harness.names)[0]!.createConnectionId).toBe('native-connection');
+    expect(handoverHarnessInventoryCards(inventory(), state, source, MESSAGES.en.sessionHandover.harness).find(card => card.id === 'extalia')?.canCreate).toBe(true);
+    const p = { ...props(), kind: 'native' as const, harnessId: 'extalia', nativeNeedsEnablement: true, nativeEnabled: false };
+    const html = renderToStaticMarkup(createElement(SessionHandoverDialogView, p));
+    expect(html).toContain(p.t.flow.enableWorkspace); expect(html).toContain(p.t.flow.enableWorkspaceHint);
+    expect(html).toMatch(/<input type="checkbox"\/>/);
+  });
+  it('keeps connection setup reachable for Native even when saved connections already exist', () => {
+    const p = { ...props(), kind: 'native' as const, harnessId: 'extalia', connections: [{ value: 'saved-but-unusable', label: 'Needs credentials' }], onOpenSettings: vi.fn() };
+    const html = renderToStaticMarkup(createElement(SessionHandoverDialogView, p));
+    expect(html).toContain(p.t.flow.openSettings);
+  });
+  it.each(['en', 'id'] as const)('makes setup, working notes and manual fallback available without Advanced in %s', language => {
     const p = props(language), html = renderToStaticMarkup(createElement(SessionHandoverDialogView, p));
     expect(html).toContain('preset-card provider-card handover-harness-card');
     expect(html).toContain('type="radio"'); expect(html).toMatch(/<input[^>]*checked=""[^>]*value="claude"/);
     expect(html).toContain(MESSAGES[language].sessionHandover.harness.title);
     expect(html).toContain('Existing Claude conversation'); expect(html).toContain('aria-expanded="false"');
-    expect(html).not.toContain(p.t.fields.goal); expect(html).not.toContain(p.t.refreshRoutes); expect(html).not.toContain(p.t.manualLabel);
+    expect(html).toContain(p.t.fields.goal); expect(html).toContain(p.t.refreshRoutes); expect(html).toContain(p.t.flow.manualAction);
+    expect(html).not.toContain(p.t.manualLabel);
     expect(html).not.toContain('<code>source</code>');
   });
-  it('shows pending setup in the compact flow while keeping the candidate native ID in Advanced', () => {
+  it('shows the pending setup inspection action directly while keeping its native ID in Advanced', () => {
     const p = props(); p.harnessState = { inventory: { ...inventory(), pendingCreation: { harnessId: 'antigravity', operationId: 'pending-original', nativeSessionId: 'candidate-native-private', state: 'unknown' } } };
     const html = renderToStaticMarkup(createElement(SessionHandoverDialogView, p));
-    expect(html).toContain(p.t.harness!.pendingCreation); expect(html).not.toContain('candidate-native-private'); expect(html).not.toContain(p.t.harness!.inspectPending);
+    expect(html).toContain(p.t.harness!.pendingCreation); expect(html).not.toContain('candidate-native-private'); expect(html).toContain(p.t.harness!.inspectPending);
+  });
+  it.each(['en', 'id'] as const)('shows the reviewed Hermes profile and explicit gateway check in %s', language => {
+    const p = props(language); p.harnesses = [{ id: 'hermes', label: 'Hermes', sessionIds: [], existing: 'unsupported', canCreate: true, createNeedsSetup: true, creationProfile: 'research-profile' }]; p.harnessId = 'hermes'; p.observedId = '';
+    const html = renderToStaticMarkup(createElement(SessionHandoverDialogView, p));
+    expect(html).toContain(p.t.flow.checkGatewayCreate); expect(html).toContain(p.t.flow.creationProfile); expect(html).toContain('research-profile');
+    expect(html).toContain(p.t.flow.needsSetup); expect(html).not.toContain(`>${p.t.harness!.create}</button>`);
+  });
+  it('keeps an existing ready Hermes conversation distinct from gateway setup for a new one', () => {
+    const p = props(); p.harnesses = [{ id: 'hermes', label: 'Hermes', sessionIds: ['hermes-current'], existing: 'ready', canCreate: true, createNeedsSetup: true, creationProfile: 'new-conversation-profile' }]; p.harnessId = 'hermes'; p.observedId = 'hermes-current';
+    p.harnessSessions = [{ value: 'hermes-current', label: 'Existing Hermes' }];
+    const html = renderToStaticMarkup(createElement(SessionHandoverDialogView, p));
+    expect(html).toContain(`class="preset-hint">${p.t.flow.ready}</span>`);
+    expect(html).not.toContain('new-conversation-profile'); expect(html).not.toContain(p.t.flow.checkGatewayCreate);
+  });
+  it('offers pending inspection even when the gateway has not acknowledged a native ID', () => {
+    const p = props(); p.harnessState = { inventory: { ...inventory(), pendingCreation: { harnessId: 'hermes', operationId: 'unacknowledged-create', state: 'unknown' } } };
+    const html = renderToStaticMarkup(createElement(SessionHandoverDialogView, p));
+    expect(html).toContain(p.t.harness!.inspectPending); expect(html).not.toContain(p.t.harness!.pendingNativeId); expect(html).not.toContain('undefined');
   });
   it('keeps an explicit Extalia Native destination selected and describes real new-session behavior', () => {
     const p = { ...props(), kind: 'native' as const, harnessId: 'extalia' }, html = renderToStaticMarkup(createElement(SessionHandoverDialogView, p));

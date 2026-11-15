@@ -1,4 +1,5 @@
 import type { AgentHostApi, ObservedMemoryEpisode, ObservedMemoryPage, ObservedMemorySearchResult, SessionSummary } from '@extalia/platform';
+import { GLOBAL_OBSERVE_WORKSPACE_ID } from '@extalia/platform';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
@@ -19,6 +20,36 @@ function render(value: ObservedMemoryViewState, language: 'en' | 'id' = 'en', su
 }
 
 describe('explicit observed work memory UI', () => {
+  it('routes explicit unbound observations to global memory and validates the returned global scope', async () => {
+    const h = harness(), globalEpisode = { ...episode(), scope: { ...episode().scope, workspaceId: GLOBAL_OBSERVE_WORKSPACE_ID } };
+    h.owner.bind(h.agents, { ...session, workspaceId: '', observation: { ...session.observation!, workspaceLinkState: 'unbound' } });
+    h.api.observedMemorySearch.mockResolvedValueOnce({ ...result(), hits: [{ sessionId: 'global-source', episode: globalEpisode, excerpt: 'Global report' }] });
+    h.owner.edit('parser'); await h.owner.search();
+    expect(h.api.observedMemorySearch).toHaveBeenCalledExactlyOnceWith(GLOBAL_OBSERVE_WORKSPACE_ID, { query: 'parser', limit: 8 });
+    h.api.observedMemoryRead.mockResolvedValueOnce({ ...page(), episode: globalEpisode });
+    await h.owner.read(globalEpisode.id);
+    expect(h.api.observedMemoryRead).toHaveBeenCalledWith(GLOBAL_OBSERVE_WORKSPACE_ID, expect.objectContaining({ sessionId: 'global-source' }));
+    expect(h.owner.value.page?.episode.scope.workspaceId).toBe(GLOBAL_OBSERVE_WORKSPACE_ID);
+  });
+  it.each(['invalid', 'ambiguous'] as const)('never substitutes global memory for an %s workspace link', async workspaceLinkState => {
+    const h = harness();
+    h.owner.bind(h.agents, { ...session, workspaceId: '', observation: { ...session.observation!, workspaceLinkState } });
+    h.owner.edit('parser'); await h.owner.search();
+    expect(h.api.observedMemorySearch).not.toHaveBeenCalled();
+  });
+  it('discards an in-flight global result if the source link becomes ambiguous without a new session ID', async () => {
+    const h = harness(), pending = deferred<ObservedMemorySearchResult>();
+    const unbound = { ...session, workspaceId: '', observation: { ...session.observation!, workspaceLinkState: 'unbound' as const } };
+    h.owner.bind(h.agents, unbound); h.owner.edit('parser');
+    h.api.observedMemorySearch.mockReturnValueOnce(pending.promise);
+    const searching = h.owner.search();
+    h.owner.bind(h.agents, { ...unbound, observation: { ...unbound.observation, workspaceLinkState: 'ambiguous' } });
+    pending.resolve({ ...result(), hits: [{ sessionId: 'global-source', episode: { ...episode(), scope: { ...episode().scope, workspaceId: GLOBAL_OBSERVE_WORKSPACE_ID } }, excerpt: 'Stale global report' }] });
+    await searching;
+    expect(h.owner.value.result).toBeUndefined(); expect(h.owner.value.query).toBe('');
+    h.owner.edit('parser'); await h.owner.search();
+    expect(h.api.observedMemorySearch).toHaveBeenCalledOnce();
+  });
   it('does no I/O on bind or query editing and searches only on an explicit valid query', async () => {
     const h = harness(); await h.owner.search(); h.owner.edit('   '); await h.owner.search();
     expect(h.api.observedMemorySearch).not.toHaveBeenCalled(); h.owner.edit('  parser decision  ');

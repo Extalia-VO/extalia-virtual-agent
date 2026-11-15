@@ -17,6 +17,7 @@
 //! Edge types come from a line label before the first `:` of the line, ignoring list
 //! markers, `**`/`__` and case: `Related:` → `related_to`, `Learned from:` →
 //! `learned_from`, `Depends on:` → `depends_on`, `Supersedes:` → `supersedes`,
+//! `Updates:` → `updates`, `Contradicts:` → `contradicts`,
 //! `Used by:` → `used_by` (`_`/`-` count as spaces, so `learned_from:` works too). Every
 //! link on such a line has that type; all other links are `links_to`.
 //!
@@ -33,6 +34,8 @@ pub enum EdgeType {
     LearnedFrom,
     DependsOn,
     Supersedes,
+    Updates,
+    Contradicts,
     UsedBy,
 }
 
@@ -44,6 +47,8 @@ impl EdgeType {
             Self::LearnedFrom => "learned_from",
             Self::DependsOn => "depends_on",
             Self::Supersedes => "supersedes",
+            Self::Updates => "updates",
+            Self::Contradicts => "contradicts",
             Self::UsedBy => "used_by",
         }
     }
@@ -55,6 +60,8 @@ impl EdgeType {
             "learned_from" => Self::LearnedFrom,
             "depends_on" => Self::DependsOn,
             "supersedes" => Self::Supersedes,
+            "updates" => Self::Updates,
+            "contradicts" => Self::Contradicts,
             "used_by" => Self::UsedBy,
             _ => return None,
         })
@@ -188,6 +195,8 @@ fn line_label(line: &str) -> Option<EdgeType> {
         "learned from" => EdgeType::LearnedFrom,
         "depends on" => EdgeType::DependsOn,
         "supersedes" => EdgeType::Supersedes,
+        "updates" => EdgeType::Updates,
+        "contradicts" => EdgeType::Contradicts,
         "used by" => EdgeType::UsedBy,
         _ => return None,
     })

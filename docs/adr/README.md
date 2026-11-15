@@ -109,3 +109,9 @@ Later decisions amend earlier records without deleting their historical evidence
 | [0084](0084-project-session-browser.md) | Source-project session browsing | Implemented and locally verified through v0.4.301 |
 | [0085](0085-native-session-project-roots.md) | Registered project folders for saved Native sessions | Accepted |
 | [0086](0086-native-user-skill-learning-sources.md) | Native user skill learning and bounded source reads | Accepted |
+| [0087](0087-bounded-self-learning-and-artifact-receipts.md) | Bounded Native/Observe learning, independent artifact confirmations and partial results | Accepted for implementation; final integration validation pending |
+| [0088](0088-grounded-knowledge-and-skill-refinement.md) | Grounded wikilinks, correction-aware recall and scoped revision-pinned skill refinement | Implemented locally; live-provider and release acceptance remain separate |
+| [0089](0089-operational-work-memory-and-context-reuse.md) | Durable operational memory, per-request recall, learning reuse and recoverable Native tool-context compaction | Implemented locally; live-provider cost/quality and platform acceptance remain separate |
+| [0090](0090-repeatable-observe-handover.md) | Pinned active checkpoints, repeatable lineage, stable CLI pairing and capability-bound Hermes creation/resume | Implemented for local review; live vendor and installed Desktop acceptance remain separate |
+| [0091](0091-context-optimization-and-learning-recovery.md) | Scoped memory admission, optional Caveman Engine and durable learning recovery without uncertain-effect replay | Implemented v0.4.330; focused local verification, installed-engine/platform acceptance separate |
+| [0092](0092-durable-learning-admission.md) | Durable Native/Observe queue before idle, exact source admission and restart-safe snooze | Implemented v0.4.331; focused local verification, CI fixtures deferred |

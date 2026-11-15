@@ -1,0 +1,361 @@
+{
+  "cases": [
+    {
+      "name": "scoped candidate review request",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.reviewRead",
+        "params": {
+          "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "path": "SKILL.md",
+          "profileId": "profile-one",
+          "workspaceId": "w_example"
+        }
+      }
+    },
+    {
+      "name": "untrusted candidate review response",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.reviewRead",
+        "result": {
+          "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageId": "review-checklist",
+          "path": "SKILL.md",
+          "size": 9,
+          "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "content": "Untrusted",
+          "skillMdSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "untrusted": true,
+          "reviewReceipt": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "provenance": {
+            "profileId": "profile-one",
+            "workspaceId": "w_example",
+            "sessionId": "s_original",
+            "promptSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+          },
+          "referencePaths": [
+            "references/checks.md"
+          ]
+        }
+      }
+    },
+    {
+      "name": "generated refinement carries complete atomic base",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.import",
+        "params": {
+          "origin": "generated",
+          "path": "proposal-fixture",
+          "sourceRef": "prompt:s_current:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "expectedBaseRevisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "expectedBaseSkillSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "learningProfileId": "profile-one",
+          "learningWorkspaceId": "w_example"
+        }
+      }
+    },
+    {
+      "name": "candidate review needs workspace scope",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.reviewRead",
+        "params": {
+          "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "path": "SKILL.md",
+          "profileId": "profile-one"
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "candidate review cannot request activation",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.reviewRead",
+        "params": {
+          "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "path": "SKILL.md",
+          "profileId": "profile-one",
+          "workspaceId": "w_example",
+          "activate": true
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "candidate review rejects path-shaped profile",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.reviewRead",
+        "params": {
+          "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "path": "SKILL.md",
+          "profileId": "../profile-two",
+          "workspaceId": "w_example"
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "candidate response cannot claim trusted instructions",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.reviewRead",
+        "result": {
+          "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageId": "review-checklist",
+          "path": "SKILL.md",
+          "size": 9,
+          "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "content": "Untrusted",
+          "skillMdSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "untrusted": false,
+          "reviewReceipt": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "provenance": {
+            "profileId": "profile-one",
+            "workspaceId": "w_example",
+            "sessionId": "s_original",
+            "promptSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+          },
+          "referencePaths": [
+            "references/checks.md"
+          ]
+        }
+      },
+      "code": "invalid_frame"
+    },
+    {
+      "name": "candidate response requires read receipt",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.reviewRead",
+        "result": {
+          "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageId": "review-checklist",
+          "path": "SKILL.md",
+          "size": 9,
+          "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "content": "Untrusted",
+          "skillMdSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "untrusted": true,
+          "provenance": {
+            "profileId": "profile-one",
+            "workspaceId": "w_example",
+            "sessionId": "s_original",
+            "promptSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+          },
+          "referencePaths": [
+            "references/checks.md"
+          ]
+        }
+      },
+      "code": "invalid_frame"
+    },
+    {
+      "name": "candidate response rejects duplicate reference paths",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.reviewRead",
+        "result": {
+          "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageId": "review-checklist",
+          "path": "SKILL.md",
+          "size": 9,
+          "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "content": "Untrusted",
+          "skillMdSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "untrusted": true,
+          "reviewReceipt": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "provenance": {
+            "profileId": "profile-one",
+            "workspaceId": "w_example",
+            "sessionId": "s_original",
+            "promptSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+          },
+          "referencePaths": [
+            "references/checks.md",
+            "references/checks.md"
+          ]
+        }
+      },
+      "code": "invalid_frame"
+    },
+    {
+      "name": "candidate response bounds original source identity",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.reviewRead",
+        "result": {
+          "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageId": "review-checklist",
+          "path": "SKILL.md",
+          "size": 9,
+          "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "content": "Untrusted",
+          "skillMdSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "untrusted": true,
+          "reviewReceipt": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "provenance": {
+            "profileId": "profile-one",
+            "workspaceId": "w_example",
+            "sessionId": "sssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss",
+            "promptSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+          },
+          "referencePaths": [
+            "references/checks.md"
+          ]
+        }
+      },
+      "code": "invalid_frame"
+    },
+    {
+      "name": "refinement rejects missing expectedBaseRevisionId",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.import",
+        "params": {
+          "origin": "generated",
+          "path": "proposal-fixture",
+          "sourceRef": "prompt:s_current:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "expectedBaseSkillSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "learningProfileId": "profile-one",
+          "learningWorkspaceId": "w_example"
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "refinement rejects missing expectedBaseSkillSha256",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.import",
+        "params": {
+          "origin": "generated",
+          "path": "proposal-fixture",
+          "sourceRef": "prompt:s_current:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "expectedBaseRevisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "learningProfileId": "profile-one",
+          "learningWorkspaceId": "w_example"
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "refinement rejects missing learningProfileId",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.import",
+        "params": {
+          "origin": "generated",
+          "path": "proposal-fixture",
+          "sourceRef": "prompt:s_current:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "expectedBaseRevisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "expectedBaseSkillSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "learningWorkspaceId": "w_example"
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "refinement rejects missing learningWorkspaceId",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.import",
+        "params": {
+          "origin": "generated",
+          "path": "proposal-fixture",
+          "sourceRef": "prompt:s_current:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "expectedBaseRevisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "expectedBaseSkillSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "learningProfileId": "profile-one"
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "manual imports cannot claim generated refinement",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.import",
+        "params": {
+          "origin": "user",
+          "path": "proposal-fixture",
+          "sourceRef": "prompt:s_current:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "expectedBaseRevisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "expectedBaseSkillSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "learningProfileId": "profile-one",
+          "learningWorkspaceId": "w_example"
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "model read receipt is not a raw registry authority field",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.import",
+        "params": {
+          "origin": "generated",
+          "path": "proposal-fixture",
+          "sourceRef": "prompt:s_current:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "expectedBaseRevisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "expectedBaseSkillSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "learningProfileId": "profile-one",
+          "learningWorkspaceId": "w_example",
+          "baseReadReceipt": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        }
+      },
+      "code": "invalid_request"
+    }
+  ]
+}

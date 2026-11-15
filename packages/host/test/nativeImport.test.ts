@@ -11,12 +11,12 @@ const T1 = '2026-10-08T00:00:01.000Z';
 const jsonl = (...values: unknown[]) => values.map(value => JSON.stringify(value)).join('\n');
 
 /** Synthesized native histories in a temporary home; nothing real is read. */
-async function fakeHome(root: string) {
+async function fakeHome(root: string, codexProject = '/projects/site') {
   const home = path.join(root, 'home');
   const codex = path.join(home, '.codex', 'sessions', '2026', '10', '08');
   await mkdir(codex, { recursive: true });
   await writeFile(path.join(codex, 'rollout-a.jsonl'), jsonl(
-    { type: 'session_meta', payload: { id: 'codex-1', cwd: '/projects/site', timestamp: T } },
+    { type: 'session_meta', payload: { id: 'codex-1', cwd: codexProject, timestamp: T } },
     { timestamp: T, type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Add a footer' }] } },
     { timestamp: T1, type: 'response_item', payload: { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'Footer added.' }] } },
   ));
@@ -108,9 +108,10 @@ describe('native history import through the host', () => {
 
   it('continues an observed Codex session in Extalia without touching the transcript', async () => {
     const root = await temp();
-    const home = await fakeHome(root);
     const project = path.join(root, 'site');
     await mkdir(project);
+    // Serialize the path as JSON, including Windows backslashes, when creating the fixture.
+    const home = await fakeHome(root, project);
     const rollout = path.join(home, '.codex', 'sessions', '2026', '10', '08', 'rollout-a.jsonl');
     const before = await readFile(rollout, 'utf8');
     const runtime = await createAgentHost({ kind: 'bridge', version: 'test', dataDirectory: path.join(root, 'data'), importHome: home, env: { EXTALIA_SECRET_STORE: 'memory' }, observationIntervalMs: 60_000 });
@@ -126,8 +127,11 @@ describe('native history import through the host', () => {
       const session = await host.continueSession({ kind: 'observed', id: observed.id }, state.workspaces[0]!.id);
       expect(session).toMatchObject({ control: 'managed', title: 'Add a footer', continuedFrom: { sourceId: 'codex' } });
       const events = await host.sessionEvents(session.id);
-      expect(events.filter(event => event.source.channel === 'import').map(event => [event.body.type, (event.body as { text?: string }).text]))
-        .toEqual([['prompt.submitted', 'Add a footer'], ['model.completed', 'Footer added.']]);
+      const imported = events.filter(event => event.source.channel === 'import');
+      expect(imported).toHaveLength(1);
+      expect(imported[0]?.body).toMatchObject({ type: 'prompt.submitted', text: expect.stringContaining('Add a footer') });
+      expect(imported[0]?.body).toMatchObject({ text: expect.stringContaining('Footer added.') });
+      expect((await host.sessionContinuity!(session.id)).canonicalId).toBe((await host.sessionContinuity!(observed.id)).canonicalId);
       expect((await host.getState()).sessions.some(item => item.id === observed.id && item.control === 'observed')).toBe(true);
       expect(await readFile(rollout, 'utf8')).toBe(before);
     } finally { await runtime.close(); }

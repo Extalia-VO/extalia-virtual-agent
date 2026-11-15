@@ -31,6 +31,7 @@ const PRIVATE_DIRECTORY_MODE: u32 = 0o700;
 const SCHEMA: &[&str] = &[
     include_str!("schema/0001_index.sql"),
     include_str!("schema/0002_profile_alias.sql"),
+    include_str!("schema/0003_learning_relations.sql"),
 ];
 
 /// Location of a profile's index.
@@ -154,6 +155,17 @@ impl KnowledgeStore {
 
     pub fn profile(&self) -> &ProfileId {
         &self.profile
+    }
+
+    /// A parser change must re-read unchanged notes too; their file hashes alone cannot
+    /// reveal newly recognized edge labels. Persisted until the next successful sync.
+    pub fn parser_is_current(&self) -> Result<bool, KnowledgeError> {
+        let revision: u32 = self.conn.query_row(
+            "SELECT parser_revision FROM knowledge_index_state WHERE profile_id = ?1",
+            [self.profile.as_str()],
+            |row| row.get(0),
+        )?;
+        Ok(revision == 1)
     }
 
     /// The ACL identity used by the last successful sync, not a caller-selected scope.
