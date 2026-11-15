@@ -1,11 +1,31 @@
 # Reliable self-learning for Knowledge and Skills
 
-Status: implemented for v0.4.326; CI and live-provider acceptance are tracked
+Status: implemented through v0.4.330; CI and live-provider acceptance are tracked
 separately. Reviewed against upstream Hermes on 2026-11-14. The acceptance record
 below distinguishes source inspection, deterministic tests and live-provider
 work, including the earlier local socket-fixture restriction.
 
 ## Goal
+
+### v0.4.330 strengthening
+
+[ADR 0091](../adr/0091-context-optimization-and-learning-recovery.md) adds durable
+curator checkpoints and explicit recovery through the existing profile-aware
+queue. Known-unentered steps resume with retained budgets; entered effects with
+missing completion remain uncertain. Ready findings revalidate current Knowledge
+and reconcile note/skill receipts separately. A temporarily unavailable note
+destination does not block independent skills or reconciliation of saved notes.
+Retained refinements require fresh source review.
+
+Context preparation now supports English/Indonesian continuation recall,
+progressive topic queries, fresh amendment/conflict previews and per-source
+admission receipts. Connection settings select local Native tool projection,
+an explicit Caveman Engine executable, or off, independently for each worker.
+These additions preserve existing consent, candidate activation and source
+authority. CI fixture repairs are deferred by the owner; live task quality,
+installed Caveman and platform acceptance remain separate from local tests.
+
+### Product goal
 
 Extalia should autonomously preserve useful knowledge and create reusable skill
 candidates after eligible work, using the saved profile policy. This must work

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdtemp, readdir, readFile, rm, symlink, writeFile, open } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile, open } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -12,7 +12,7 @@ const scope = { profileId: 'profile-fixture', workspaceId: 'workspace-fixture', 
 const digest = (text: string) => createHash('sha256').update(text).digest('hex');
 const messages: ModelMessage[] = [
   { role: 'user', text: 'Keep duplicate order unchanged.' },
-  { role: 'assistant', text: 'Inspect the existing behavior.', toolCalls: [{ id: 'source', name: 'read_file', input: { path: 'parser.ts' } }] },
+  { role: 'assistant', text: 'Inspect the existing behavior.', toolCalls: [{ id: 'source', name: 'read_file', input: { path: 'parser.log' } }] },
   { role: 'tool', results: [{ toolCallId: 'source', name: 'read_file', isError: false,
     content: `Parser start.\n${'padding '.repeat(3000)}\nDecision: retain first duplicate; batch limit 73.\n${'padding '.repeat(3000)}\nPending: test empty input.` }] },
 ];
@@ -53,12 +53,12 @@ describe.skipIf(!NATIVE_CONTEXT_ARCHIVE_SUPPORTED)('durable Native context archi
     const f = await fixture({ persist: async work => { persisted++; return work(); } });
     const first = await f.archive.archive({ messages, signal: f.signal });
     const initial = await files(f.options.directory);
-    expect(initial).toHaveLength(4);
+    expect(initial).toHaveLength(2);
     expect(await f.archive.archive({ messages, signal: f.signal })).toEqual(first);
     expect(await files(f.options.directory)).toEqual(initial);
     const extended = [...messages, { role: 'assistant' as const, text: 'Pending test remains unresolved.', toolCalls: [] }];
     await f.archive.archive({ messages: extended, signal: f.signal });
-    expect(await files(f.options.directory)).toHaveLength(6);
+    expect(await files(f.options.directory)).toHaveLength(3);
     expect(persisted).toBe(3);
     const restart = new NativeContextArchive(f.options);
     const result = messages[2]!;
@@ -96,7 +96,7 @@ describe.skipIf(!NATIVE_CONTEXT_ARCHIVE_SUPPORTED)('durable Native context archi
     const f = await fixture();
     const receipt = await f.archive.archive({ messages, signal: f.signal });
     const all = await files(f.options.directory);
-    const chunk = all.find(file => file.endsWith(`message-${digest(JSON.stringify(messages[2]))}.json`))!;
+    const chunk = all.find(file => path.basename(file).startsWith('message-'))!;
     await writeFile(chunk, JSON.stringify({ role: 'tool', results: [{ content: 'forged' }] }));
     await expect(f.archive.read({ reference: receipt.reference, messageIndex: 2, resultIndex: 0 }, f.signal)).rejects.toThrow();
     await expect(f.archive.archive({ messages, signal: f.signal })).rejects.toThrow();
@@ -112,16 +112,57 @@ describe.skipIf(!NATIVE_CONTEXT_ARCHIVE_SUPPORTED)('durable Native context archi
     expect(await readFile(outside, 'utf8')).toBe('outside evidence');
   });
 
-  it('masks credentials before paging and drops attachment bytes from durable history', async () => {
+  it('masks credentials before storage and paging, and omits all non-tool history', async () => {
     const f = await fixture();
     const secret = `sk-${'a'.repeat(40)}`;
-    const source: ModelMessage[] = [{ role: 'user', text: 'Inspect safely.', images: [{ mimeType: 'image/png', data: 'PRIVATE_ATTACHMENT_BYTES' }] },
-      { role: 'tool', results: [{ toolCallId: 'result', name: 'read_file', content: `prefix ${secret} suffix`, isError: true }] }];
+    const source: ModelMessage[] = [{ role: 'user', text: 'PRIVATE_USER_INSTRUCTIONS', images: [{ mimeType: 'image/png', data: 'PRIVATE_ATTACHMENT_BYTES' }] },
+      { role: 'tool', results: [{ toolCallId: 'result', name: 'read_file', content: `prefix ${secret} suffix`, isError: true }] },
+      { role: 'assistant', text: 'PRIVATE_ASSISTANT_TEXT', toolCalls: [{ id: 'next', name: 'tool', input: { value: 'PRIVATE_TOOL_ARGUMENT' } }],
+        native: { api: 'anthropic-messages', content: [{ type: 'thinking', thinking: 'PRIVATE_NATIVE_BLOCK', signature: 'PRIVATE_NATIVE_SIGNATURE' }] } }];
     const receipt = await f.archive.archive({ messages: source, signal: f.signal });
     const page = await f.archive.read({ reference: receipt.reference, messageIndex: 1, resultIndex: 0 }, f.signal);
     expect(page.redacted).toBe(true); expect(page.text).not.toContain(secret);
     expect(page.isError).toBe(true);
-    for (const file of await files(f.options.directory)) expect(await readFile(file, 'utf8')).not.toContain('PRIVATE_ATTACHMENT_BYTES');
+    expect(page).toMatchObject({ storageVersion: 2, evidence: 'sanitized-tool-report', trust: 'tool-report-not-verified-fact', sourceCharacters: `prefix ${secret} suffix`.length });
+    expect(await f.archive.read({ reference: receipt.reference, messageIndex: 1, resultIndex: 0, offset: 8, limit: 4 }, f.signal)).toMatchObject({ text: 'reda' });
+    for (const file of await files(f.options.directory)) {
+      const stored = await readFile(file, 'utf8');
+      expect(stored).not.toContain(secret);
+      expect(stored).not.toMatch(/PRIVATE_(?:USER|ASSISTANT|TOOL|NATIVE|ATTACHMENT)/u);
+    }
+  });
+
+  it('stores only selected result slots while retaining immutable message and result coordinates', async () => {
+    const f = await fixture();
+    const source: ModelMessage[] = [...messages, { role: 'tool', results: [
+      { toolCallId: 'unselected', name: 'skill_read', content: 'EXACT_SKILL_NOT_ARCHIVED', isError: false },
+      { toolCallId: 'selected', name: 'logs', content: 'Selected evidence.', isError: false },
+    ] }];
+    const receipt = await f.archive.archive({ messages: source, selections: [{ messageIndex: 3, resultIndex: 1 }], signal: f.signal });
+    expect(await f.archive.read({ reference: receipt.reference, messageIndex: 3, resultIndex: 1 }, f.signal)).toMatchObject({ text: 'Selected evidence.' });
+    await expect(f.archive.read({ reference: receipt.reference, messageIndex: 3, resultIndex: 0 }, f.signal)).rejects.toThrow();
+    await expect(f.archive.read({ reference: receipt.reference, messageIndex: 2, resultIndex: 0 }, f.signal)).rejects.toThrow();
+    for (const file of await files(f.options.directory)) expect(await readFile(file, 'utf8')).not.toMatch(/EXACT_SKILL_NOT_ARCHIVED|Parser start/u);
+    await expect(f.archive.archive({ messages: source, selections: [{ messageIndex: 0, resultIndex: 0 }], signal: f.signal })).rejects.toThrow();
+  });
+
+  it('reads legacy v1 archives with truthful source labeling and read-time masking', async () => {
+    const f = await fixture();
+    const scopeId = digest(JSON.stringify([scope.profileId, scope.workspaceId, scope.sessionId, scope.boundary]));
+    const directory = path.join(f.options.directory, scopeId);
+    await mkdir(directory, { recursive: true, mode: 0o700 });
+    const secret = `sk-${'b'.repeat(40)}`;
+    const oldChunk = JSON.stringify({ role: 'tool', results: [{ toolCallId: 'legacy', name: 'logs', content: `Legacy ${secret} evidence.`, isError: false }] });
+    const chunk = digest(oldChunk);
+    const manifest = JSON.stringify({ version: 1, scope: scopeId, messages: [chunk] });
+    const reference = digest(manifest);
+    await writeFile(path.join(directory, `message-${chunk}.json`), oldChunk, { mode: 0o600 });
+    await writeFile(path.join(directory, `archive-${reference}.json`), manifest, { mode: 0o600 });
+    expect(await f.archive.read({ reference, messageIndex: 0, resultIndex: 0 }, f.signal)).toMatchObject({
+      text: 'Legacy [redacted] evidence.', redacted: true, storageVersion: 1, evidence: 'legacy-original-tool-report',
+    });
+    // Migration must not silently rewrite or invalidate immutable old references.
+    expect(await readFile(path.join(directory, `message-${chunk}.json`), 'utf8')).toBe(oldChunk);
   });
 
   it('fails explicitly at unsafe capacity without deleting earlier evidence', async () => {

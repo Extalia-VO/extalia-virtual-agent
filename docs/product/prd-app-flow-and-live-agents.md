@@ -385,6 +385,29 @@ for example when one runs out of quota.
 
 ## 11. Status tracker
 
+### Feature strengthening — v0.4.330 (2026-11-15)
+
+- Implemented per-connection local/off/Caveman Engine Native input preparation;
+  workers follow their selected connection. New archives retain only selected
+  sanitized tool reports. Exact instructions, skill/source/recovery reads and
+  independent artifact receipts retain their existing authority.
+- Implemented scoped continuation recall, bounded topic queries, fresh relevant
+  Knowledge/amendment previews and per-block admission reports with exact source
+  revisions, hashes and budget reasons. Optional memory cannot crowd out every
+  smaller eligible note. Mandatory skill context remains first.
+- Rust checkpoints now retain unentered analysis and ready findings. Explicit
+  Resume rechecks source, profile, destination, model route and reader contracts;
+  uncertain entered effects are visible and never replayed. Knowledge and skill
+  receipts reconcile independently; missing note destinations prepare before
+  their claim, and retained skill refinements require a fresh source review.
+- Real daemon kill/restart, restarted-host analysis/publication, selected-worker
+  optimizer settings and the memory → learning → fresh-note recall cycle are
+  covered by focused verification. See [ADR 0091](../adr/0091-context-optimization-and-learning-recovery.md)
+  and the [validation record](../bench/context-learning-v0330.md).
+- Owner-directed focus is feature development. Existing CI fixture repairs are
+  deferred. Installed upstream Caveman, live model quality/cost, Windows durable
+  artifact support and interactive installed-product acceptance remain open.
+
 ### Current reconciliation — v0.4.288 (2026-11-12)
 
 Use the [module hubs](../modules/README.md) for done/partial/not-implemented

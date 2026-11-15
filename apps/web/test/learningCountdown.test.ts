@@ -6,6 +6,27 @@ import { createLearningNoticeMemory, LearningCountdownView, learningCountdownDur
 import { MESSAGES, type Language } from '../src/i18n';
 
 const at = Date.parse('2026-11-11T06:00:00.000Z');
+
+describe('retained learning checkpoints', () => {
+  it.each(['en', 'id'] as const)('offers resume only for safe retained work (%s)', language => {
+    const t = MESSAGES[language].learningCountdown;
+    for (const state of ['resumable', 'publication', 'uncertain', 'expired'] as const) {
+      const value = snapshot('cancelled');
+      value.jobs[0]!.recovery = { state, modelRequests: 2, reads: 3, skillReviewRequired: true };
+      const html = render(value, language);
+      expect(html).toContain(t.recoveryStates[state]);
+      expect(html).toContain(t.recoveryProgress(2, 3));
+      expect(html).toContain(t.recoverySkillReview);
+      if (state === 'resumable' || state === 'publication') expect(html).toContain(t.resume);
+      else expect(html).not.toContain(t.resume);
+      expect(html).not.toContain(t.runNow);
+    }
+  });
+  it('shows an unavailable recovery catalog even with no scheduled jobs', () => {
+    const value = snapshot(); value.jobs = []; value.recoveryUnavailable = true;
+    expect(render(value)).toContain(MESSAGES.en.learningCountdown.recoveryUnavailable);
+  });
+});
 function snapshot(state: LearningScheduleSnapshot['jobs'][number]['state'] = 'scheduled'): LearningScheduleSnapshot {
   return { revision: 'r1', delaySeconds: 60, snoozeSeconds: 600, jobs: [{ id: 'job', workspaceId: 'workspace', profileId: 'profile', profileName: 'Research', sessionId: 'session',
     state, dueAt: new Date(at + 60_000).toISOString(), createdAt: new Date(at).toISOString() }] };

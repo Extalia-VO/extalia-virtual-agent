@@ -10,6 +10,23 @@ const input = {
 };
 
 describe('bounded learning curator contract', () => {
+  it('binds checkpoint recovery to source, route and destination without accepting replay permission', () => {
+    const binding = { jobId: 'c'.repeat(64), profileId: input.profileId, workspaceId: input.workspaceId, sessionId: input.sessionId,
+      runId: input.runId, promptSha256: input.promptSha256, destinationRevision: input.revision,
+      routeFingerprint: 'b'.repeat(64), policy: input.policy, tools: [] };
+    expect(valid(learningParams, { action: 'job.begin', input: { ...input, routeFingerprint: binding.routeFingerprint } })).toBe(true);
+    expect(valid(learningParams, { action: 'job.enter', input: { jobId: binding.jobId, effectId: `${binding.jobId}-1` } })).toBe(true);
+    expect(valid(learningParams, { action: 'job.recover', input: binding })).toBe(true);
+    expect(valid(learningParams, { action: 'job.recover', input: { ...binding, routeFingerprint: undefined } })).toBe(false);
+    expect(valid(learningParams, { action: 'job.recover', input: { ...binding, replayUncertain: true } })).toBe(false);
+    expect(valid(learningParams, { action: 'job.list', input: { profileId: 'default', limit: 33 } })).toBe(false);
+    const { tools: _tools, ...recordBinding } = binding; void _tools;
+    const record = { ...recordBinding, state: 'uncertain', active: false, updatedAt: 10, expiresAt: 20, modelRequests: 1, reads: 0, skillReviewRequired: false };
+    expect(valid(learningResult, { action: 'job.list', jobs: [record], omitted: 0 })).toBe(true);
+    expect(valid(learningResult, { action: 'job.list', jobs: [{ ...record, modelRequests: 7 }], omitted: 0 })).toBe(false);
+    expect(valid(learningResult, { action: 'job.list', jobs: [{ ...record, state: 'automatically-approved' }], omitted: 0 })).toBe(false);
+  });
+
   it('bounds source revalidation and accepts normalized relationships without promoting them into authority', () => {
     const reads = [{ path: 'Knowledge/Policy.md', ok: true, output: '{}' }];
     expect(valid(learningParams, { action: 'job.revalidate', input: { jobId: 'job', reads } })).toBe(true);

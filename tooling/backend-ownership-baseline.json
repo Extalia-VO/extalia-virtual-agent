@@ -378,9 +378,9 @@
     {
       "path": "packages/core/src/connections.ts",
       "category": "shared-backend-review",
-      "sha256": "142b221533bf8881cdac1d9147a649aacbce79301608d268becdfab52712ccd7",
-      "loc": 238,
-      "bytes": 13634,
+      "sha256": "da236b64ba9767d6aad71d38637d4908732f064eb2dac174ffbc87488099afc8",
+      "loc": 262,
+      "bytes": 15111,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -612,9 +612,9 @@
     {
       "path": "packages/host/src/automaticLearning.ts",
       "category": "legacy-backend",
-      "sha256": "90cea513e533e127b762e3a3113b9970b1eef42ce7304a7b9ab135469646925a",
-      "loc": 326,
-      "bytes": 21330,
+      "sha256": "b633db662b53ecb2d389500230504607e207629ab2eaad76ea516c46acee49a1",
+      "loc": 377,
+      "bytes": 24983,
       "effectKinds": [
         "node-builtin",
         "runtime-call"
@@ -628,6 +628,18 @@
       "loc": 189,
       "bytes": 17116,
       "effectKinds": [],
+      "unresolvedRuntimeImports": 0
+    },
+    {
+      "path": "packages/host/src/cavemanContextOptimizer.ts",
+      "category": "legacy-backend",
+      "sha256": "e1a4fd90b13624e22c9b00df5070d7a780f2e44708ad3cbdea0ecf34ddb82886",
+      "loc": 179,
+      "bytes": 11263,
+      "effectKinds": [
+        "node-builtin",
+        "runtime-call"
+      ],
       "unresolvedRuntimeImports": 0
     },
     {
@@ -1261,9 +1273,9 @@
     {
       "path": "packages/host/src/learningKnowledgeValidation.ts",
       "category": "legacy-backend",
-      "sha256": "edb95b39092ed8b89856ec1d569e36557d79b9faa04ad024f046cc5daea03609",
-      "loc": 37,
-      "bytes": 2075,
+      "sha256": "8d1ba8eb71e7238b46831bf1699e9b36bbf189cc0fb8a9ec1299370db0565968",
+      "loc": 38,
+      "bytes": 2109,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -1274,6 +1286,17 @@
       "loc": 23,
       "bytes": 1069,
       "effectKinds": [],
+      "unresolvedRuntimeImports": 0
+    },
+    {
+      "path": "packages/host/src/learningRecovery.ts",
+      "category": "legacy-backend",
+      "sha256": "ab24b0e5093b0830effc57e19e8c7fad3965e31aa5b32f9b0e44e221374d9c41",
+      "loc": 94,
+      "bytes": 5428,
+      "effectKinds": [
+        "node-builtin"
+      ],
       "unresolvedRuntimeImports": 0
     },
     {
@@ -1374,9 +1397,9 @@
     {
       "path": "packages/host/src/nativeContextArchive.ts",
       "category": "legacy-backend",
-      "sha256": "d9d30e783c1eb48c6b1c750657090ef1633afef8b42f1855630279ccb2de4063",
-      "loc": 265,
-      "bytes": 15032,
+      "sha256": "c2456b1bff37aabd341d449561bd62d4b1f0a7af7813c926f8ab42bd7c5f3aec",
+      "loc": 297,
+      "bytes": 17689,
       "effectKinds": [
         "node-builtin"
       ],
@@ -1423,9 +1446,20 @@
     {
       "path": "packages/host/src/nativeMemoryPreparation.ts",
       "category": "legacy-backend",
-      "sha256": "23e4fe1cd9d2d064123d589165493ffaa2dfd190df0993a889c879296567d8a0",
-      "loc": 110,
-      "bytes": 6614,
+      "sha256": "487bbfc7bca6ebb27a16d0b0c9a3a9e5a679055ec50aa6ba222417b86d92d832",
+      "loc": 185,
+      "bytes": 11669,
+      "effectKinds": [
+        "node-builtin"
+      ],
+      "unresolvedRuntimeImports": 0
+    },
+    {
+      "path": "packages/host/src/nativeRecallPlan.ts",
+      "category": "legacy-backend",
+      "sha256": "4a5c7e81687ed28ca9d33b2487309c3eb2a629118ec7fb3d570138fcc0528250",
+      "loc": 240,
+      "bytes": 14647,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -1796,9 +1830,9 @@
     {
       "path": "packages/host/src/rustLearning.ts",
       "category": "legacy-backend",
-      "sha256": "e0d995f83afc63d91f7787f2864bb8f8951511326ca106091dd792bccb8b4b5a",
-      "loc": 136,
-      "bytes": 8457,
+      "sha256": "146d8aed0a38da6fec93be1141705ded232c5f8bf4a1ffdcc4d3aead949e161a",
+      "loc": 144,
+      "bytes": 9121,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -1828,9 +1862,9 @@
     {
       "path": "packages/host/src/service.ts",
       "category": "legacy-backend",
-      "sha256": "aa2e5676e257465c712d2adb7aeb117f5102ee7d943893205613726a694906fb",
-      "loc": 6303,
-      "bytes": 437906,
+      "sha256": "f8b8997e1d4473d850fbb01be2fcfefab6382ce4d07ddf73d1204c1c38573571",
+      "loc": 6460,
+      "bytes": 450869,
       "effectKinds": [
         "node-builtin",
         "runtime-call"
@@ -2246,9 +2280,9 @@
     {
       "path": "packages/platform/src/agentHost.ts",
       "category": "shared-backend-review",
-      "sha256": "afbd9d4f0e6d7ec18373f3b9e2818e8448ad05b164dc9b26e6daddc8b3ac60cf",
-      "loc": 1269,
-      "bytes": 76441,
+      "sha256": "cde029ae2c58366196901bfb7dcb10354dee8ab6181138ab5826849fc4703c02",
+      "loc": 1271,
+      "bytes": 76603,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -2318,9 +2352,9 @@
     {
       "path": "packages/platform/src/learningSchedule.ts",
       "category": "shared-backend-review",
-      "sha256": "aa1f8d82f2d3109e2c57236c8b0ae8e5a94e1f6ee0b7c2aa871e9c40708d19d6",
-      "loc": 87,
-      "bytes": 3567,
+      "sha256": "44ede26283567ad4c14c4bc783d70df3f67e53fb05bcfe3b41cabe1431f71925",
+      "loc": 96,
+      "bytes": 3964,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -2579,18 +2613,18 @@
     {
       "path": "packages/protocol/src/daemonLearning.ts",
       "category": "shared-backend-review",
-      "sha256": "320460a81d4b872f084ad49074565b1702e1c394985ba86e0be1a72842c1d620",
-      "loc": 67,
-      "bytes": 9773,
+      "sha256": "bade10a861aee2dc0863c612399e47450bcf2609e440d7efdc400b9f2341a202",
+      "loc": 86,
+      "bytes": 11447,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
     {
       "path": "packages/protocol/src/daemonLearningRules.ts",
       "category": "shared-backend-review",
-      "sha256": "391d0a4c24a9284e7450eee297df9d0d17e5783f5ae478c902ee34e8c3de8128",
-      "loc": 85,
-      "bytes": 12197,
+      "sha256": "320adc52223be6a1ee03632cdce5939e8ff941b657da194d960b548a9baae0fa",
+      "loc": 91,
+      "bytes": 13415,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -2849,9 +2883,9 @@
     {
       "path": "packages/runtime/src/contextCompaction.ts",
       "category": "legacy-backend",
-      "sha256": "ff84afb953aab2f05b564d28e7cab1b87e54dadf87b810115d5948bac8d51dfd",
-      "loc": 149,
-      "bytes": 8763,
+      "sha256": "e1678e9c21f8b49a3dc9d0fcde9d7c2c4adfedaf9083f684deaa0ad5a8d07b0d",
+      "loc": 259,
+      "bytes": 15575,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -3018,6 +3052,15 @@
       "sha256": "bac8054d23725f7016c269efd2b877f0b79290fd4139dae85a6dd843815dfefa",
       "loc": 160,
       "bytes": 10702,
+      "effectKinds": [],
+      "unresolvedRuntimeImports": 0
+    },
+    {
+      "path": "packages/runtime/src/toolContextProjection.ts",
+      "category": "legacy-backend",
+      "sha256": "ef7203b63d2805d0ec432bc09874209dc9cee9b5beff5e9d6070abc05a941ebb",
+      "loc": 142,
+      "bytes": 7421,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },

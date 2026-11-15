@@ -43,12 +43,14 @@ impl Learning {
                     .observed_store(input)?
                     .revoke(&input["scope"])
                     .map_err(failure)?;
-                for job in self
+                let jobs: Vec<_> = self
                     .jobs
-                    .values_mut()
+                    .values()
                     .filter(|job| job.uses_observed_scope(&input["scope"]))
-                {
-                    job.action("job.cancel", &json!({}))?;
+                    .map(|job| job.id.clone())
+                    .collect();
+                for job_id in jobs {
+                    self.job_action("job.cancel", &json!({"jobId":job_id}))?;
                 }
                 Ok(result)
             }
@@ -65,7 +67,8 @@ impl Learning {
                     prepared[key] = input["scope"][key].clone();
                 }
                 prepared["observedSource"] = episode;
-                let job = Job::begin(&prepared)?;
+                let mut job = Job::begin(&prepared)?;
+                self.checkpoint_job(&mut job, false)?;
                 let view = job.view();
                 self.jobs.insert(job.id.clone(), job);
                 Ok(json!({"job":view}))

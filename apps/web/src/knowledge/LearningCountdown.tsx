@@ -1,4 +1,4 @@
-import { GLOBAL_OBSERVE_WORKSPACE_ID, type AgentHostApi, type LearningScheduleSnapshot } from '@extalia/platform';
+import { GLOBAL_OBSERVE_WORKSPACE_ID, type AgentHostApi, type LearningScheduleAction, type LearningScheduleSnapshot } from '@extalia/platform';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { Messages } from '../i18n';
@@ -7,7 +7,7 @@ import { Icon } from '../ui/Icon';
 import './LearningCountdown.css';
 
 type Job = LearningScheduleSnapshot['jobs'][number];
-type Action = 'snooze' | 'run-now';
+type Action = LearningScheduleAction['action'];
 type SkillNotice = NonNullable<NonNullable<Job['result']>['skill']>;
 
 /** A bounded presentation memory, owned by the shared notification rather than the selected workspace. */
@@ -46,10 +46,11 @@ export function LearningCountdownView({ t, snapshot, now, busyId, error, dismiss
   // Artifact receipts are independent of execution state, including a later failure or cancellation.
   const receipts = [...new Map(jobs.flatMap(job => job.result?.skill && !dismissedSkills.includes(job.result.skill.id)
     ? [[job.result.skill.id, { job, notice: job.result.skill }] as const] : [])).values()];
-  if (!visible.length && !receipts.length) return null;
+  if (!visible.length && !receipts.length && !snapshot.recoveryUnavailable) return null;
   return <aside className={`learning-countdown${embedded ? ' is-embedded' : ''}`} aria-label={text.title}>
     <div className="learning-countdown-heading"><Icon name="bulb" /><strong>{text.title}</strong></div>
     <p className="learning-countdown-help muted small">{text.help}</p>
+    {snapshot.recoveryUnavailable && <p className="muted small" role="status">{text.recoveryUnavailable}</p>}
     <ul className="learning-countdown-jobs">
       {visible.map(job => {
         const pending = job.state === 'scheduled';
@@ -59,7 +60,7 @@ export function LearningCountdownView({ t, snapshot, now, busyId, error, dismiss
         const selectedDelay = typeof job.delaySeconds === 'number' && Number.isFinite(job.delaySeconds) && job.delaySeconds > 0
           ? job.delaySeconds : undefined;
         const due = Date.parse(job.dueAt) <= now;
-        const status = running ? meeting ? text.meetingRunning : text.running : pending
+        const status = job.recovery ? text.recoveryStates[job.recovery.state] : running ? meeting ? text.meetingRunning : text.running : pending
           ? waiting ? meeting ? text.meetingWaiting : text.busy : due ? text.starting : meeting ? text.meetingScheduled : text.scheduled
           : job.state === 'partial' ? text.partial
           : job.state === 'completed' && !meeting ? text.completed
@@ -75,6 +76,8 @@ export function LearningCountdownView({ t, snapshot, now, busyId, error, dismiss
           </div>
           <LearningScope t={t} job={job} />
           <p className="learning-countdown-status small" role="status">{status}</p>
+          {job.recovery && <p className="muted small">{text.recoveryProgress(job.recovery.modelRequests, job.recovery.reads)}</p>}
+          {job.recovery?.skillReviewRequired && <p className="muted small">{text.recoverySkillReview}</p>}
           {pending && waiting && <p className="learning-countdown-quiet muted small">{selectedDelay === undefined
             ? text.waitingCountdownUnknown : text.waitingCountdown(learningCountdownDuration(selectedDelay))}</p>}
           {pending && <p className="learning-countdown-quiet muted small">{text.quietPeriod}</p>}
@@ -82,11 +85,14 @@ export function LearningCountdownView({ t, snapshot, now, busyId, error, dismiss
           {job.result?.knowledge && <KnowledgeResult t={t} job={job} />}
           {job.result?.problem && <p className="muted small">{text.problems[job.result.problem]}</p>}
           {!pending && !running && job.reason === 'changed' && <p className="muted small">{text.changed}</p>}
-          {!pending && !running && job.reason === 'shutdown' && <p className="muted small">{text.interrupted}</p>}
+          {!pending && !running && !job.recovery && job.reason === 'shutdown' && <p className="muted small">{text.interrupted}</p>}
           {!pending && !running && job.reason === 'busy' && <p className="muted small">{text.foregroundPriority}</p>}
           {pending && <div className="learning-countdown-actions">
             <button type="button" className="button small" disabled={Boolean(busyId)} onClick={() => onAction(job, 'snooze')}>{text.snooze(Math.round(snapshot.snoozeSeconds / 60))}</button>
             <button type="button" className="button small primary" disabled={Boolean(busyId) || waiting} onClick={() => onAction(job, 'run-now')}>{text.runNow}</button>
+          </div>}
+          {job.recovery && ['resumable', 'publication'].includes(job.recovery.state) && <div className="learning-countdown-actions">
+            <button type="button" className="button small primary" disabled={Boolean(busyId)} onClick={() => onAction(job, 'resume')}>{text.resume}</button>
           </div>}
         </li>;
       })}
@@ -192,7 +198,9 @@ export function LearningCountdown({ agents, t, target, embedded }: { agents: Age
   }, [active]);
 
   const act = async (job: Job, action: Action) => {
-    if (!snapshot || changing.current || !agents.changeLearningSchedule || job.state !== 'scheduled' || action === 'run-now' && waitingForIdle(job)) return;
+    if (!snapshot || changing.current || !agents.changeLearningSchedule) return;
+    if (action === 'resume' ? !job.recovery || !['resumable', 'publication'].includes(job.recovery.state)
+      : job.state !== 'scheduled' || action === 'run-now' && waitingForIdle(job)) return;
     changing.current = true;
     const request = ++serial.current;
     setBusyId(job.id); setError(undefined);

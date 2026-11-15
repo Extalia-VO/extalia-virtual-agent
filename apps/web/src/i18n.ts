@@ -86,7 +86,7 @@ export type PageId = 'office' | 'chat' | 'missions' | 'schedules' | 'observe' | 
 type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 type SecretStore = 'os-keychain' | 'secret-service' | 'file' | 'memory';
 
-export type ConnectionErrorKey = 'nameRequired' | 'baseUrlInvalid' | 'baseUrlCredentials' | 'baseUrlQuery' | 'apiKeyRequired' | 'envInvalid' | 'modelRequired' | 'maxDelegationsInvalid' | 'inputTokenLimitInvalid';
+export type ConnectionErrorKey = 'nameRequired' | 'baseUrlInvalid' | 'baseUrlCredentials' | 'baseUrlQuery' | 'apiKeyRequired' | 'envInvalid' | 'modelRequired' | 'maxDelegationsInvalid' | 'inputTokenLimitInvalid' | 'cavemanExecutableInvalid';
 type Tier = 'complex' | 'standard' | 'quick';
 export type WorkspaceErrorKey = 'nameRequired' | 'folderRequired' | 'folderUnchecked' | 'additionalFoldersInvalid' | 'connectionRequired' | 'profileInvalid' | 'modelInvalid' | 'gateInvalid' | 'gateRequired' | 'gateTimeoutInvalid';
 type Runtime = 'extalia-native' | 'hermes';
@@ -1590,6 +1590,11 @@ const en = {
     promptCache: 'Reuse prompt prefixes with Anthropic',
     promptCacheHint: 'Optional provider caching. Cache creation may cost extra; hits depend on the model and an unchanged prefix. Extalia reports actual cache reads when supplied.',
     inputTokenLimit: 'Estimated input token limit',
+    contextOptimization: 'Native context optimization',
+    contextOptimizationModes: { local: 'Local (built in)', caveman: 'Caveman Engine (local executable)', off: 'Off' },
+    contextOptimizationHint: 'Condense eligible tool results before Native model requests. Requires Extalia memory, saved history and automatic learning enabled for the selected profile. Protected instructions and source reads stay exact. Workers use their own connection setting.',
+    cavemanExecutable: 'Caveman executable path',
+    cavemanExecutableHint: 'Absolute path to your installed Caveman Engine on the computer running Extalia. Eligible data is processed locally with recoverable sources. If the engine is unavailable or its output cannot be verified, Extalia uses built-in optimization and reports the fallback. Observe does not intercept other apps’ requests.',
     inputTokenLimitHint: 'Optional ceiling from 1,024 to 2,000,000 estimated input tokens. Leave empty to use only the general safety guard; model and provider limits still apply. An estimate cannot guarantee that a request fits the model.',
     owners: { extalia: 'Extalia', off: 'Off' },
     featuresHint: 'Extalia gives the agent its own memory and skills. Turn them off for a plain model.',
@@ -1622,6 +1627,7 @@ const en = {
       modelRequired: 'Choose a model, or type its name, to save this connection.',
       maxDelegationsInvalid: 'Enter a whole number from 0 to 20.',
       inputTokenLimitInvalid: 'Enter a whole number from 1,024 to 2,000,000, or leave empty.',
+      cavemanExecutableInvalid: 'Enter an absolute path to the Caveman executable, without command arguments.',
     } satisfies Record<ConnectionErrorKey, string>,
     orchestration: 'Orchestration',
     orchestrationToggle: 'Let the agent delegate to workers',
@@ -2349,6 +2355,16 @@ const en = {
     failed: 'This update could not be confirmed. Check the session activity and vault settings.', cancelled: 'This scheduled update was cancelled.',
     changed: 'The workspace, profile or destination changed. Previous work was not sent to a different vault.',
     interrupted: 'Extalia closed before this update finished. It will not be replayed automatically.',
+    resume: 'Resume saved learning',
+    recoveryStates: {
+      resumable: 'A saved checkpoint can continue after the source, profile and model are checked again. Continuing may use more model tokens.',
+      publication: 'Findings are saved. Resume to verify current sources and complete any unconfirmed outputs.',
+      uncertain: 'A step may already have run, but its result was not confirmed. Extalia will not repeat it. Check session activity and saved outputs.',
+      expired: 'This checkpoint has expired. Start a new learning task using current evidence.',
+    },
+    recoveryProgress: (models: number, reads: number) => `Retained progress: ${models} model requests · ${reads} source reads.`,
+    recoverySkillReview: 'This skill refinement needs a fresh review of its source. A separately verified Knowledge note can still finish.',
+    recoveryUnavailable: 'Saved learning checkpoints could not be inspected. Scheduled work is shown; recovery status is temporarily unavailable.',
     timeRemaining: 'Time until learning begins', runNow: 'Run now', snooze: (minutes: number) => `Snooze ${minutes} min`, dismiss: 'Dismiss update notice',
   },
   vaultProfiles: {
@@ -4255,6 +4271,11 @@ const id: Messages = {
     promptCache: 'Gunakan ulang awalan prompt dengan Anthropic',
     promptCacheHint: 'Cache penyedia opsional. Pembuatan cache dapat menambah biaya; kecocokan bergantung pada model dan awalan prompt yang tidak berubah. Extalia menampilkan pembacaan cache yang dilaporkan.',
     inputTokenLimit: 'Perkiraan batas token input',
+    contextOptimization: 'Optimasi konteks Native',
+    contextOptimizationModes: { local: 'Lokal (bawaan)', caveman: 'Caveman Engine (program lokal)', off: 'Mati' },
+    contextOptimizationHint: 'Padatkan hasil tool yang sesuai sebelum permintaan model Native. Memerlukan memory Extalia, penyimpanan riwayat, dan pembelajaran otomatis aktif pada profil yang dipilih. Instruksi terlindungi dan pembacaan sumber tetap utuh. Worker mengikuti pengaturan koneksinya sendiri.',
+    cavemanExecutable: 'Path program Caveman',
+    cavemanExecutableHint: 'Path absolut Caveman Engine yang terpasang di komputer yang menjalankan Extalia. Data yang sesuai diproses lokal dengan sumber yang dapat dipulihkan. Jika engine tidak tersedia atau hasilnya gagal diverifikasi, Extalia memakai optimasi bawaan dan melaporkannya. Observe tidak menyisipkan proses ini ke permintaan aplikasi lain.',
     inputTokenLimitHint: 'Batas opsional dari 1.024 hingga 2.000.000 perkiraan token input. Kosongkan untuk memakai pengaman umum saja; batas model dan penyedia tetap berlaku. Perkiraan tidak menjamin permintaan muat dalam model.',
     owners: { extalia: 'Extalia', off: 'Mati' },
     featuresHint: 'Extalia memberi agent memori dan skill miliknya. Matikan untuk model polos.',
@@ -4287,6 +4308,7 @@ const id: Messages = {
       modelRequired: 'Pilih model, atau ketik namanya, untuk menyimpan koneksi ini.',
       maxDelegationsInvalid: 'Masukkan bilangan bulat dari 0 sampai 20.',
       inputTokenLimitInvalid: 'Masukkan bilangan bulat dari 1.024 sampai 2.000.000, atau kosongkan.',
+      cavemanExecutableInvalid: 'Masukkan path absolut program Caveman, tanpa argumen perintah.',
     },
     orchestration: 'Orkestrasi',
     orchestrationToggle: 'Izinkan agent mendelegasikan ke worker',
@@ -5007,6 +5029,16 @@ const id: Messages = {
     failed: 'Pembaruan ini belum dapat dikonfirmasi. Periksa aktivitas sesi dan pengaturan vault.', cancelled: 'Pembaruan terjadwal ini dibatalkan.',
     changed: 'Workspace, profil, atau tujuan berubah. Pekerjaan sebelumnya tidak dikirim ke vault lain.',
     interrupted: 'Extalia ditutup sebelum pembaruan selesai. Pembaruan tidak diulang otomatis.',
+    resume: 'Lanjutkan pembelajaran tersimpan',
+    recoveryStates: {
+      resumable: 'Checkpoint tersimpan dapat dilanjutkan setelah sumber, profil, dan model diperiksa ulang. Melanjutkan dapat memakai token model tambahan.',
+      publication: 'Hasil analisis tersimpan. Lanjutkan untuk memverifikasi sumber terkini dan menyelesaikan hasil yang belum terkonfirmasi.',
+      uncertain: 'Sebuah langkah mungkin sudah berjalan, tetapi hasilnya belum terkonfirmasi. Extalia tidak akan mengulanginya. Periksa aktivitas sesi dan hasil yang tersimpan.',
+      expired: 'Checkpoint ini sudah kedaluwarsa. Mulai tugas pembelajaran baru memakai bukti terkini.',
+    },
+    recoveryProgress: (models: number, reads: number) => `Progres tersimpan: ${models} permintaan model · ${reads} pembacaan sumber.`,
+    recoverySkillReview: 'Penyempurnaan skill ini memerlukan tinjauan sumber yang baru. Catatan Knowledge yang diverifikasi terpisah tetap dapat diselesaikan.',
+    recoveryUnavailable: 'Checkpoint pembelajaran tersimpan belum dapat diperiksa. Jadwal kerja tetap ditampilkan; status pemulihan sementara tidak tersedia.',
     timeRemaining: 'Waktu menuju pembelajaran dimulai', runNow: 'Jalankan sekarang', snooze: (minutes: number) => `Tunda ${minutes} menit`, dismiss: 'Tutup pemberitahuan pembaruan',
   },
   vaultProfiles: {

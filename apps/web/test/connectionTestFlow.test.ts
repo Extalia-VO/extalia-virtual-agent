@@ -75,6 +75,19 @@ describe('test-first connection setup', () => {
     expect(render('1')).toMatch(/<input[^>]*type="number"[^>]*aria-invalid="true"/);
   });
 
+  it.each(['en', 'id'] as const)('shows the explicit Caveman executable setting and validation (%s)', language => {
+    const t = MESSAGES[language];
+    const render = (mode: 'local' | 'caveman' | 'off') => renderToStaticMarkup(createElement(ConnectionForm, {
+      t, draft: { ...draftFromPreset('ollama'), contextOptimization: mode }, agents: {} as never, onChange: () => undefined, showAllErrors: true,
+    }));
+    expect(render('local')).toContain(t.connection.contextOptimization);
+    expect(render('local')).not.toContain(t.connection.cavemanExecutable);
+    expect(render('off')).not.toContain(t.connection.cavemanExecutable);
+    expect(render('caveman')).toContain(t.connection.cavemanExecutable);
+    expect(render('caveman')).toContain(t.connection.errors.cavemanExecutableInvalid);
+    expect(render('caveman')).toMatch(/<input[^>]*id="[^"]*-cavemanExecutable"[^>]*aria-invalid="true"/);
+  });
+
   it('can discover models before a main model is selected', () => {
     const draft = { ...draftFromPreset('9router'), model: '' };
     expect(toConnectionTestInput(draft).input.model).toBe(TEST_MODEL_PLACEHOLDER);

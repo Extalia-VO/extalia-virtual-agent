@@ -8,6 +8,20 @@ const base = {
 };
 
 describe('connections', () => {
+  it('keeps local context optimization compatible and requires an explicit engine executable', () => {
+    expect(decodeConnection(base)).toMatchObject({ ok: true });
+    for (const contextOptimization of [{ mode: 'off' }, { mode: 'local' },
+      { mode: 'caveman', executable: '/opt/example/caveman-engine' }, { mode: 'caveman', executable: 'C:\\Tools\\caveman-engine.exe' }]) {
+      expect(decodeConnection({ ...base, contextOptimization })).toMatchObject({ ok: true, value: { contextOptimization } });
+    }
+    for (const contextOptimization of [null, { mode: 'auto' }, { mode: 'caveman' },
+      { mode: 'caveman', executable: 'caveman-engine' }, { mode: 'caveman', executable: './caveman-engine' },
+      { mode: 'caveman', executable: '/opt/caveman\n--extra' }, { mode: 'local', executable: '/opt/caveman' },
+      { mode: 'caveman', executable: '/opt/caveman', arguments: ['--unsafe'] }]) {
+      expect(decodeConnection({ ...base, contextOptimization }).ok).toBe(false);
+    }
+  });
+
   it('decodes a connection and normalizes the endpoint', () => {
     const result = decodeConnection(base);
     expect(result).toMatchObject({ ok: true, value: { baseUrl: 'http://localhost:20128/v1', credential: { kind: 'stored', ref: 'connection-c1' } } });

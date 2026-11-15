@@ -4,10 +4,13 @@ import { chmod, lstat, mkdir, readFile, readdir, realpath, writeFile } from 'nod
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ExtaliaEvent } from '@extalia/protocol';
+import type { ToolSpec } from '@extalia/runtime';
 import { type AgentHostRuntime } from '../src/service.js';
 import { useTempDirs } from './helpers.js';
 import { DAEMON_BINARY, HAS_DAEMON } from './daemonBackend.js';
 import { learningObservedFixture } from './learningObservedFixture.js';
+import { DaemonSidecar } from '../src/daemon/index.js';
+import { RustLearningBackend } from '../src/rustLearning.js';
 
 const temp = useTempDirs();
 const runtimes: AgentHostRuntime[] = [];
@@ -126,6 +129,64 @@ const settledLearning = async (f: Awaited<ReturnType<typeof fixture>>) => {
 };
 
 describe.skipIf(process.platform === 'win32')('saved profile automatic learning through the Native host', () => {
+  it.skipIf(!HAS_DAEMON).each(['resumable', 'publication'] as const)('resumes a real %s checkpoint through the restarted host and current profile', async retained => {
+    const f = await fixture();
+    await f.host.sendPrompt(f.session.id, 'Read the parser and preserve verified validation guidance.');
+    await idle(f.runtime); await runNow(f); await settledLearning(f);
+    const curatorRequest = f.requests.find(curator)!;
+    await f.runtime.close();
+    const daemon = new DaemonSidecar({ binary: () => DAEMON_BINARY, dataDirectory: f.data, profile: 'default', clientVersion: 'test', env: {}, log: () => {} });
+    let savedId = '';
+    try {
+      const backend = new RustLearningBackend(() => daemon.connect());
+      const original = (await backend.process('job.list', { profileId: f.profile.id, workspaceId: f.workspace.id })).jobs[0]!;
+      expect(original.state).toBe('terminal');
+      const tools = (curatorRequest.tools as { function: ToolSpec }[])
+        .filter(tool => tool.function.name !== 'submit_learning').map(tool => tool.function);
+      let job = (await backend.process('job.begin', { profileId: original.profileId, revision: original.destinationRevision,
+        workspaceId: original.workspaceId, sessionId: original.sessionId, runId: 'recovery-fixture-run', promptSha256: original.promptSha256,
+        routeFingerprint: original.routeFingerprint, policy: original.policy, tools,
+        evidence: [{ toolCallId: 'recovery-read', name: 'read_file', content: 'Reject malformed parser input before writing a durable result.', isError: false }],
+      })).job;
+      savedId = job.jobId;
+      if (retained === 'publication') {
+        const effectId = job.effect!.effectId;
+        await backend.process('job.enter', { jobId: job.jobId, effectId });
+        job = (await backend.process('job.advance', { jobId: job.jobId, effectId, completion: { kind: 'model', result: {
+          text: '', stop: 'tool_use', toolCalls: [{ id: 'saved-submission', name: 'submit_learning', input: {
+            title: 'Retained parser validation', lesson: 'Reject malformed input before writing a durable result.', evidenceIds: job.evidence.map(item => item.id),
+          } }],
+        } } })).job;
+        expect(job.status).toBe('ready');
+      }
+      await backend.process('job.release', { jobId: job.jobId });
+    } finally { await daemon.stop(); }
+    const resumedRequests: Body[] = [];
+    const home = path.join(f.root, 'home');
+    const resumed = await createAgentHost({ kind: 'bridge', version: 'test', dataDirectory: f.data, homeDirectory: home, importHome: home,
+      env: { EXTALIA_SECRET_STORE: 'memory', EXTALIA_NATIVE_CORE: 'typescript', EXTALIA_DAEMON_PATH: DAEMON_BINARY, EXTALIA_HERMES_BIN: path.join(f.root, 'missing'), PATH: '' },
+      fetch: async (url, init) => {
+        if (url.endsWith('/models')) return Response.json({ data: [{ id: 'fixture-model' }] });
+        const body = JSON.parse(String(init?.body)) as Body; resumedRequests.push(body);
+        expect(curator(body)).toBe(true);
+        const prompt = body.messages.find(item => item.role === 'user')!.content!;
+        const evidence = JSON.parse(prompt.slice(prompt.indexOf('\n') + 1)) as { id: string }[];
+        return response({ tool: 'submit_learning', args: { title: 'Resumed parser validation', lesson: 'Reject malformed parser input before durable writes.', evidenceIds: evidence.map(item => item.id) } }, resumedRequests.length);
+      },
+    });
+    runtimes.push(resumed);
+    const snapshot = await resumed.host.learningSchedule!();
+    const recovered = snapshot.jobs.find(job => job.id === `recovery:${savedId}`);
+    expect(recovered).toMatchObject({ workspaceId: f.workspace.id, profileId: f.profile.id, recovery: { state: retained } });
+    expect(resumedRequests).toHaveLength(0);
+    await resumed.host.changeLearningSchedule!(recovered!.id, snapshot.revision, 'resume');
+    await vi.waitFor(async () => expect((await resumed.host.learningSchedule!()).jobs.some(job => job.state === 'completed' && job.result?.knowledge?.status === 'saved')).toBe(true), { timeout: 10_000, interval: 10 });
+    await idle(resumed);
+    expect(resumedRequests).toHaveLength(retained === 'publication' ? 0 : 1);
+    expect(await noteFiles(f.profile.root, f.workspace.id)).toHaveLength(2);
+    expect((await resumed.host.learningSchedule!()).jobs.some(job => job.recovery)).toBe(false);
+  });
+
   it.skipIf(!HAS_DAEMON).each(['same', 'foreign'] as const)('isolated learning waits only for %s-profile Native foreground work', async scope => {
     const release = deferred(), f = await fixture({ isolated: true, holdSource: release.promise });
     const target = scope === 'same' ? f.session.id : f.otherSession!.id;
@@ -510,7 +571,8 @@ describe.skipIf(process.platform === 'win32')('saved profile automatic learning 
         await vi.waitFor(async () => expect((await f.host.learningSchedule!()).jobs[0]).toMatchObject({ state: 'scheduled', waitingForIdle: true, reason: 'busy' }), { timeout: 5_000, interval: 5 });
         expect(f.requests.some(curator)).toBe(false);
         expect(await noteFiles(f.profile.root, f.workspace.id)).toEqual([]);
-        await clearDraft(); await runNow(f);
+        // The earlier Run now remains admitted; clearing the queue releases it.
+        await clearDraft();
       }
       await settledLearning(f);
       expect((await f.host.learningSchedule!()).jobs[0]?.state).toBe('completed');

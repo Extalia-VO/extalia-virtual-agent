@@ -5,6 +5,9 @@ mod files;
 mod grounded_files_tests;
 mod intake;
 mod jobs;
+mod journal;
+#[cfg(all(test, unix))]
+mod journal_tests;
 mod knowledge_grounding;
 mod observed;
 #[cfg(all(test, unix))]
@@ -195,7 +198,8 @@ impl Learning {
                         .ok_or(refuse("invalid_handle"))?;
                     prepared["evidence"] = intake.finish()?;
                 }
-                let job = Job::begin(&prepared)?;
+                let mut job = Job::begin(&prepared)?;
+                self.checkpoint_job(&mut job, false)?;
                 let out = job.view();
                 self.jobs.insert(job.id.clone(), job);
                 json!({"job":out})
@@ -205,20 +209,17 @@ impl Learning {
                     .jobs
                     .get(s(input, "jobId"))
                     .ok_or(refuse("invalid_handle"))?;
-                if job.pending.is_some() || job.status == "running" {
+                // Durable release drops only the live handle. An entered effect
+                // remains uncertain in the journal, never inferred as settled.
+                if !job.durable() && (job.pending.is_some() || job.status == "running") {
                     return Err(refuse("effect_pending"));
                 }
                 self.jobs.remove(s(input, "jobId"));
                 json!({"released":true})
             }
-            _ => {
-                let job = self
-                    .jobs
-                    .get_mut(s(input, "jobId"))
-                    .ok_or(refuse("invalid_handle"))?;
-                job.action(action, input)?;
-                json!({"job":job.view()})
-            }
+            "job.list" => self.list_jobs(input)?,
+            "job.recover" => self.recover_job(input)?,
+            _ => self.job_action(action, input)?,
         };
         result["action"] = Value::String(action.into());
         if !crate::wire::learning::valid_result(&result) {
@@ -237,7 +238,8 @@ impl Learning {
         for job in self.jobs.values_mut() {
             job.expire();
         }
-        self.jobs
-            .retain(|_, j| j.pending.is_some() || j.created.elapsed() < RETAIN);
+        // A durable effect which never entered owns no external work. Its stale
+        // live handle may expire while the journal keeps the resumable checkpoint.
+        self.jobs.retain(|_, j| j.retain_live_handle());
     }
 }

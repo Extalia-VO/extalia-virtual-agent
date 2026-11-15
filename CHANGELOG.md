@@ -16,6 +16,35 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.330] - 2026-11-15
+
+- Add connection-level Native context optimization: built-in local projection,
+  an explicitly configured Caveman Engine executable, or off. Lead and worker
+  settings apply independently before model requests. Verify engine recovery in
+  private disposable storage; report unavailable or rejected engines as local
+  fallback without claiming measured cost savings.
+- Preserve exact instructions, source/recovery reads, tool pairing and important
+  diagnostic constraints. Persist only selected sanitized tool reports in new
+  context archives; keep legacy archives readable with explicit evidence labels.
+  Publish per-transform methods, recovery references and local token estimates.
+- Improve English/Indonesian continuation recall, bounded topic queries for the
+  Knowledge index, fresh relevance-ranked excerpts and separately verified
+  amendment/conflict previews. Admit optional memory and notes independently;
+  report exact included/dropped sources, revisions, hashes and budget reasons.
+- Persist Rust learning checkpoints before exposing or entering effects. Resume
+  known-unentered analysis or retained findings with current source/profile/model
+  checks, preserved budgets and independent artifact receipts. Never replay an
+  entered effect whose completion is uncertain; retain safe checkpoints through
+  orderly interruption and actual process restart.
+- Add bilingual recovery notices and explicit Resume actions. Reacquire note
+  destinations only when needed, revalidate current Knowledge and require fresh
+  review for retained skill refinements. Keep already confirmed artifacts and
+  independent skills available when a note destination is temporarily unavailable.
+- Add real daemon kill/restart, restarted-host publication, scope-revocation,
+  per-worker optimizer, continuation and budget regressions. Existing CI fixture
+  repairs are deferred at the owner's direction; feature verification remains
+  separate from live-provider, installed-product and Windows acceptance.
+
 ## [0.4.329] - 2026-11-15
 
 - Add frozen handover checkpoints from active Observe/Native work, with current

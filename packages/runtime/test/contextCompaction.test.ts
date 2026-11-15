@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { checkRequestBudget, runTurn, RequestBudgetError, type ModelMessage, type ModelProvider, type ModelRequest, type TurnOptions } from '../src/index.js';
+import { ContextCompactor } from '../src/contextCompaction.js';
 
 const reference = 'a'.repeat(64);
-function batch(index: number, size = 15_000): ModelMessage[] {
-  const content = `Verified decision ${index}: preserve input order.\n${'evidence '.repeat(size / 9)}\nUnresolved: case ${index}; do not claim success.`;
+function batch(index: number, size = 30_000): ModelMessage[] {
+  const content = `Verified decision ${index}: preserve input order.\n${'evidence '.repeat((index % 2 === 0 ? 180 : size) / 9)}\nUnresolved: case ${index}; do not claim success.`;
   return [
     { role: 'assistant', text: `Investigate case ${index}; retain the user's constraints.`,
       toolCalls: [{ id: `call${index}`, name: 'read_file', input: { path: `source-${index}.txt` } }] },
@@ -144,5 +145,95 @@ describe('Native request-only context compaction', () => {
     h.options.provider.complete = async () => { calls++; throw new RequestBudgetError('token-limit', undefined, true); };
     expect(await h.run()).toMatchObject({ outcome: 'failed', error: 'native_context_limit' });
     expect(calls).toBe(1); expect(h.archives).toEqual([]);
+  });
+
+  it('archives only selected data and preserves exact skills, source reads, errors and recovery pages', async () => {
+    const protectedNames = ['skills_read', 'context_archive_read', 'knowledge_read', 'read_file'];
+    const protectedHistory: ModelMessage[] = protectedNames.flatMap((name, index): ModelMessage[] => [
+      { role: 'assistant', text: '', toolCalls: [{ id: `protected-${index}`, name, input: { path: 'workflow/SKILL.md' } }] },
+      { role: 'tool', results: [{ toolCallId: `protected-${index}`, name, isError: index === 2,
+        content: `Exact evidence ${index}: ${'required '.repeat(100)}` }] },
+    ]);
+    const history = [...protectedHistory, ...Array.from({ length: 8 }, (_, i) => batch(i)).flat()];
+    const selections: { messageIndex: number; resultIndex: number }[] = [];
+    const h = harness(history, { maxInputTokens: 7000, compaction: { archive: async request => {
+      selections.push(...request.selections ?? []); return { reference };
+    } } });
+    expect(await h.run()).toMatchObject({ outcome: 'completed' });
+    expect(h.requests[0]!.messages.slice(0, protectedHistory.length)).toEqual(protectedHistory);
+    expect(selections.length).toBeGreaterThan(0);
+    expect(selections.every(selection => selection.messageIndex >= protectedHistory.length)).toBe(true);
+    for (const selection of selections) {
+      const message = history[selection.messageIndex];
+      expect(message?.role === 'tool' && message.results[selection.resultIndex]?.isError).toBe(false);
+    }
+  });
+
+  it('uses the engine only after scoped archival, validates its evidence, and records per-transform accounting', async () => {
+    let archived = false, calls = 0;
+    const h = harness(Array.from({ length: 8 }, (_, i) => batch(i)).flat(), { maxInputTokens: 7000,
+      compaction: { archive: async () => { archived = true; return { reference, evidence: 'sanitized-tool-report' }; },
+        optimizer: async request => {
+          expect(archived).toBe(true); expect(request.recovery.reference).toBe(reference);
+          expect(request.recovery.readToolName).toBe('context_archive_read'); calls++;
+          const lines = request.content.split('\n');
+          return { status: 'compressed', content: `${lines[0]}\n[Engine omitted repetitive evidence.]\n${lines.at(-1)}`,
+            method: 'text', tokensBefore: 8000, tokensAfter: 80, tokenCountBasis: 'approx-chars/4' };
+        } } });
+    const result = await h.run();
+    expect(result.outcome).toBe('completed'); expect(calls).toBeGreaterThan(0); expect(calls).toBeLessThanOrEqual(4);
+    expect(result.compaction?.transforms[0]).toMatchObject({ reference, method: 'caveman:text', retainedDiagnosticLines: 2,
+      optimizer: { status: 'compressed', tokensBefore: 8000, tokensAfter: 80, tokenCountBasis: 'approx-chars/4' } });
+    expect(result.compaction?.transforms.every(item => item.projectedCharacters < item.originalCharacters)).toBe(true);
+    expect(result.usage).toEqual({});
+  });
+
+  it('rejects engine output that removes diagnostics and reports deterministic local fallback', async () => {
+    for (const optimizer of [
+      async () => ({ status: 'compressed' as const, content: 'Everything completed.', method: 'text' }),
+      async () => ({ status: 'unavailable' as const, reason: 'engine-unavailable' }),
+    ]) {
+      const h = harness(Array.from({ length: 8 }, (_, i) => batch(i)).flat(), { maxInputTokens: 7000,
+        compaction: { archive: async () => ({ reference }), optimizer } });
+      const result = await h.run();
+      expect(result.outcome).toBe('completed');
+      const receipt = result.compaction!.transforms[0]!;
+      expect(receipt.method).toMatch(/^local:/u);
+      expect(['rejected', 'unavailable']).toContain(receipt.optimizer!.status);
+      const message = h.requests[0]!.messages[receipt.messageIndex];
+      expect(message?.role === 'tool' && message.results[receipt.resultIndex]!.content).toContain('do not claim success');
+    }
+  });
+
+  it('does not publish a projection after the engine detects scope revocation', async () => {
+    const h = harness(Array.from({ length: 8 }, (_, i) => batch(i)).flat(), { maxInputTokens: 7000,
+      compaction: { archive: async () => ({ reference }), optimizer: async () => ({ status: 'unavailable', reason: 'scope-unavailable' }) } });
+    const result = await h.run();
+    expect(result).toMatchObject({ outcome: 'failed', error: 'native_context_limit' });
+    expect(h.requests).toEqual([]); expect(result.compaction).toBeUndefined();
+  });
+
+  it('awaits reporting after commit and never reruns its optimizer when reporting fails', async () => {
+    let engineCalls = 0, reports = 0;
+    const compactor = new ContextCompactor({ archive: async () => ({ reference }), optimizer: async () => {
+      engineCalls++; return { status: 'unavailable', reason: 'engine-unavailable' };
+    }, report: async receipt => {
+      reports++;
+      expect(receipt.transforms.length).toBeGreaterThan(0);
+      expect(JSON.stringify(receipt)).not.toContain('evidence evidence');
+      receipt.transforms[0]!.method = 'mutated-consumer-copy';
+      await Promise.resolve();
+      throw new Error('Report unavailable');
+    } });
+    const h = harness(Array.from({ length: 8 }, (_, i) => batch(i)).flat());
+    const request = { system: h.options.system, messages: h.options.history!,
+      tools: h.options.tools.map(({ name, description, parameters }) => ({ name, description, parameters })) };
+    await expect(compactor.compact(request, 7000, h.options.signal)).rejects.toThrow('Report unavailable');
+    expect(compactor.report?.transforms[0]?.method).toMatch(/^local:/u);
+    const stable = structuredClone(compactor.project(request.messages));
+    const callsBeforeRetry = engineCalls;
+    expect(await compactor.compact(request, 7000, h.options.signal)).toBe(false);
+    expect(engineCalls).toBe(callsBeforeRetry); expect(reports).toBe(1);
+    expect(compactor.project(request.messages)).toEqual(stable);
   });
 });

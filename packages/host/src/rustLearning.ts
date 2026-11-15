@@ -20,6 +20,7 @@ export interface RustLearningJob {
   reason?: string;
   failure?: LearningFailure;
   usage?: Usage;
+  recovery?: { resumed: true; skillReviewRequired: boolean };
 }
 
 export interface LearningFailure {
@@ -28,6 +29,7 @@ export interface LearningFailure {
 }
 export interface LearningArtifactReceipt { kind: 'note' | 'skill'; data: string }
 
+export type { LearningRecoveryBinding, LearningRecoveryRecord, LearningRecoverySource } from '@extalia/protocol';
 export type { ObservedMemoryScope, ObservedMemoryEntry, ObservedMemoryCoverage, ObservedMemoryEpisode, ObservedMemoryPage } from '@extalia/protocol';
 export type { WorkMemoryScope, WorkMemorySource, WorkMemoryEntry, WorkMemoryCoverage, WorkMemoryRecord, WorkMemoryPage } from '@extalia/protocol';
 type WorkMemoryInputs = { [A in keyof WorkMemoryActions]: WorkMemoryActions[A]['input'] };
@@ -43,10 +45,13 @@ export interface RustLearningInputs extends WorkMemoryInputs {
   'evidence.release': { intakeId: string };
   'job.begin': {
     profileId: string; revision: string; workspaceId: string; sessionId: string; runId: string; promptSha256: string;
-    policy: { enabled: boolean; skills: boolean; notes: boolean }; tools: readonly ToolSpec[]; timeoutMs?: number;
+    policy: { enabled: boolean; skills: boolean; notes: boolean }; tools: readonly ToolSpec[]; timeoutMs?: number; routeFingerprint?: string;
     sourceContext?: { user: string; assistant: string };
     memoryContext?: string;
   } & ({ intakeId: string; evidence?: never } | { evidence: readonly ToolResultEntry[]; intakeId?: never });
+  'job.enter': LearningActions['job.enter']['input'];
+  'job.list': LearningActions['job.list']['input'];
+  'job.recover': Omit<LearningActions['job.recover']['input'], 'tools'> & { tools: readonly ToolSpec[] };
   'job.advance': { jobId: string; effectId: string; completion: { kind: 'model'; result: ModelResult } | { kind: 'read'; ok: boolean; output: string } | ({ kind: 'failed' } & Partial<LearningFailure>) };
   'job.revalidate': LearningActions['job.revalidate']['input'];
   'job.cancel': { jobId: string };
@@ -78,6 +83,9 @@ interface ResultValues extends WorkMemoryResults {
   'evidence.append': { complete: boolean };
   'evidence.release': Released;
   'job.begin': { job: RustLearningJob };
+  'job.enter': { job: RustLearningJob };
+  'job.list': LearningActions['job.list']['result'];
+  'job.recover': { job: RustLearningJob };
   'job.advance': { job: RustLearningJob };
   'job.revalidate': { job: RustLearningJob };
   'job.cancel': { job: RustLearningJob };
@@ -104,7 +112,7 @@ export interface RustLearningPort {
   process<A extends RustLearningAction>(action: A, input: RustLearningInputs[A]): Promise<RustLearningResults[A]>;
 }
 
-/** Opaque handles never reconnect to a replacement daemon or acquire a new destination. */
+/** Opaque handles stay on their daemon. Explicit recovery alone may adopt a durable checkpoint after fresh authorization. */
 export class RustLearningBackend implements RustLearningPort {
   private readonly handles = new Map<string, DaemonClient>();
   private readonly runs = new Map<string, DaemonClient>();
@@ -116,7 +124,7 @@ export class RustLearningBackend implements RustLearningPort {
     const handle = ['jobId', 'pinId', 'draftId', 'stageId', 'intakeId'].map(key => fields[key]).find(value => typeof value === 'string') as string | undefined;
     const provenance = fields.provenance as SkillProposalProvenance | undefined;
     const runId = typeof fields.runId === 'string' ? fields.runId : provenance?.runId;
-    const client = handle ? this.handles.get(handle) : runId ? this.runs.get(runId) ?? await this.connect() : await this.connect();
+    const client = action === 'job.recover' ? await this.connect() : handle ? this.handles.get(handle) : runId ? this.runs.get(runId) ?? await this.connect() : await this.connect();
     if (!client || !client.usable || !(client.capabilities as readonly string[]).includes('learning.process'))
       throw new DaemonUnavailableError('missing_capability');
     const result = await client.request('learning.process', { action, input } as DaemonLearningParams, 30_000) as unknown as RustLearningResults[A];
@@ -124,7 +132,7 @@ export class RustLearningBackend implements RustLearningPort {
     const values = result as unknown as Record<string, unknown>;
     const job = values.job as RustLearningJob | undefined;
     for (const id of [values.pinId, values.draftId, values.stageId, values.intakeId, job?.jobId]) if (typeof id === 'string') this.handles.set(id, client);
-    if ((action === 'job.begin' || action === 'observed.jobBegin') && runId && job) { this.runs.set(runId, client); this.jobRuns.set(job.jobId, runId); }
+    if ((action === 'job.begin' || action === 'observed.jobBegin' || action === 'job.recover') && runId && job) { this.runs.set(runId, client); this.jobRuns.set(job.jobId, runId); }
     if (handle && ['job.begin', 'job.release', 'evidence.release', 'note.release', 'note.discard', 'note.commit', 'skill.cleanup'].includes(action)) this.handles.delete(handle);
     if (action === 'job.release' && handle) {
       const run = this.jobRuns.get(handle);

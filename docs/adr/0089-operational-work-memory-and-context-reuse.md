@@ -4,6 +4,12 @@ Date: 2026-11-15
 
 Status: Implemented locally; release, live-provider quality and platform acceptance remain separate.
 
+Update: [ADR 0091](0091-context-optimization-and-learning-recovery.md) extends
+request preparation with continuation recall, per-source admission, structural
+tool projection, selective sanitized archives, optional Caveman Engine and a
+separate durable curator recovery mechanism in v0.4.330. The text below records
+the v0.4.328 implementation and its original measurement scope.
+
 ## Context
 
 Workspace Markdown memory, the Knowledge vault, generated skill candidates and

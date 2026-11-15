@@ -1,5 +1,9 @@
 use super::*;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
+
+#[path = "job_checkpoint.rs"]
+mod checkpoint;
 
 const MAX_MODEL_STEPS: usize = 6;
 const MAX_READS: usize = 8;
@@ -17,12 +21,16 @@ fn read_key(call: &Value) -> String {
     // serde_json objects use canonical key order, including nested arguments.
     hash(json!([call["name"], call["input"]]).to_string())
 }
-#[derive(Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(super) struct Job {
     pub id: String,
+    #[serde(skip, default = "Instant::now")]
     pub created: Instant,
-    pub status: &'static str,
+    #[serde(deserialize_with = "checkpoint::status")]
+    pub status: String,
     pub pending: Option<Value>,
+    #[serde(skip, default = "Instant::now")]
     deadline: Instant,
     evidence: Vec<Value>,
     provenance: Value,
@@ -52,10 +60,20 @@ pub(super) struct Job {
     usage_unknown: HashSet<String>,
     observed: bool,
     observed_scope: Option<Value>,
+    route_fingerprint: Option<String>,
+    observed_source: Option<Value>,
+    entered: bool,
+    recovered: bool,
+    skill_review_required: bool,
+    #[serde(skip)]
+    pub(super) journal: Option<super::journal::Cursor>,
 }
 impl Job {
     pub fn begin(v: &Value) -> Result<Self> {
         ids(v, &["profileId", "workspaceId", "sessionId", "runId"])?;
+        if v.get("routeFingerprint").is_some() && !digest(s(v, "routeFingerprint")) {
+            return Err(refuse("invalid_route_fingerprint"));
+        }
         let provenance = text::provenance(
             &json!({"profileId":v["profileId"],"workspaceId":v["workspaceId"],"sessionId":v["sessionId"],"runId":v["runId"],"promptSha256":v["promptSha256"]}),
         )?;
@@ -202,7 +220,7 @@ impl Job {
         let mut job = Self {
             id: uid(),
             created: Instant::now(),
-            status: "running",
+            status: "running".into(),
             pending: None,
             deadline: Instant::now() + Duration::from_millis(timeout),
             evidence,
@@ -241,12 +259,20 @@ impl Job {
             observed_scope: v
                 .get("observedSource")
                 .map(|source| source["episode"]["scope"].clone()),
+            route_fingerprint: v.get("routeFingerprint").and_then(Value::as_str).map(str::to_owned),
+            observed_source: v.get("observedSource").map(|source| json!({
+                "scope":source["episode"]["scope"],"episodeId":source["episode"]["id"],"revision":source["episode"]["revision"]
+            })),
+            entered: false,
+            recovered: false,
+            skill_review_required: false,
+            journal: None,
         };
         if v["policy"]["enabled"] != true
             || v["policy"]["notes"] != true && v["policy"]["skills"] != true
             || job.evidence.is_empty()
         {
-            job.status = "skipped";
+            job.status = "skipped".into();
             job.reason = Some("No eligible current-turn evidence or enabled destination.".into());
         } else {
             job.next_model();
@@ -267,13 +293,13 @@ impl Job {
         })
     }
     pub fn expire(&mut self) {
-        if Instant::now() >= self.deadline && matches!(self.status, "running" | "ready") {
+        if Instant::now() >= self.deadline && matches!(self.status.as_str(), "running" | "ready") {
             let phase = if self.status == "ready" {
                 "publication"
             } else {
                 "analysis"
             };
-            self.status = "cancelled";
+            self.status = "cancelled".into();
             self.reason = Some(format!(
                 "The learning {phase} deadline expired; outstanding effects still require actual drain."
             ));
@@ -286,7 +312,7 @@ impl Job {
             .filter(|e| {
                 self.submission
                     .as_ref()
-                    .filter(|_| matches!(self.status, "ready" | "completed"))
+                    .filter(|_| matches!(self.status.as_str(), "ready" | "completed"))
                     .is_none_or(|v| {
                         v["evidenceIds"]
                             .as_array()
@@ -305,7 +331,7 @@ impl Job {
         if let Some(submission) = self
             .submission
             .as_ref()
-            .filter(|_| matches!(self.status, "ready" | "completed"))
+            .filter(|_| matches!(self.status.as_str(), "ready" | "completed"))
         {
             out["submission"] = submission.clone();
             out["contentSha256"] = if self.knowledge_reads.is_empty() {
@@ -343,14 +369,33 @@ impl Job {
         if self.usage.as_object().is_some_and(|o| !o.is_empty()) {
             out["usage"] = self.usage.clone();
         }
+        if self.recovered {
+            out["recovery"] =
+                json!({"resumed":true,"skillReviewRequired":self.skill_review_required});
+        }
         out
     }
     pub fn action(&mut self, action: &str, input: &Value) -> Result<()> {
         self.expire();
         match action {
+            "job.enter" => {
+                if self.status != "running"
+                    || self
+                        .pending
+                        .as_ref()
+                        .is_none_or(|effect| s(effect, "effectId") != s(input, "effectId"))
+                {
+                    return Err(refuse("effect_mismatch"));
+                }
+                if self.entered {
+                    return Err(refuse("effect_already_entered"));
+                }
+                self.entered = true;
+                Ok(())
+            }
             "job.cancel" => {
                 if self.status != "completed" {
-                    self.status = "cancelled";
+                    self.status = "cancelled".into();
                     self.reason=Some("Learning cancelled; cancellation does not establish physical effect settlement.".into());
                 }
                 Ok(())
@@ -365,6 +410,7 @@ impl Job {
                     return Err(refuse("effect_mismatch"));
                 }
                 self.pending = None;
+                self.entered = false;
                 self.calls.clear();
                 self.results.clear();
                 Ok(())
@@ -373,7 +419,7 @@ impl Job {
                 if self.status != "ready" || self.pending.is_some() || !self.knowledge_revalidated {
                     return Err(refuse("wrong_job_state"));
                 }
-                self.status = "completed";
+                self.status = "completed".into();
                 Ok(())
             }
             "job.revalidate" => {
@@ -385,7 +431,7 @@ impl Job {
                     &input["reads"],
                     &self.provenance,
                 ) {
-                    self.status = "failed";
+                    self.status = "failed".into();
                     self.reason = Some(format!(
                         "Knowledge dependencies could not be revalidated ({}); no publication was admitted.",
                         reason.unwrap_or("knowledge_read_unavailable")
@@ -405,7 +451,7 @@ impl Job {
     }
     fn next_model(&mut self) {
         if self.models >= MAX_MODEL_STEPS {
-            self.status = "failed";
+            self.status = "failed".into();
             self.reason = Some("The six-step learning model limit was reached.".into());
             return;
         }
@@ -484,7 +530,7 @@ impl Job {
         if estimate > MAX_REQUEST_ESTIMATE
             || self.estimated_input.saturating_add(estimate) > MAX_TOTAL_ESTIMATE
         {
-            self.status = "failed";
+            self.status = "failed".into();
             self.reason = Some("The bounded learning model input estimate was exceeded; no further provider request was admitted.".into());
             return;
         }
@@ -526,7 +572,11 @@ impl Job {
         if kind != "failed" && kind != s(pending, "kind") {
             return Err(refuse("effect_mismatch"));
         }
+        if self.route_fingerprint.is_some() && !self.entered {
+            return Err(refuse("effect_not_entered"));
+        }
         let pending = self.pending.take().unwrap();
+        self.entered = false;
         if kind == "failed" {
             let stage = completion.get("stage").and_then(Value::as_str).unwrap_or(
                 if pending["kind"] == "read" {
@@ -552,7 +602,7 @@ impl Job {
                 self.next_call();
                 return Ok(());
             }
-            self.status = "failed";
+            self.status = "failed".into();
             self.failure = Some(json!({"stage":stage,"code":code}));
             self.reason = Some(format!(
                 "The learning {stage} effect did not complete ({code})."
@@ -642,7 +692,7 @@ impl Job {
                 self.usage_unknown.insert("cachedInputTokens".into());
             }
             if matches!(s(result, "stop"), "refusal" | "max_tokens") {
-                self.status = "failed";
+                self.status = "failed".into();
                 self.reason=Some("The curator refused or exhausted its output budget; no findings were admitted.".into());
                 return Ok(());
             }
@@ -656,12 +706,12 @@ impl Job {
                 .iter()
                 .any(|c| !self.seen_calls.insert(s(c, "id").to_owned()))
             {
-                self.status = "failed";
+                self.status = "failed".into();
                 self.reason = Some("Duplicate model tool-call identity.".into());
                 return Ok(());
             }
             if calls.len() != 1 && calls.iter().any(|c| c["name"] == "submit_learning") {
-                self.status = "failed";
+                self.status = "failed".into();
                 self.reason = Some("A final learning submission must be the only tool call in its response; no calls were executed.".into());
                 return Ok(());
             }
@@ -671,7 +721,7 @@ impl Job {
             }
             self.messages.push(assistant);
             if calls.is_empty() {
-                self.status = "skipped";
+                self.status = "skipped".into();
                 self.reason = Some("The curator submitted no findings.".into());
                 return Ok(());
             }
@@ -709,12 +759,12 @@ impl Job {
                 match accepted {
                     Ok((v, reads)) => {
                         if let Some(skip) = v.get("skipReason") {
-                            self.status = "skipped";
+                            self.status = "skipped".into();
                             self.reason = skip.as_str().map(str::to_owned);
                         } else if self.policy["notes"] != true
                             && (self.policy["skills"] != true || v.get("skill").is_none())
                         {
-                            self.status = "skipped";
+                            self.status = "skipped".into();
                             self.reason = Some(
                                 "The curator submitted no artifact permitted by profile policy."
                                     .into(),
@@ -723,7 +773,7 @@ impl Job {
                             self.knowledge_revalidated = reads.is_empty();
                             self.knowledge_reads = reads;
                             self.submission = Some(v);
-                            self.status = "ready";
+                            self.status = "ready".into();
                             // Inference timing never consumes the publication lease.
                             self.deadline = Instant::now() + PUBLICATION_LEASE;
                         }
@@ -735,7 +785,7 @@ impl Job {
                         self.submission_repairs += 1;
                         let reason = reason.unwrap_or("invalid_submission");
                         if self.submission_repairs > 1 {
-                            self.status = "failed";
+                            self.status = "failed".into();
                             self.reason = Some(format!(
                                 "Learning submission remained invalid after one bounded correction ({reason}); no artifacts were admitted."
                             ));

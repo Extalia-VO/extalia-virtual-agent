@@ -3,7 +3,7 @@ import type { AnyTool, ModelProvider, ToolOutcome, ToolResultEntry, TurnResult }
 import type { EventBody, Usage } from '@extalia/protocol';
 import type { SkillProposalInput, SkillProposalProvenance, SkillProposalResult } from './skillLearning.js';
 import type { LearningNoteRecord } from './learningNotes.js';
-import type { LearningFailure, ObservedMemoryScope, RustLearningInputs, RustLearningJob, RustLearningPort } from './rustLearning.js';
+import type { LearningFailure, LearningRecoveryBinding, ObservedMemoryScope, RustLearningInputs, RustLearningJob, RustLearningPort } from './rustLearning.js';
 import { learningFailureCode, learningPublicationReason, readLearningArtifact } from './learningArtifactReceipts.js';
 import { revalidateLearningKnowledge } from './learningKnowledgeValidation.js';
 
@@ -29,6 +29,8 @@ export interface AutomaticLearningOptions {
   sourceContext?: { user: string; assistant: string };
   /** Bounded historical recall; never substituted for current evidence or permission. */
   memoryContext?: string;
+  /** Host-selected route and source authority digest; enables durable recovery. */
+  routeFingerprint?: string;
   profileId: string; revision: string; sessionId: string; workspaceId: string; runId: string; promptSha256: string;
   policy: AutomaticLearningPolicy;
   provider: ModelProvider;
@@ -40,6 +42,8 @@ export interface AutomaticLearningOptions {
   assertCurrent(): void | Promise<void>;
   proposeSkill?(input: SkillProposalInput, provenance: SkillProposalProvenance, signal: AbortSignal): Promise<SkillProposalResult>;
   writeNote?(record: LearningNoteRecord, signal: AbortSignal): Promise<string>;
+  /** Acquire a fresh destination only for a missing note, before its publication claim. */
+  prepareNote?(): Promise<void>;
   receipts?: AutomaticLearningReceiptStore;
   onWorkerStarted?(agentId: string): void;
   onWorkerSettled?(agentId: string): void;
@@ -49,6 +53,10 @@ export interface AutomaticLearningOptions {
 export type ObservedAutomaticLearningOptions = Omit<AutomaticLearningOptions, 'result' | 'currentTurnEvidence'> & {
   /** A Rust-stored, attributed episode; observed reports never masquerade as successful Native tools. */
   observed: { scope: ObservedMemoryScope; episodeId: string; revision: string };
+};
+export type RecoveredAutomaticLearningOptions = Omit<AutomaticLearningOptions, 'result' | 'currentTurnEvidence'> & {
+  /** Fresh host authorization of every retained binding precedes this call. */
+  recovery: LearningRecoveryBinding & { jobId: string };
 };
 
 /** Only scoped Knowledge, skill and operational-memory readers enter the bounded curator. */
@@ -81,11 +89,16 @@ export function runAutomaticLearning(options: AutomaticLearningOptions): Promise
 export function runObservedAutomaticLearning(options: ObservedAutomaticLearningOptions): Promise<AutomaticLearningResult> {
   return runLearning(options);
 }
-async function runLearning(options: AutomaticLearningOptions | ObservedAutomaticLearningOptions): Promise<AutomaticLearningResult> {
+export function runRecoveredAutomaticLearning(options: RecoveredAutomaticLearningOptions): Promise<AutomaticLearningResult> {
+  return runLearning(options);
+}
+async function runLearning(options: AutomaticLearningOptions | ObservedAutomaticLearningOptions | RecoveredAutomaticLearningOptions): Promise<AutomaticLearningResult> {
   let result: AutomaticLearningResult = { outcome: 'skipped', skill: { status: 'skipped' }, note: { status: 'skipped' } };
   const observed = 'observed' in options;
+  const recovered = 'recovery' in options;
+  const durable = Boolean(options.routeFingerprint || recovered);
   if (!options.policy.enabled || (!options.policy.skills && !options.policy.notes)
-    || !observed && !hasAutomaticLearningEvidence(options.result, options.currentTurnEvidence, options.sourceContext)) return result;
+    || !observed && !recovered && !hasAutomaticLearningEvidence(options.result, options.currentTurnEvidence, options.sourceContext)) return result;
   if (options.signal.aborted) return { ...result, outcome: 'cancelled', reason: 'The source invocation was cancelled.' };
   const backend = options.backend;
   if (!backend) return { ...result, outcome: 'failed', reason: 'The Rust learning backend is unavailable.' };
@@ -96,9 +109,11 @@ async function runLearning(options: AutomaticLearningOptions | ObservedAutomatic
   let started = false;
   let hostFailure: LearningFailure | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let acknowledgementUncertain = false;
+  let effectEntered = false;
   const requestCancellation = () => {
     controller.abort();
-    if (job && !cancellation) {
+    if (job && !cancellation && !(durable && (job.status === 'ready' || !effectEntered || acknowledgementUncertain))) {
       const jobId = job.jobId;
       cancellation = backend.process('job.cancel', { jobId }).then(reply => reply.job);
       // An unavailable sidecar must not create an unhandled rejection while an effect drains.
@@ -123,13 +138,27 @@ async function runLearning(options: AutomaticLearningOptions | ObservedAutomatic
     // Abort propagation starts with admission, including time waiting for begin's acknowledgement.
     // Rust independently owns and checks the authoritative job deadline.
     timer = setTimeout(requestCancellation, Math.min(120_000, options.timeoutMs ?? 90_000));
-    if (observed) {
+    if (recovered) {
+      await assertActive();
+      const { jobId, profileId, workspaceId, sessionId, runId, promptSha256, destinationRevision, routeFingerprint, policy, observedSource } = options.recovery;
+      const supplied = [options.profileId, options.workspaceId, options.sessionId, options.runId, options.promptSha256, options.revision, options.routeFingerprint];
+      if (JSON.stringify(supplied) !== JSON.stringify([profileId, workspaceId, sessionId, runId, promptSha256, destinationRevision, routeFingerprint])
+        || options.policy.enabled !== policy.enabled || options.policy.notes !== policy.notes || options.policy.skills !== policy.skills
+        || policy.notes && !options.writeNote || policy.skills && !options.proposeSkill) {
+        throw new Error('The recovery bindings or required publication adapters changed.');
+      }
+      job = (await backend.process('job.recover', { jobId, profileId, workspaceId, sessionId, runId, promptSha256, destinationRevision, routeFingerprint, policy,
+        ...(observedSource ? { observedSource } : {}),
+        tools: tools.map(({ name, description, parameters }) => ({ name, description, parameters: { ...parameters } })),
+      })).job;
+    } else if (observed) {
       await assertActive();
       job = (await backend.process('observed.jobBegin', {
         ...options.observed, destinationRevision: options.revision, runId: options.runId, promptSha256: options.promptSha256, policy,
         tools: tools.map(({ name, description, parameters }) => ({ name, description, parameters: { ...parameters } })),
         ...(options.memoryContext ? { memoryContext: options.memoryContext } : {}),
         ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
+        ...(options.routeFingerprint ? { routeFingerprint: options.routeFingerprint } : {}),
       })).job;
     } else {
       intakeId = (await backend.process('evidence.begin', {})).intakeId;
@@ -152,6 +181,7 @@ async function runLearning(options: AutomaticLearningOptions | ObservedAutomatic
         ...(options.sourceContext ? { sourceContext: options.sourceContext } : {}),
         ...(options.memoryContext ? { memoryContext: options.memoryContext } : {}),
         ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
+        ...(options.routeFingerprint ? { routeFingerprint: options.routeFingerprint } : {}),
       })).job;
       intakeId = undefined; // The admitted job consumed this connection-bound intake.
     }
@@ -159,7 +189,7 @@ async function runLearning(options: AutomaticLearningOptions | ObservedAutomatic
     result.agentId = `learning-${randomUUID()}`;
     options.onWorkerStarted?.(result.agentId);
     started = true;
-    await emit({ type: 'subagent.spawned', subagentId: result.agentId, role: 'Skills curator', label: observed ? 'Observed work review' : 'Post-task learning' });
+    await emit({ type: 'subagent.spawned', subagentId: result.agentId, role: 'Skills curator', label: recovered ? 'Resuming saved learning' : observed ? 'Observed work review' : 'Post-task learning' });
     await emit({ type: 'subagent.state', subagentId: result.agentId, state: 'working', summary: 'Reviewing completed task evidence' });
     await emit({ type: 'agent.state', state: 'working', activity: 'knowledge', summary: 'Reviewing completed task evidence' });
     while (job.status === 'running' && job.effect) {
@@ -167,11 +197,22 @@ async function runLearning(options: AutomaticLearningOptions | ObservedAutomatic
       let completion: RustLearningInputs['job.advance']['completion'];
       let stage: LearningFailure['stage'] = 'authority';
       hostFailure = undefined;
+      // Persist admission before the provider/read effect. An ambiguous transport
+      // acknowledgement must never be converted into a safe-to-replay checkpoint.
+      if (durable) {
+        await assertActive();
+        acknowledgementUncertain = true;
+        await backend.process('job.enter', { jobId: job.jobId, effectId: effect.effectId });
+        acknowledgementUncertain = false;
+        effectEntered = true;
+      }
       try {
         await assertActive();
         if (effect.kind === 'model') {
           stage = 'activity';
           await emit({ type: 'agent.state', state: 'thinking', activity: 'knowledge', summary: 'Reviewing completed task evidence' });
+          stage = 'authority';
+          await assertActive();
           // No TS turn loop, model-result parsing, evidence transformation or artifact generation.
           stage = 'provider';
           const response = await options.provider.complete({ system: effect.system, messages: effect.messages, tools: effect.tools, signal: controller.signal });
@@ -182,6 +223,8 @@ async function runLearning(options: AutomaticLearningOptions | ObservedAutomatic
           if (!tool) throw new Error('The Rust-requested read adapter is unavailable.');
           stage = 'activity';
           await emit({ type: 'tool.started', toolCallId: effect.callId, tool: effect.name, kind: 'knowledge', label: 'Reading registered knowledge' });
+          stage = 'authority';
+          await assertActive();
           stage = 'read';
           const refusal: string | undefined = tool.precheck?.(effect.input);
           const read: ToolOutcome = refusal ? { ok: false, output: refusal } : await tool.run(effect.input, { signal: controller.signal, toolCallId: effect.callId, emit: () => undefined });
@@ -201,7 +244,11 @@ async function runLearning(options: AutomaticLearningOptions | ObservedAutomatic
         job = (await backend.process('job.settle', { jobId: job.jobId, effectId: effect.effectId })).job;
         break;
       }
+      await assertActive();
+      acknowledgementUncertain = durable;
       job = (await backend.process('job.advance', { jobId: job.jobId, effectId: effect.effectId, completion })).job;
+      acknowledgementUncertain = false;
+      effectEntered = false;
       result.usage = job.usage;
       if (completion.kind === 'model') await emit({ type: 'model.completed', text: 'Post-task model response processed by the Rust curator.', ...(completion.result.usage ? { usage: completion.result.usage } : {}) });
     }
@@ -221,11 +268,13 @@ async function runLearning(options: AutomaticLearningOptions | ObservedAutomatic
       outcome: controller.signal.aborted || job.status === 'cancelled' ? 'cancelled' : 'failed',
       reason: job.reason ?? 'Linked knowledge changed before publication.', failure: job.failure };
     await assertActive();
-    const claim = async (contentSha256: string) => {
+    const claim = async (contentSha256: string, freshReviewRequired = false, prepare?: () => Promise<void>) => {
       const identity = { profileId: options.profileId, contentSha256 };
       const prior = await backend.process('receipt.get', identity);
       if (prior.status === 'recorded' && prior.receipt) return prior.receipt;
+      if (freshReviewRequired) throw new Error('The recovered skill refinement requires a fresh source review.');
       if (prior.status !== 'missing') throw new Error('A prior publication has no confirmed result.');
+      await prepare?.();
       await assertActive();
       if ((await backend.process('receipt.claim', { ...identity, runId: options.runId })).claimed) return undefined;
       const raced = await backend.process('receipt.get', identity);
@@ -243,7 +292,7 @@ async function runLearning(options: AutomaticLearningOptions | ObservedAutomatic
       try {
         await assertActive();
         if (!job.noteSha256) throw new Error('The Rust note digest is unavailable.');
-        const prior = await claim(job.noteSha256);
+        const prior = await claim(job.noteSha256, false, options.prepareNote);
         if (prior) result.note = { status: 'saved', ...readLearningArtifact(prior, 'note', options.workspaceId) };
         else {
           await assertActive();
@@ -263,7 +312,7 @@ async function runLearning(options: AutomaticLearningOptions | ObservedAutomatic
       try {
         await assertActive();
         if (!job.skillSha256) throw new Error('The Rust candidate digest is unavailable.');
-        const prior = await claim(job.skillSha256);
+        const prior = await claim(job.skillSha256, job.recovery?.skillReviewRequired);
         if (prior) result.skill = { status: 'recorded', receipt: readLearningArtifact(prior, 'skill', options.workspaceId) };
         else {
           await assertActive();
@@ -273,13 +322,14 @@ async function runLearning(options: AutomaticLearningOptions | ObservedAutomatic
         }
       } catch (error) {
         if (result.skill.status !== 'recorded') result.skill = { status: 'unknown' };
-        problems.push(learningPublicationReason(error) ?? 'Skill publication or its durable confirmation was not completed.');
+        problems.push(job.recovery?.skillReviewRequired ? 'The saved skill refinement needs a fresh source review before publication.'
+          : learningPublicationReason(error) ?? 'Skill publication or its durable confirmation was not completed.');
       }
     }
     result.outcome = problems.length ? result.note.status === 'saved' || result.skill.status === 'recorded' ? 'partial' : 'failed' : 'completed';
     if (problems.length) result.reason = problems.join(' ');
     if (controller.signal.aborted) result.outcome = 'cancelled';
-    if (!controller.signal.aborted) {
+    if (!controller.signal.aborted && (!durable || !problems.length)) {
       job = (await backend.process('job.finish', { jobId: job.jobId })).job;
       if (job.status !== 'completed') {
         result.outcome = job.status === 'cancelled' ? 'cancelled' : result.note.status === 'saved' || result.skill.status === 'recorded' ? 'partial' : 'failed';
@@ -296,7 +346,8 @@ async function runLearning(options: AutomaticLearningOptions | ObservedAutomatic
       try {
         // All host effects have settled before reaching this block. Cancel/settle drains
         // a pending Rust effect if a host-side policy/event/transport check refused admission.
-        if (job.pendingEffectId || job.status === 'running' || job.status === 'ready') {
+        if (!acknowledgementUncertain && !(durable && (job.status === 'ready' || !effectEntered))
+          && (job.pendingEffectId || job.status === 'running' || job.status === 'ready')) {
           requestCancellation(); if (cancellation) job = await cancellation;
           const effectId = job.pendingEffectId ?? job.effect?.effectId;
           if (effectId) job = (await backend.process('job.settle', { jobId: job.jobId, effectId })).job;

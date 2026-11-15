@@ -19,6 +19,7 @@ export async function revalidateLearningKnowledge(options: {
     await options.assertActive();
     const toolCallId = `${job.jobId}-revalidate-${reads.length + 1}`;
     await options.emit({ type: 'tool.started', toolCallId, tool: 'knowledge_read', kind: 'knowledge', label: 'Confirming the linked note is current' });
+    await options.assertActive();
     const input = { path: reference.path, offset: 0, limit: 1 };
     let read = { ok: false, output: 'The linked note could not be revalidated.' };
     try {

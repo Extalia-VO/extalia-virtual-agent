@@ -29,6 +29,7 @@ import { ObservedMemory, createObservedMemoryTools } from './observedMemory.js';
 import { WorkMemory, createWorkMemoryTools, createNativeWorkMemoryCapture, createObservedWorkMemoryEvidenceCapture, type WorkMemoryAuthority } from './workMemory.js';
 import { createNativeMemoryPreparation } from './nativeMemoryPreparation.js';
 import { NativeContextArchive, NATIVE_CONTEXT_ARCHIVE_SUPPORTED } from './nativeContextArchive.js';
+import { createCavemanContextOptimizer } from './cavemanContextOptimizer.js';
 import { observedLearningWorkspace, globalObservedConnection } from './observedLearningScope.js';
 import type { ObservedMemoryEpisode } from './rustLearning.js';
 import { createContinuityTools } from './continuityTools.js';
@@ -81,7 +82,7 @@ import {
 import { createEvent, type AgentEvent, type EventBody, type EventSource, type ExtaliaEvent } from '@extalia/protocol';
 import {
   ProviderError, buildSystemPrompt, composeTurn, memberEditRefusal, createConductTeamMeetingTool, createDelegationTool, createFallbackProvider, createManageTeamTool, createProvider, hermesTeamBrief, modelChain, runTurn,
-  type AnyTool, type ApprovalOutcome, type DelegationOptions, type ModelMessage, type ModelProvider, type NativeMeetingMinutes, type NativeMissionAccounting, type NativeMissionTaskResult, type ToolAccess, type ToolResultEntry, type TurnAttachment, type TurnResult,
+  type AnyTool, type ApprovalOutcome, type ContextCompactionReport, type DelegationOptions, type ModelMessage, type ModelProvider, type NativeMeetingMinutes, type NativeMissionAccounting, type NativeMissionTaskResult, type ToolAccess, type ToolResultEntry, type TurnAttachment, type TurnResult,
 } from '@extalia/runtime';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
@@ -101,7 +102,9 @@ import { HostPersistenceGate } from './hostPersistenceGate.js';
 import { createProfileStore } from './profile.js';
 import { pinMeetingNotes } from './meetingNotes.js';
 import { pinLearningNotes } from './learningNotes.js';
-import { hasAutomaticLearningEvidence, runAutomaticLearning, runObservedAutomaticLearning, type AutomaticLearningResult } from './automaticLearning.js';
+import { hasAutomaticLearningEvidence, runAutomaticLearning, runObservedAutomaticLearning, runRecoveredAutomaticLearning, type AutomaticLearningResult } from './automaticLearning.js';
+import { LearningRecovery, learningRouteFingerprint, type LearningRecoveryCandidate } from './learningRecovery.js';
+import type { LearningRecoveryRecord } from './rustLearning.js';
 import { RustLearningBackend } from './rustLearning.js';
 import { createConnectService, resolveNodePath, type ConnectService } from './connect/index.js';
 import { isExecutable } from './connect/util.js';
@@ -2194,6 +2197,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       id, name: input.name, preset: input.preset, api: input.api, baseUrl: input.baseUrl, model: input.model,
       credential, features: input.features, ...(input.effort ? { effort: input.effort } : {}),
       ...(input.inputTokenLimit === undefined ? {} : { inputTokenLimit: input.inputTokenLimit }),
+      ...(input.contextOptimization === undefined ? {} : { contextOptimization: input.contextOptimization }),
       orchestration: input.orchestration ?? existing?.orchestration ?? defaultOrchestration(input.preset),
       createdAt: existing?.createdAt ?? stamp, updatedAt: stamp,
     });
@@ -2484,6 +2488,143 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     }
   }
 
+  function nativeLearningRoute(connection: Connection, record: SessionRecord): string {
+    return learningRouteFingerprint(connection, { kind: 'native', createdAt: record.createdAt,
+      identity: knowledgeSessionIdentity(record), boundary: workspaceSessionBoundaryKey(record.workspaceId, config.workspaces) });
+  }
+
+  /** Checkpoint metadata renews no access. Resolve the same source, profile and route afresh. */
+  async function authorizeLearningRecovery(checkpoint: LearningRecoveryRecord) {
+    if (closing || observedPrivacyChanges || workspaceBoundaryMutations || connectionChanges.size) return undefined;
+    const global = checkpoint.workspaceId === GLOBAL_OBSERVE_WORKSPACE_ID;
+    const workspace = global ? undefined : config.workspaces.find(item => item.id === checkpoint.workspaceId);
+    if (!global && !workspace) return undefined;
+    const profile = await vaultProfiles.policyFor(workspace?.id);
+    if (profile.profileId !== checkpoint.profileId || profile.revision !== checkpoint.destinationRevision || !profile.policy.enabled
+      || checkpoint.policy.notes && !profile.policy.notes || checkpoint.policy.skills && (!profile.policy.skills || !skillRegistry.enabled)) return undefined;
+    let connection: Connection | undefined, record: SessionRecord | undefined;
+    if (checkpoint.observedSource) {
+      if (profile.policy.observed !== true) return undefined;
+      const source = await observedMemorySource(checkpoint.sessionId);
+      if (!source?.enabled || continuityDigest(source.scope) !== continuityDigest(checkpoint.observedSource.scope)) return undefined;
+      const connectionId = workspace?.providerProfileId ?? (global
+        ? globalObservedConnection(config.workspaces, config.profile.id, config.connections.filter(keepsHistory).map(item => item.id)) : undefined);
+      connection = config.connections.find(item => item.id === connectionId);
+      if (!connection || learningRouteFingerprint(connection, { kind: 'observed', boundary: source.scope.boundary }) !== checkpoint.routeFingerprint) return undefined;
+    } else {
+      if (global) return undefined;
+      record = await sessions.get(checkpoint.sessionId);
+      if (!record || record.runtime || unsavedSessions.has(record.id) || record.workspaceId !== checkpoint.workspaceId
+        || storedOptions(record).permissionMode === 'plan' || !workspaceBoundaryMatches(record.workspaceBoundary, record.workspaceId, config.workspaces)) return undefined;
+      const saved = config.connections.find(item => item.id === record!.connectionId), selected = storedOptions(record);
+      if (!saved) return undefined;
+      connection = { ...saved, ...(selected.model ? { model: selected.model } : {}), ...(selected.effort ? { effort: selected.effort } : {}) };
+      if (nativeLearningRoute(connection, record) !== checkpoint.routeFingerprint) return undefined;
+    }
+    if (!keepsHistory(connection) || checkpoint.policy.skills && !resolveFeatures(connection).extaliaSkills) return undefined;
+    return { workspace: workspace ? structuredClone(workspace) : undefined, profile, connection: structuredClone(connection), record };
+  }
+
+  async function listLearningRecoveries(): Promise<LearningRecoveryCandidate[]> {
+    if (closing) return [];
+    const candidates: LearningRecoveryCandidate[] = [];
+    for (const workspace of [undefined, ...config.workspaces]) {
+      const profile = await vaultProfiles.policyFor(workspace?.id);
+      if (!profile.policy.enabled || !profile.policy.skills && !profile.policy.notes) continue;
+      const listed = await rustLearning.process('job.list', { profileId: profile.profileId,
+        workspaceId: workspace?.id ?? GLOBAL_OBSERVE_WORKSPACE_ID, limit: 32 });
+      for (const record of listed.jobs) {
+        if (record.active || record.state === 'terminal') continue;
+        const current = await authorizeLearningRecovery(record);
+        if (!current) continue;
+        candidates.push({ record, profileName: config.vaultProfiles?.profiles.find(item => item.id === record.profileId)?.name ?? config.profile.name,
+          ...(workspace ? { workspaceName: workspace.name } : {}),
+          sessionName: current.record?.title ?? sourceLabel(record.observedSource?.scope.sourceId ?? 'extalia-native') });
+        if (candidates.length >= 64) return candidates;
+      }
+    }
+    return candidates;
+  }
+
+  async function prepareLearningRecovery(checkpoint: LearningRecoveryRecord, scheduleId: string) {
+    const initial = await authorizeLearningRecovery(checkpoint);
+    if (!initial) throw userError('The saved learning source, profile or model settings changed. Start a fresh learning task.');
+    return { id: scheduleId, workspaceId: checkpoint.workspaceId, profileId: checkpoint.profileId, sessionId: checkpoint.sessionId,
+      profileName: config.vaultProfiles?.profiles.find(item => item.id === checkpoint.profileId)?.name ?? config.profile.name,
+      ...(initial.workspace ? { workspaceName: initial.workspace.name } : {}),
+      sessionName: initial.record?.title ?? sourceLabel(checkpoint.observedSource?.scope.sourceId ?? 'extalia-native'),
+      independent: Boolean(initial.workspace && independentLearning(initial.workspace.id, checkpoint.profileId)),
+      ready: () => learningReady(checkpoint.workspaceId, checkpoint.profileId),
+      validate: async () => Boolean(await authorizeLearningRecovery(checkpoint)),
+      execute: async (signal: AbortSignal) => {
+        const current = await authorizeLearningRecovery(checkpoint);
+        if (!current) throw userError('The learning recovery is no longer authorized.');
+        const { workspace, connection, record } = current, workspaceId = checkpoint.workspaceId;
+        const features = resolveFeatures(connection);
+        const memoryAuthority = features.extaliaMemory ? await resolveWorkMemory(workspaceId) : undefined;
+        const assertCurrent = async () => {
+          signal.throwIfAborted();
+          if (!await authorizeLearningRecovery(checkpoint)) throw userError('The learning recovery source or consent changed.');
+          if (checkpoint.observedSource) {
+            const source = await observedMemorySource(checkpoint.sessionId);
+            if (source?.running || source?.pending) throw userError('The observed conversation resumed work.');
+          }
+          if (memoryAuthority) await assertWorkMemoryAuthority(workspaceId, memoryAuthority);
+        };
+        await assertCurrent();
+        const access = workspace ? await createWorkspaceAccess({ workspaceId,
+          workspaces: record ? sessionProjectWorkspaces(config.workspaces, record) : structuredClone(config.workspaces), protectedRoots: [layout.root] }) : undefined;
+        let writer: Awaited<ReturnType<typeof pinLearningNotes>> | undefined;
+        try {
+          const prepareWriter = () => pinLearningNotes({ backend: rustLearning,
+            context: { sessionId: checkpoint.sessionId, workspaceId },
+            resolve: async () => { await assertCurrent(); return vaultProfiles.resolve(workspace?.id, { purpose: 'learning', ensure: true }); },
+            authorize: async target => {
+              await assertCurrent(); checkAllowed(target, 'Recovered learning notes', 'write');
+              if (isWithin(layout.root, target)) return;
+              for (const candidate of config.workspaces) for (const folder of [candidate.projectLocation, ...(candidate.additionalProjectLocations ?? [])].filter((value): value is string => Boolean(value))) {
+                const canonical = await realpath(folder), fold = (value: string) => process.platform === 'darwin' || process.platform === 'win32' ? value.toLowerCase() : value;
+                if (!isWithin(fold(path.resolve(folder)), fold(target)) && !isWithin(fold(canonical), fold(target))) continue;
+                if (!access || !workspace) throw userError('Global Observe grants no project filesystem access.');
+                await access.resolve(target, 'write');
+                if ((!record || storedOptions(record).permissionMode !== 'accept-edits') && (workspace.permissions ?? DEFAULT_PERMISSIONS).fileWrite !== 'allow') {
+                  throw userError('The vault requires fresh write permission.');
+                }
+              }
+            } });
+          const { provider } = await providerFor(connection);
+          const provenance = { profileId: checkpoint.profileId, workspaceId, sessionId: checkpoint.sessionId,
+            runId: checkpoint.runId, promptSha256: checkpoint.promptSha256 };
+          const emit = async (body: EventBody, agentId: string) => {
+            if (!checkpoint.observedSource) { await publish(checkpoint.sessionId, body, agentId, undefined, { strict: true }); return; }
+            await assertCurrent();
+            const event = createEvent({ sessionId: checkpoint.sessionId, agentId,
+              source: { runtime: 'extalia-native', channel: 'system', adapter: 'observed-learning' }, body });
+            for (const listener of listeners) { try { listener(event); } catch { /* Views do not own execution. */ } }
+          };
+          const learned = await runRecoveredAutomaticLearning({ ...provenance, revision: checkpoint.destinationRevision,
+            routeFingerprint: checkpoint.routeFingerprint, recovery: checkpoint, policy: checkpoint.policy,
+            provider, backend: rustLearning, signal, assertCurrent, emit,
+            tools: await curatorToolsFor(workspace?.id, checkpoint.policy.skills, { provenance, assertCurrent }, features.extaliaMemory),
+            proposeSkill: (input, proof, cancellation) => withRegistry(() => skillRegistry.propose(input, proof, cancellation)),
+            ...(checkpoint.policy.notes ? {
+              prepareNote: async () => { await assertCurrent(); writer ??= await prepareWriter(); },
+              writeNote: (note: Parameters<NonNullable<typeof writer>>[0], cancellation: AbortSignal) => {
+                if (!writer) throw new Error('The recovered note destination was not prepared.');
+                return persistence.run(() => writer!(note, cancellation));
+              },
+            } : {}),
+            onWorkerStarted: id => { nativeWorkers.set(id, { id, sessionId: checkpoint.sessionId, workspaceId, kind: 'delegated', state: 'running', active: true, evidence: 'local-invocation', label: 'Learning recovery' }); },
+            onWorkerSettled: id => { nativeWorkers.delete(id); },
+          });
+          await recordLearningOutcome(scheduleId, workspaceId, learned);
+          const notice = automaticLearningNotice(learned, { ...provenance, createdAt: now() });
+          if (notice) learningSchedule.recordResult(scheduleId, { skill: notice });
+          if (learned.outcome === 'partial' || learned.outcome === 'failed' || learned.outcome === 'cancelled') throw userError('Recovery did not confirm every enabled learning output. Saved outputs remain available.');
+        } finally { await writer?.close(); }
+      } };
+  }
+
   async function scheduleObservedLearning(episode: ObservedMemoryEpisode): Promise<void> {
     if (closing) return;
     const global = episode.scope.workspaceId === GLOBAL_OBSERVE_WORKSPACE_ID;
@@ -2558,6 +2699,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
             for (const listener of listeners) { try { listener(event); } catch { /* Disconnected views never own curation. */ } }
           };
           const learned = await runObservedAutomaticLearning({ observed: { scope: episode.scope, episodeId: episode.id, revision: episode.revision },
+            routeFingerprint: learningRouteFingerprint(connection, { kind: 'observed', boundary: episode.scope.boundary }),
             profileId: profile.profileId, revision: profile.revision, sessionId: episode.scope.sessionId, workspaceId, runId,
             memoryContext: features.extaliaMemory ? await learningMemoryContext(workspaceId, (await rustLearning.process('observed.read', {
               scope: episode.scope, episodeId: episode.id, revision: episode.revision, offset: 0, limit: 1,
@@ -5263,6 +5405,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
           const toolCallId = `${learningRunId}-learning`;
           await publish(sessionId, { type: 'tool.started', toolCallId, tool: 'automatic_learning', kind: 'delegate', label: 'Curating completed-task learning' }, 'primary', undefined, { strict: true });
           const learned = await runAutomaticLearning({
+            routeFingerprint: nativeLearningRoute(connection, { ...record, workspaceBoundary: boundary, team: expectedPersistedTeam }),
             result, currentTurnEvidence: evidence, sourceContext, ...learningProfile, policy,
             memoryContext: features.extaliaMemory ? await learningMemoryContext(workspace.id, sourceContext.user, learningRunId, signal) : undefined,
             sessionId, workspaceId: workspace.id, runId: learningRunId,
@@ -5369,6 +5512,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
           if (closing || runs.get(sessionId) !== run || !selected || !current
             || workspaceSessionBoundaryKey(workspace.id, config.workspaces) !== boundary
             || JSON.stringify(resolveFeatures(current)) !== JSON.stringify(resolveFeatures(selected.connection))
+            || JSON.stringify(current.contextOptimization ?? { mode: 'local' }) !== JSON.stringify(selected.connection.contextOptimization ?? { mode: 'local' })
             || keepsHistory(current) !== keepsHistory(selected.connection)) throw userError('The Native memory context changed. Start a new turn.');
           if (operationalMemoryEnabled && resolveFeatures(selected.connection).extaliaMemory && keepsHistory(selected.connection)) {
             const policy = await vaultProfiles.policyFor(workspace.id);
@@ -5390,7 +5534,18 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
               ok: true, output: JSON.stringify(report) }, agentId, undefined, { strict: true }),
           });
         };
-        const contextArchive = NATIVE_CONTEXT_ARCHIVE_SUPPORTED && operationalMemoryEnabled && features.extaliaMemory && learningProfile ? new NativeContextArchive({
+        const compactionFor = (archive: NativeContextArchive, connectionId: string, agentId = 'primary') => {
+          const selected = frozenProviders.get(connectionId)!.connection, setting = selected.contextOptimization;
+          return { ...archive.compactionOptions(),
+            report: (report: ContextCompactionReport) => publish(sessionId, { type: 'tool.completed', tool: 'context_optimization',
+              kind: 'knowledge', label: 'Prepared model context with recoverable sources', ok: true, output: JSON.stringify(report) }, agentId, undefined, { strict: true }),
+            ...(setting?.mode === 'caveman' ? { optimizer: createCavemanContextOptimizer({
+            executable: setting.executable, directory: path.join(layout.workspaces, workspace.id, 'context-optimizer'),
+            assertCurrent: () => assertMemoryCurrent(connectionId), env,
+          }) } : {}) };
+        };
+        const contextArchive = NATIVE_CONTEXT_ARCHIVE_SUPPORTED && operationalMemoryEnabled && features.extaliaMemory && learningProfile
+          && connection.contextOptimization?.mode !== 'off' ? new NativeContextArchive({
           directory: path.join(layout.workspaces, workspace.id, 'context-archives'),
           scope: { profileId: learningProfile.profileId, workspaceId: workspace.id, sessionId,
             boundary: continuityDigest([boundary, record.connectionId, learningProfile.profileId]) },
@@ -5405,12 +5560,12 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
             const id = member?.connectionId ?? record.connectionId, selected = frozenProviders.get(id)!;
             memoryWorkerConnections.set(agentId, id);
             if (!NATIVE_CONTEXT_ARCHIVE_SUPPORTED || !operationalMemoryEnabled || !resolveFeatures(selected.connection).extaliaMemory
-              || !keepsHistory(selected.connection) || !learningProfile) return undefined;
+              || !keepsHistory(selected.connection) || !learningProfile || selected.connection.contextOptimization?.mode === 'off') return undefined;
             const archive = new NativeContextArchive({ directory: path.join(layout.workspaces, workspace.id, 'context-archives'),
               scope: { profileId: learningProfile.profileId, workspaceId: workspace.id, sessionId: `${sessionId}:${agentId}`,
                 boundary: continuityDigest([boundary, id, learningProfile.profileId]) },
               assertCurrent: () => assertMemoryCurrent(id), persist: operation => persistence.run(operation) });
-            return { tools: [archive.readTool()], compaction: archive.compactionOptions(), maxInputTokens: selected.connection.inputTokenLimit };
+            return { tools: [archive.readTool()], compaction: compactionFor(archive, id, agentId), maxInputTokens: selected.connection.inputTokenLimit };
           },
           providerFor: tier => {
             if (!providers.has(tier)) providers.set(tier, nativeProvider({ ...connection, model: tierModel(connection, tier) }, secret));
@@ -5580,7 +5735,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
             const result = await runTurn({
               provider, system, history, prompt, tools, permissions, sessionGrants, permissionMode,
               prepareRequest: prepareContextFor(record.connectionId),
-              ...(contextArchive ? { compaction: contextArchive.compactionOptions() } : {}),
+              ...(contextArchive ? { compaction: compactionFor(contextArchive, record.connectionId) } : {}),
               ...(connection.inputTokenLimit !== undefined ? { maxInputTokens: connection.inputTokenLimit } : {}),
               attachments: turnAttachments(files),
               emit: body => {
@@ -6168,10 +6323,12 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
   });
   await generalSchedules.initialize();
 
+  const learningRecovery = new LearningRecovery({ queue: learningSchedule, list: listLearningRecoveries, prepare: prepareLearningRecovery });
+
   Object.assign(host, {
-    learningSchedule: async () => { assertHostOpen(); return learningSchedule.snapshot(); },
-    changeLearningSchedule: async (id: string, revision: string, action: 'snooze' | 'run-now') => {
-      assertHostOpen(); return learningSchedule.act(normalizeLearningScheduleAction({ id, revision, action }));
+    learningSchedule: async () => { assertHostOpen(); return learningRecovery.snapshot(); },
+    changeLearningSchedule: async (id: string, revision: string, action: 'snooze' | 'run-now' | 'resume') => {
+      assertHostOpen(); return learningRecovery.act(normalizeLearningScheduleAction({ id, revision, action }));
     },
     listSchedules: async () => { assertHostOpen(); return generalSchedules!.list(); },
     saveSchedule: async input => { assertHostOpen(); return generalSchedules!.save(input); },

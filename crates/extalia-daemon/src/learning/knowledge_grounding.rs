@@ -7,12 +7,14 @@ use std::collections::{BTreeMap, BTreeSet};
 pub(super) const MAX_TARGETS: usize = 8;
 const MAX_LINKS: usize = 32;
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(super) struct Reads {
     notes: BTreeMap<String, Snapshot>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 struct Snapshot {
     sha256: String,
     anchors: BTreeSet<String>,

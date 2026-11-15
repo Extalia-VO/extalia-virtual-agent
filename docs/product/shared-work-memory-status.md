@@ -1,5 +1,15 @@
 # Shared Work Memory and Claude-Mem-Inspired PRD Status
 
+**v0.4.330 extension:** [ADR 0091](../adr/0091-context-optimization-and-learning-recovery.md)
+adds continuation-aware lexical queries, per-note admission and source receipts,
+fresh amendment/conflict previews, selected-tool-only sanitized archives,
+connection-level local/Caveman/off optimization and durable learning recovery.
+Explicit resume preserves known-unentered analysis or ready findings while
+refusing uncertain-effect replay. The v0.4.328 acceptance baseline below remains
+historical; the [new validation record](../bench/context-learning-v0330.md) covers
+these additions. Installed upstream engine and total live cost/quality remain
+unverified; this is not full Claude-Mem/Hermes parity.
+
 **Review update: v0.4.328, 2026-11-15.** Extalia now implements a local operational-memory loop: attributed Native/Observe capture, a durable Rust index, bounded per-request Native recall, fresh Knowledge excerpts, historical context for learning, and recoverable older-tool-body request compaction on supported Unix filesystems. The Claude-Mem-inspired PRD is still **not fully accepted**: complete activity capture, semantic consolidation, a general external live-memory broker, universal runtime compaction and measured total-cost/quality improvement remain open. See [ADR 0089](../adr/0089-operational-work-memory-and-context-reuse.md) for exact limits.
 
 The referenced shared-work PRD is the design baseline for the checks below. Its section 8 defines memory/context behavior; sections 12–15 define external access, cost evaluation, and acceptance criteria. Current implementation claims are cross-checked against source and the product tracker. A design requirement or unit test alone is not evidence that an external runtime supports a capability.

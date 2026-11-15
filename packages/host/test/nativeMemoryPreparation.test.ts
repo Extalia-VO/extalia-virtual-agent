@@ -113,8 +113,9 @@ describe('fresh Knowledge automatic recall', () => {
   });
 
   it('keeps valid bounded JSON and separate update provenance even with large quoted paths', async () => {
-    const port = knowledgePort(), original = await port.read('Calibration.md', binding);
-    port.read = async () => ({ ...original!, node: { ...original!.node, path: `${'Long-'.repeat(180)}Calibration.md` }, body: 'Measured "quote" and newline\n'.repeat(200),
+    const port = knowledgePort(), original = await port.read('Calibration.md', binding), path = `${'Long-'.repeat(180)}Calibration.md`;
+    port.search = async () => ({ generation: 1, hits: [{ nodeId: 'note', path, title: 'Calibration' }] });
+    port.read = async () => ({ ...original!, node: { ...original!.node, path }, body: 'Measured "quote" and newline\n'.repeat(200),
       relatedUpdates: [{ nodeId: 'amendment', path: 'Amendment.md', title: 'Correction', relation: 'contradicts', line: 1,
         sourceSha256: 'b'.repeat(64), excerpt: 'Unverified later claim', trustStatus: 'untrusted' }] });
     const text = await recallKnowledgeContext(port, 'zirconium', request().signal), raw = text.slice(text.indexOf('\n') + 1);

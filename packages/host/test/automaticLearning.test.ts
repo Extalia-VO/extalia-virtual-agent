@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AnyTool, ModelProvider, ModelRequest, ModelResult, ToolResultEntry, TurnResult } from '@extalia/runtime';
 import type { EventBody } from '@extalia/protocol';
-import { automaticLearningTools, LEARNING_EVIDENCE_CHUNK_UNITS, runAutomaticLearning, runObservedAutomaticLearning, type AutomaticLearningOptions } from '../src/automaticLearning.js';
+import { automaticLearningTools, LEARNING_EVIDENCE_CHUNK_UNITS, runAutomaticLearning, runObservedAutomaticLearning, runRecoveredAutomaticLearning, type AutomaticLearningOptions } from '../src/automaticLearning.js';
 import { RustLearningBackend, type RustLearningAction, type RustLearningInputs, type RustLearningJob, type RustLearningPort, type RustLearningResults } from '../src/rustLearning.js';
 import { DaemonSidecar } from '../src/daemon/index.js';
 import { DAEMON_BINARY, HAS_DAEMON } from './daemonBackend.js';
@@ -34,6 +34,8 @@ function fakeBackend(afterModel: RustLearningJob | RustLearningJob[] = ready(), 
       case 'evidence.append': value = { complete: false }; break;
       case 'evidence.release': value = { released: true }; break;
       case 'job.begin': case 'observed.jobBegin': value = { job }; break;
+      case 'job.enter': value = { job }; break;
+      case 'job.recover': job = next.shift() ?? ready(); value = { job }; break;
       case 'job.advance': job = next.shift() ?? ready(); value = { job }; break;
       case 'job.revalidate': job = afterRevalidate ?? job; value = { job }; break;
       case 'job.cancel': job = { ...job, status: 'cancelled', effect: undefined }; value = { job }; break;
@@ -62,6 +64,116 @@ function options(overrides: Partial<AutomaticLearningOptions> = {}): AutomaticLe
 function tool(name: string, access: AnyTool['access'] = 'read', kind: AnyTool['kind'] = 'read'): AnyTool {
   return { name, access, kind, description: name, parameters: { type: 'object', properties: {} }, describe: () => ({ label: name }), run: vi.fn(async () => ({ ok: true, output: 'Read result.' })) };
 }
+
+describe('durable learning recovery effects', () => {
+  const routeFingerprint = 'e'.repeat(64);
+  const recovery = { ...provenance, jobId: 'job-one', destinationRevision: 'revision-one', routeFingerprint,
+    policy: { enabled: true, notes: true, skills: true } };
+
+  it('resumes ready findings without another model request and independently confirms both artifacts', async () => {
+    const backend = fakeBackend({ ...ready(), recovery: { resumed: true, skillReviewRequired: false } });
+    const setup = options({ backend: backend.port, routeFingerprint });
+    const result = await runRecoveredAutomaticLearning({ ...setup, recovery: { ...recovery, state: 'publication', active: false } as typeof recovery });
+    expect(result).toMatchObject({ outcome: 'completed', note: { status: 'saved' }, skill: { status: 'recorded' } });
+    expect(setup.provider.complete).not.toHaveBeenCalled();
+    expect(backend.calls.find(call => call.action === 'job.recover')?.input).toEqual({ ...recovery, tools: [] });
+    expect(backend.calls.filter(call => call.action === 'receipt.record')).toHaveLength(2);
+  });
+
+  it('keeps Knowledge publication independent of an expired skill review without consuming the skill claim', async () => {
+    const backend = fakeBackend({ ...ready(), recovery: { resumed: true, skillReviewRequired: true } });
+    const setup = options({ backend: backend.port, routeFingerprint });
+    const result = await runRecoveredAutomaticLearning({ ...setup, recovery });
+    expect(result).toMatchObject({ outcome: 'partial', note: { status: 'saved' }, skill: { status: 'unknown' } });
+    expect(result.reason).toMatch(/fresh source review/);
+    expect(setup.proposeSkill).not.toHaveBeenCalled();
+    expect(backend.calls.filter(call => call.action === 'receipt.claim').map(call => call.input)).toEqual([
+      { profileId: provenance.profileId, contentSha256: 'd'.repeat(64), runId: provenance.runId },
+    ]);
+    expect(backend.calls.map(call => call.action)).not.toContain('job.finish');
+    expect(backend.calls.map(call => call.action)).not.toContain('job.cancel');
+    expect(backend.calls.at(-1)?.action).toBe('job.release');
+  });
+
+  it.each(['scope', 'route', 'note-adapter', 'skill-adapter'] as const)('refuses a mismatched recovery before consuming it (%s)', change => {
+    const backend = fakeBackend();
+    const setup = options({ backend: backend.port, routeFingerprint,
+      ...(change === 'scope' ? { workspaceId: 'other-workspace' } : {}),
+      ...(change === 'route' ? { routeFingerprint: 'f'.repeat(64) } : {}),
+      ...(change === 'note-adapter' ? { writeNote: undefined } : {}),
+      ...(change === 'skill-adapter' ? { proposeSkill: undefined } : {}),
+    });
+    return runRecoveredAutomaticLearning({ ...setup, recovery }).then(result => {
+      expect(result.outcome).toBe('failed');
+      expect(backend.calls).toHaveLength(0);
+      expect(setup.provider.complete).not.toHaveBeenCalled();
+    });
+  });
+
+  it.each(['job.enter', 'job.advance'] as const)('preserves uncertainty after a lost %s acknowledgement', async lost => {
+    const backend = fakeBackend();
+    const port: RustLearningPort = { async process(action, input) {
+      const reply = await backend.port.process(action, input);
+      if (action === lost) throw new Error('Synthetic acknowledgement loss.');
+      return reply;
+    } };
+    const setup = options({ backend: port, routeFingerprint });
+    const result = await runAutomaticLearning(setup);
+    expect(result.outcome).toBe('failed');
+    expect(setup.provider.complete).toHaveBeenCalledTimes(lost === 'job.enter' ? 0 : 1);
+    expect(backend.calls.map(call => call.action)).not.toContain('job.cancel');
+    expect(backend.calls.map(call => call.action)).not.toContain('job.settle');
+    expect(backend.calls.at(-1)?.action).toBe('job.release');
+  });
+
+  it('retains accepted findings when publication is unavailable', async () => {
+    const backend = fakeBackend();
+    const setup = options({ backend: backend.port, routeFingerprint, writeNote: vi.fn(async () => { throw new Error('Synthetic disk failure.'); }) });
+    expect((await runAutomaticLearning(setup)).outcome).toBe('partial');
+    const actions = backend.calls.map(call => call.action);
+    expect(actions.indexOf('job.enter')).toBeLessThan(actions.indexOf('job.advance'));
+    expect(actions).not.toContain('job.finish');
+    expect(actions).not.toContain('job.cancel');
+    expect(actions.at(-1)).toBe('job.release');
+  });
+
+  it('keeps an unentered next step resumable when orderly shutdown interrupts analysis', async () => {
+    const controller = new AbortController();
+    const next = { ...state(), effect: { effectId: 'read-next', kind: 'read' as const, callId: 'read-call', name: 'knowledge_read', input: { path: 'Knowledge.md' } }, pendingEffectId: 'read-next' };
+    const backend = fakeBackend(next);
+    const setup = options({ backend: backend.port, routeFingerprint, signal: controller.signal,
+      emit: async body => { if (body.type === 'model.completed') controller.abort(); } });
+    expect((await runAutomaticLearning(setup)).outcome).toBe('cancelled');
+    expect(backend.calls.filter(call => call.action === 'job.enter')).toHaveLength(1);
+    expect(backend.calls.map(call => call.action)).not.toContain('job.cancel');
+    expect(backend.calls.map(call => call.action)).not.toContain('job.settle');
+    expect(backend.calls.at(-1)?.action).toBe('job.release');
+  });
+
+  it('continues skill publication when a fresh note destination cannot be prepared', async () => {
+    const backend = fakeBackend({ ...ready(), recovery: { resumed: true, skillReviewRequired: false } });
+    const setup = options({ backend: backend.port, routeFingerprint, prepareNote: vi.fn(async () => { throw new Error('Vault is temporarily unavailable.'); }) });
+    const result = await runRecoveredAutomaticLearning({ ...setup, recovery });
+    expect(result).toMatchObject({ outcome: 'partial', note: { status: 'failed' }, skill: { status: 'recorded' } });
+    expect(setup.writeNote).not.toHaveBeenCalled();
+    expect(setup.proposeSkill).toHaveBeenCalledOnce();
+    expect(backend.calls.filter(call => call.action === 'receipt.claim').map(call => call.input)).toEqual([
+      { profileId: provenance.profileId, contentSha256: 'c'.repeat(64), runId: provenance.runId },
+    ]);
+  });
+
+  it('rechecks authority after asynchronous pre-effect activity before calling a provider', async () => {
+    let permitted = true;
+    const backend = fakeBackend();
+    const setup = options({ backend: backend.port, routeFingerprint,
+      assertCurrent: () => { if (!permitted) throw new Error('Source access revoked.'); },
+      emit: async body => { if (body.type === 'agent.state' && body.state === 'thinking') permitted = false; },
+    });
+    expect((await runAutomaticLearning(setup)).outcome).toBe('failed');
+    expect(setup.provider.complete).not.toHaveBeenCalled();
+    expect(setup.writeNote).not.toHaveBeenCalled();
+  });
+});
 
 describe('Rust-owned automatic learning host effects', () => {
   it('revalidates every referenced source before receipt admission and forwards pinned hashes to the writer', async () => {
@@ -246,8 +358,10 @@ describe('Rust-owned automatic learning host effects', () => {
   });
 
   it('rechecks host policy before persistence and leaves source success unchanged', async () => {
-    let checks = 0;
-    const setup = options({ assertCurrent: () => { if (++checks >= 4) throw new Error('Policy changed.'); } });
+    let permitted = true;
+    const model = provider();
+    vi.mocked(model.complete).mockImplementation(async () => { permitted = false; return completed; });
+    const setup = options({ provider: model, assertCurrent: () => { if (!permitted) throw new Error('Policy changed.'); } });
     expect(await runAutomaticLearning(setup)).toMatchObject({ outcome: 'failed' });
     expect(setup.provider.complete).toHaveBeenCalledOnce();
     expect(setup.proposeSkill).not.toHaveBeenCalled(); expect(setup.writeNote).not.toHaveBeenCalled(); expect(source.outcome).toBe('completed');
