@@ -385,6 +385,27 @@ for example when one runs out of quota.
 
 ## 11. Status tracker
 
+### Feature README previews (2026-11-16)
+
+- Complete (Codex GPT orchestration): five animated WebP previews recorded from
+  the v0.4.352 production UI with isolated, synthetic data: AI team planning/model
+  selection, automatic learning with a meeting, Chat subagents and skill-use
+  chart, multi-project Observe with a reviewed handover, and a campus tour with
+  forward-moving traffic and daylight → dusk → night → dawn → daylight.
+- Both GitHub and npm READMEs use the same media with visible simulation
+  attribution. Browser checks confirmed decoded dimensions and changing displayed
+  frames for all five files; metadata checks confirmed infinite loops and no
+  EXIF/XMP. The campus opening and closing camera/lighting match, and continuing
+  vehicles moved. npm's offline package dry run includes the updated README.
+- Verification of the captures: `pnpm check` passed (11,637 application tests;
+  29 skipped; 751 Rust tests), including lint, typechecks, native checks and
+  builds. Capture details are in [README previews](../images/README.md).
+- Publication in progress: the owner authorized the GitHub push and live npm
+  README update. The documentation-only patch v0.4.353 carries the same runtime
+  behavior; npm requires a new package version to refresh its rendered README.
+  Re-run the release checks, push the source/media and publish verified npm
+  artifacts after the repository's review and packaging gates.
+
 ### Release-platform correction (2026-11-16)
 
 - Candidate v0.4.352 restricts the project-Knowledge inventory constant and
