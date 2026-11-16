@@ -385,6 +385,15 @@ for example when one runs out of quota.
 
 ## 11. Status tracker
 
+### Release-platform correction (2026-11-16)
+
+- Candidate v0.4.352 restricts the project-Knowledge inventory constant and
+  blocked-name helper to Unix, matching their only caller. Windows retains its
+  existing unsupported-platform refusal; strict Clippy warnings stay enabled.
+- Ten focused project-Knowledge tests, strict workspace Clippy and formatting
+  pass locally. Cross-platform CI and publication remain tracked separately in
+  [release issue #119](https://github.com/Extalia-VO/extalia-virtual-agent/issues/119).
+
 ### Upstream schedule retry before agent work (2026-11-16)
 
 - Implemented locally v0.4.340 (Codex GPT orchestration): a reachable Native

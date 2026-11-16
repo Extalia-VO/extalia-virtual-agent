@@ -10,6 +10,7 @@ use extalia_core::skills::ProfileId;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self, File};
 
+#[cfg(unix)]
 const MAX_FILES: usize = 2000;
 const MAX_FILE: usize = 2 * 1024 * 1024;
 const MAX_TOTAL: usize = 64 * 1024 * 1024;
@@ -76,6 +77,7 @@ fn safe_relative(path: &str) -> bool {
             .split('/')
             .all(|part| !part.is_empty() && !part.starts_with('.') && part != "..")
 }
+#[cfg(unix)]
 fn blocked_name(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
     lower.starts_with('.')

@@ -7,7 +7,7 @@
 
 ## Prepared release candidates
 
-- [v0.4.351](v0.4.351.md): source prepared; CI and publication tracked separately.
+- [v0.4.352](v0.4.352.md): source prepared; CI and publication tracked separately.
 
 ## Historical release notes
 

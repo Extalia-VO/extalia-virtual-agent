@@ -16,6 +16,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.352] - 2026-11-16
+
+- Compile project-Knowledge inventory helpers only on Unix, matching their
+  supported implementation and preserving strict Windows warning checks.
+
 ## [0.4.351] - 2026-11-16
 
 - Retry scheduled Native work when a reachable router's upstream fails before
