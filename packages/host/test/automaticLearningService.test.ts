@@ -1,3 +1,4 @@
+import { generatedSkillMetadata, completeSkillInstructions } from './generatedSkillFixtures.js';
 import { skillStoragePaths } from '../src/skillStorage.js';
 import { createAgentHost } from '../src/service.js';
 import { chmod, lstat, mkdir, readFile, readdir, realpath, writeFile } from 'node:fs/promises';
@@ -69,7 +70,7 @@ async function fixture(options: { enabled?: boolean; history?: boolean; skills?:
         const prompt = body.messages.find(item => item.role === 'user')!.content!;
         const evidence = JSON.parse(prompt.slice(prompt.indexOf('\n') + 1)) as { id: string }[];
         return response({ tool: 'submit_learning', args: { title: 'Completed-task finding', lesson: options.lesson ?? 'Validate input before saving parsed data and report validation failures.', evidenceIds: evidence.map(item => item.id),
-          ...(options.skills ? { skill: { name: 'validate-before-saving', description: 'Validate before saving', instructions: 'Validate input before saving and report failures.' } } : {}),
+          ...(options.skills ? { skill: { name: 'validate-before-saving', description: 'Validate before saving', ...generatedSkillMetadata(), instructions: completeSkillInstructions('Validate input before saving and report failures.') } } : {}),
         } }, call);
       }
       const prompt = body.messages.filter(item => item.role === 'user').at(-1)?.content ?? '';

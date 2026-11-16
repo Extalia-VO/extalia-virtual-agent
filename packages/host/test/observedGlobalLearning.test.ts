@@ -1,3 +1,4 @@
+import { generatedSkillMetadata } from './generatedSkillFixtures.js';
 import { appendFile, chmod, lstat, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { GLOBAL_OBSERVE_WORKSPACE_ID, type LearningScheduleJob } from '@extalia/platform';
@@ -54,7 +55,7 @@ async function fixture({ observed = true, connections = 1, history = true, ambig
       return response({ title: 'Observed normalization procedure',
         lesson: 'The observed source reports normalization before duplicate checks and preservation of the first matching row. This remains an attributed report, not independent verification.',
         evidenceIds: evidence.map(item => item.id),
-        skill: { name: 'review-normalization-order', description: 'Use when reviewing normalization and duplicate handling in a data pipeline.',
+        skill: { name: 'review-normalization-order', description: 'Use when reviewing normalization and duplicate handling in a data pipeline.', ...generatedSkillMetadata(), intents: ['review_normalization'],
           instructions: '## When to Use\nReview data pipelines with normalization and duplicate handling.\n\n## Procedure\nRead the current specification, identify normalization order, and compare the duplicate policy.\n\n## Pitfalls\nObserved reports can be stale; do not infer execution success.\n\n## Verification\nCheck current source and tests before accepting the reported behavior.' },
       });
     },

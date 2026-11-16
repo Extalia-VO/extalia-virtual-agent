@@ -356,6 +356,78 @@
         }
       },
       "code": "invalid_request"
+    },
+    {
+      "name": "candidate read carries four references and two metadata files",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.reviewRead",
+        "result": {
+          "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageId": "review-checklist",
+          "path": "SKILL.md",
+          "size": 9,
+          "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "content": "Untrusted",
+          "skillMdSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "untrusted": true,
+          "reviewReceipt": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "provenance": {
+            "profileId": "profile-one",
+            "workspaceId": "w_example",
+            "sessionId": "s_original",
+            "promptSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+          },
+          "referencePaths": [
+            "references/one.md",
+            "references/two.md",
+            "references/three.md",
+            "references/four.md",
+            "TESTS.json",
+            "extalia-skill.json"
+          ]
+        }
+      }
+    },
+    {
+      "name": "candidate read refuses seven auxiliary paths",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.reviewRead",
+        "result": {
+          "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageId": "review-checklist",
+          "path": "SKILL.md",
+          "size": 9,
+          "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "content": "Untrusted",
+          "skillMdSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "untrusted": true,
+          "reviewReceipt": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "provenance": {
+            "profileId": "profile-one",
+            "workspaceId": "w_example",
+            "sessionId": "s_original",
+            "promptSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+          },
+          "referencePaths": [
+            "references/one.md",
+            "references/two.md",
+            "references/three.md",
+            "references/four.md",
+            "TESTS.json",
+            "extalia-skill.json",
+            "references/five.md"
+          ]
+        }
+      },
+      "code": "invalid_frame"
     }
   ]
 }

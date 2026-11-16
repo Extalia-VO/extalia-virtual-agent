@@ -1,3 +1,4 @@
+import { generatedSkillMetadata, completeSkillInstructions } from './generatedSkillFixtures.js';
 import { describe, expect, it, vi } from 'vitest';
 import type { DaemonClient } from '../src/daemon/index.js';
 import { RustLearningBackend } from '../src/rustLearning.js';
@@ -53,7 +54,7 @@ describe('connection-bound Rust learning client', () => {
     original.usable = false;
     connect.mockResolvedValue(replacement as unknown as DaemonClient);
     await expect(backend.process('receipt.claim', { profileId: 'default', contentSha256: 'b'.repeat(64), runId: 'run-two' })).rejects.toMatchObject({ code: 'missing_capability' });
-    await expect(backend.process('skill.stage', { proposal: { name: 'example-skill', description: 'Example', instructions: 'Read the relevant note.' }, provenance: { sessionId: pin.sessionId, workspaceId: pin.workspaceId, promptSha256: 'a'.repeat(64), runId: 'run-two' } })).rejects.toMatchObject({ code: 'missing_capability' });
+    await expect(backend.process('skill.stage', { proposal: { name: 'example-skill', description: 'Example', ...generatedSkillMetadata(), instructions: completeSkillInstructions('Read the relevant note.') }, provenance: { sessionId: pin.sessionId, workspaceId: pin.workspaceId, promptSha256: 'a'.repeat(64), runId: 'run-two' } })).rejects.toMatchObject({ code: 'missing_capability' });
     expect(connect).toHaveBeenCalledTimes(2); expect(replacement.request).not.toHaveBeenCalled();
   });
 

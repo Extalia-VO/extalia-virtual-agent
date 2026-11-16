@@ -1,5 +1,5 @@
 /** Connection-bound ports for Rust-owned learning jobs and artifact persistence. */
-import type { DaemonLearningParams, LearningActions, LearningQueueCaptureInput, LearningKnowledgeRead, LearningRelatedNote, Usage, WorkMemoryActions } from '@extalia/protocol';
+import type { DaemonLearningParams, LearningActions, LearningQueueCaptureInput, LearningKnowledgeRead, LearningRelatedNote, ProjectKnowledgeActions, Usage, WorkMemoryActions } from '@extalia/protocol';
 import type { ModelMessage, ModelResult, ToolResultEntry, ToolSpec } from '@extalia/runtime';
 import type { SkillProposalInput, SkillProposalProvenance } from './skillLearning.js';
 import { DaemonUnavailableError, type DaemonClient } from './daemon/index.js';
@@ -34,7 +34,9 @@ export type { ObservedMemoryScope, ObservedMemoryEntry, ObservedMemoryCoverage, 
 export type { WorkMemoryScope, WorkMemorySource, WorkMemoryEntry, WorkMemoryCoverage, WorkMemoryRecord, WorkMemoryPage } from '@extalia/protocol';
 type WorkMemoryInputs = { [A in keyof WorkMemoryActions]: WorkMemoryActions[A]['input'] };
 type WorkMemoryResults = { [A in keyof WorkMemoryActions]: WorkMemoryActions[A]['result'] };
-export interface RustLearningInputs extends WorkMemoryInputs {
+type ProjectKnowledgeInputs = { [A in keyof ProjectKnowledgeActions]: ProjectKnowledgeActions[A]['input'] };
+type ProjectKnowledgeResults = { [A in keyof ProjectKnowledgeActions]: ProjectKnowledgeActions[A]['result'] };
+export interface RustLearningInputs extends WorkMemoryInputs, ProjectKnowledgeInputs {
   'observed.capture': LearningActions['observed.capture']['input'];
   'observed.search': LearningActions['observed.search']['input'];
   'observed.read': LearningActions['observed.read']['input'];
@@ -78,7 +80,7 @@ export interface RustLearningInputs extends WorkMemoryInputs {
   'skill.cleanup': { stageId: string };
 }
 type Released = { released: true };
-interface ResultValues extends WorkMemoryResults {
+interface ResultValues extends WorkMemoryResults, ProjectKnowledgeResults {
   'observed.capture': LearningActions['observed.capture']['result'];
   'observed.search': LearningActions['observed.search']['result'];
   'observed.read': LearningActions['observed.read']['result'];
@@ -131,19 +133,19 @@ export class RustLearningBackend implements RustLearningPort {
 
   async process<A extends RustLearningAction>(action: A, input: RustLearningInputs[A]): Promise<RustLearningResults[A]> {
     const fields = input as unknown as Record<string, unknown>;
-    const handle = ['jobId', 'pinId', 'draftId', 'stageId', 'intakeId'].map(key => fields[key]).find(value => typeof value === 'string') as string | undefined;
+    const handle = ['jobId', 'pinId', 'draftId', 'stageId', 'intakeId', 'buildId'].map(key => fields[key]).find(value => typeof value === 'string') as string | undefined;
     const provenance = fields.provenance as SkillProposalProvenance | undefined;
     const runId = typeof fields.runId === 'string' ? fields.runId : provenance?.runId;
     const client = ['job.recover', 'queue.admit', 'queue.delay', 'queue.cancel'].includes(action) ? await this.connect() : handle ? this.handles.get(handle) : runId ? this.runs.get(runId) ?? await this.connect() : await this.connect();
     if (!client || !client.usable || !(client.capabilities as readonly string[]).includes('learning.process'))
       throw new DaemonUnavailableError('missing_capability');
-    const result = await client.request('learning.process', { action, input } as DaemonLearningParams, 30_000) as unknown as RustLearningResults[A];
+    const result = await client.request('learning.process', { action, input } as DaemonLearningParams, action.startsWith('project.') ? 120_000 : 30_000) as unknown as RustLearningResults[A];
     if (result.action !== action) throw new DaemonUnavailableError('malformed_reply');
     const values = result as unknown as Record<string, unknown>;
     const job = values.job as RustLearningJob | undefined;
-    for (const id of [values.pinId, values.draftId, values.stageId, values.intakeId, job?.jobId]) if (typeof id === 'string') this.handles.set(id, client);
+    for (const id of [values.pinId, values.draftId, values.stageId, values.intakeId, values.buildId, job?.jobId]) if (typeof id === 'string') this.handles.set(id, client);
     if ((action === 'job.begin' || action === 'observed.jobBegin' || action === 'job.recover' || action === 'queue.admit') && runId && job) { this.runs.set(runId, client); this.jobRuns.set(job.jobId, runId); }
-    if (handle && ['job.begin', 'queue.capture', 'job.release', 'evidence.release', 'note.release', 'note.discard', 'note.commit', 'skill.cleanup'].includes(action)) this.handles.delete(handle);
+    if (handle && ['job.begin', 'queue.capture', 'job.release', 'evidence.release', 'note.release', 'note.discard', 'note.commit', 'skill.cleanup', 'project.release'].includes(action)) this.handles.delete(handle);
     if (action === 'job.release' && handle) {
       const run = this.jobRuns.get(handle);
       if (run) this.runs.delete(run);

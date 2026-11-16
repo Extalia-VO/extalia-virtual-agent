@@ -13,7 +13,20 @@ const PUBLICATION_REASONS: Readonly<Record<string, string>> = {
   refinement_base_changed: 'A newer or changed skill revision was found. Review the current candidate before submitting another refinement.',
   candidate_not_latest: 'The selected skill revision is no longer current. Review the latest candidate.',
   candidate_scope_mismatch: 'The skill candidate does not belong to this learning profile and workspace.',
-  candidate_references_unread: 'Read every existing Markdown reference before submitting a replacement skill package.',
+  candidate_references_unread: 'Read every existing Markdown reference, manifest and verification fixture before submitting a replacement skill package.',
+  generated_duplicate_candidate: 'An equivalent generated skill already exists. Review and refine its current package instead of creating an alias.',
+  generated_possible_duplicate: 'A generated skill with overlapping purpose already exists. Review that candidate before proposing a separate class.',
+  invalid_skill_quality: 'Include valid categories, task intents, populated procedure sections and verification cases before submitting the candidate.',
+  skill_metadata_invalid: 'Provide bounded category slugs and task intent identifiers before submitting the generated candidate.',
+  incomplete_skill_instructions: 'Populate When to Use, Procedure, Pitfalls and Verification outside code fences before submitting the candidate.',
+  skill_instructions_incomplete: 'Populate When to Use, Procedure, Pitfalls and Verification outside code fences before submitting the candidate.',
+  verification_cases_invalid: 'Provide bounded verification inputs and expected assertions before submitting a generated skill.',
+  refinement_tests_changed: 'Retain every existing verification case and assertion when refining a skill; add new regression cases instead of weakening prior tests.',
+  refinement_references_removed: 'Retain every existing reference path when refining a skill; improve the referenced content instead of removing it.',
+  candidate_references_missing: 'Retain every existing reference path when refining a skill; improve the referenced content instead of removing it.',
+  candidate_catalog_incomplete: 'The generated-skill catalog could not be checked completely. Refresh it before creating another class.',
+  learned_evaluation_required: 'The candidate needs revision-bound tests before approval or activation. The current active version is retained.',
+  learned_evaluation_stale: 'The candidate or its active baseline changed. Run the tests again before replacing the active version.',
 };
 
 /** Only stable owner reason codes are user-visible; arbitrary error messages and paths are never copied. */

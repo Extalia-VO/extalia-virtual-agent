@@ -8,6 +8,7 @@ import type { AnyTool, ToolDefinition } from '@extalia/runtime';
 import { BUILTIN_SKILLS } from './builtinSkills.js';
 import { CorruptFileError, isNotFound, readJson, writeJsonAtomic } from './jsonStore.js';
 import { bound, failure, OUTPUT_LIMIT } from './tools/shared.js';
+import { normalizeSkillLabels } from './skillLearning.js';
 
 /** `imported` and `generated` come only from the Rust core's skill registry (W3). */
 export type SkillSource = 'builtin' | 'user' | 'workspace' | 'imported' | 'generated';
@@ -15,6 +16,9 @@ export type SkillSource = 'builtin' | 'user' | 'workspace' | 'imported' | 'gener
 export interface Skill {
   name: string;
   description: string;
+  /** Verified persisted routing hints; absent for legacy packages. Never permission grants. */
+  categories?: readonly string[];
+  intents?: readonly string[];
   source: SkillSource;
   /** Instructions in Markdown, without the front matter. */
   body: string;
@@ -24,7 +28,7 @@ export interface Skill {
   revisionId?: string;
 }
 
-export type SkillIdentity = Pick<Skill, 'name' | 'description' | 'source' | 'sha256' | 'revisionId'>;
+export type SkillIdentity = Pick<Skill, 'name' | 'description' | 'categories' | 'intents' | 'source' | 'sha256' | 'revisionId'>;
 /** Opaque metadata, never scanner authority. The expected body digest is private. */
 export interface SkillReference extends SkillIdentity { readonly body?: undefined }
 type CatalogSkill = Skill | SkillReference;
@@ -34,7 +38,7 @@ export function referenceSkill(skill: Skill): SkillReference {
   if (!registryIdentity(skill)) throw new Error('Invalid registry skill reference.');
   // Detach descriptions from any sliced backing string of the large source file.
   const reference: SkillReference = Object.freeze({ name: skill.name, description: Buffer.from(skill.description, 'utf8').toString('utf8'), source: skill.source,
-    sha256: skill.sha256, revisionId: skill.revisionId });
+    sha256: skill.sha256, revisionId: skill.revisionId, ...routingMetadata(skill) });
   referenceDigests.set(reference, createHash('sha256').update(skill.body).digest('hex'));
   return reference;
 }
@@ -85,6 +89,11 @@ function unquote(value: string): string {
   return quoted ? trimmed.slice(1, -1) : trimmed;
 }
 
+function routingMetadata(skill: Pick<Skill, 'categories' | 'intents'>): Pick<Skill, 'categories' | 'intents'> {
+  return { ...(skill.categories ? { categories: Object.freeze(normalizeSkillLabels(skill.categories, 'categories')) } : {}),
+    ...(skill.intents ? { intents: Object.freeze(normalizeSkillLabels(skill.intents, 'intents')) } : {}) };
+}
+
 /**
  * Parse a SKILL.md file: a front matter block (`---`, `name: …`,
  * `description: …`, `---`) followed by the instructions. The name defaults to
@@ -106,7 +115,13 @@ export function parseSkill(content: string, fallbackName: string, source: SkillS
   if (!description) throw new Error('missing "description" in front matter.');
   const body = lines.slice(close + 1).join('\n').trim();
   if (!body) throw new Error('the skill has no instructions after the front matter.');
-  return { name, description: clip(description, DESCRIPTION_LIMIT), source, body };
+  const metadata: Pick<Skill, 'categories' | 'intents'> = {};
+  for (const key of ['categories', 'intents'] as const) if (fields[key] !== undefined) {
+    let value: unknown;
+    try { value = JSON.parse(fields[key]!); } catch { throw new Error(`invalid ${key} front matter (use a JSON array).`); }
+    metadata[key] = normalizeSkillLabels(value, key);
+  }
+  return { name, description: clip(description, DESCRIPTION_LIMIT), source, body, ...routingMetadata(metadata) };
 }
 
 async function loadDirectory(directory: string, source: SkillSource, label: string, warnings: string[]): Promise<Skill[]> {
@@ -181,7 +196,7 @@ export function bindRequestSkills(catalog: AgentSkillCatalog, scope: object, nam
   requestSkills.set(scope, { catalog, names: new Set(catalogs.has(catalog) ? names : []) });
 }
 const snapshot = (skill: Skill): Skill => Object.freeze({ name: skill.name, description: skill.description, source: skill.source, body: skill.body,
-  ...(skill.sha256 ? { sha256: skill.sha256 } : {}), ...(skill.revisionId ? { revisionId: skill.revisionId } : {}) });
+  ...(skill.sha256 ? { sha256: skill.sha256 } : {}), ...(skill.revisionId ? { revisionId: skill.revisionId } : {}), ...routingMetadata(skill) });
 const canonicalBuiltin = (skill: CatalogSkill): skill is Skill => skill.source === 'builtin' && SHIPPED_SKILLS.some(builtin => builtin.name === skill.name && builtin.description === skill.description && builtin.body === skill.body);
 const registryIdentity = (skill: Skill): boolean => ['user', 'workspace', 'imported', 'generated'].includes(skill.source)
   && typeof skill.name === 'string' && skill.name.length <= 64 && SKILL_NAME_PATTERN.exec(skill.name)?.[0] === skill.name
@@ -191,6 +206,7 @@ const registryIdentity = (skill: Skill): boolean => ['user', 'workspace', 'impor
   && typeof skill.description === 'string' && typeof skill.body === 'string';
 const sameRegistrySkill = (listed: SkillReference, fresh: Skill): boolean => registryIdentity(fresh)
   && fresh.name === listed.name && fresh.source === listed.source && fresh.revisionId === listed.revisionId && fresh.sha256 === listed.sha256
+  && JSON.stringify(routingMetadata(fresh)) === JSON.stringify(routingMetadata(listed))
   && fresh.description === listed.description && referenceDigests.get(listed) === createHash('sha256').update(fresh.body).digest('hex');
 
 async function freshSkills(selection: readonly CatalogSkill[], options: SkillToolOptions): Promise<Skill[]> {
@@ -204,8 +220,8 @@ async function freshSkills(selection: readonly CatalogSkill[], options: SkillToo
 
 /** Metadata from the private turn inventory, never caller-supplied preview objects. */
 export function catalogSkillMetadata(catalog: AgentSkillCatalog): readonly SkillIdentity[] {
-  return (catalogs.get(catalog)?.inventory ?? []).map(({ name, description, source, sha256, revisionId }) => ({
-    name, description, source, ...(sha256 ? { sha256 } : {}), ...(revisionId ? { revisionId } : {}),
+  return (catalogs.get(catalog)?.inventory ?? []).map(({ name, description, categories, intents, source, sha256, revisionId }) => ({
+    name, description, source, ...routingMetadata({ categories, intents }), ...(sha256 ? { sha256 } : {}), ...(revisionId ? { revisionId } : {}),
   }));
 }
 
@@ -252,9 +268,10 @@ export async function buildAgentSkillCatalog(inventory: readonly CatalogSkill[] 
   const score = (skill: SkillIdentity) => {
     const cached = scores.get(skill);
     if (cached !== undefined) return cached;
-    const inferred = selectPromptSkillCategories(`${skill.name} ${skill.description}`);
+    const inferred = selectPromptSkillCategories(`${skill.name} ${skill.description} ${skill.categories?.join(' ').replace(/[._-]/g, ' ') ?? ''} ${skill.intents?.join(' ').replace(/_/g, ' ') ?? ''}`);
     const category = skill.source === 'builtin' ? BUILTIN_SKILLS.find(builtin => builtin.name === skill.name)?.category : undefined;
-    const result = terms.reduce((value, term) => value + (skill.name.includes(term) ? 10 : skill.description.normalize('NFC').toLowerCase().includes(term) ? 1 : 0), 0)
+    const metadata = `${skill.description} ${skill.categories?.join(' ') ?? ''} ${skill.intents?.join(' ') ?? ''}`.normalize('NFC').toLowerCase().replace(/[._-]/g, ' ');
+    const result = terms.reduce((value, term) => value + (skill.name.includes(term) ? 10 : metadata.includes(term) ? 1 : 0), 0)
       + categories.filter(hint => category ? category === hint : inferred.includes(hint)).length * 2;
     scores.set(skill, result);
     return result;
@@ -401,7 +418,7 @@ export function createSkillTools(input: readonly CatalogSkill[] | AgentSkillCata
         terms = [...new Set(input.query.normalize('NFC').trim().toLowerCase().split(/\s+/u))];
         if (terms.length > 8) return failure('Skill search accepts at most eight literal terms.');
       }
-      const score = (skill: SkillIdentity) => terms.reduce((value, term) => value + (skill.name.includes(term) ? 10 : skill.description.normalize('NFC').toLowerCase().includes(term) ? 1 : 0), 0);
+      const score = (skill: SkillIdentity) => terms.reduce((value, term) => value + (skill.name.includes(term) ? 10 : `${skill.description} ${skill.categories?.join(' ') ?? ''} ${skill.intents?.join(' ') ?? ''}`.normalize('NFC').toLowerCase().includes(term) ? 1 : 0), 0);
       const ranked = skills.map(skill => ({ skill, score: score(skill) })).filter(item => !search || item.score > 0)
         .sort((a, b) => b.score - a.score || (a.skill.name < b.skill.name ? -1 : a.skill.name > b.skill.name ? 1 : 0));
       const offset = input.offset ?? 0;
@@ -413,7 +430,7 @@ export function createSkillTools(input: readonly CatalogSkill[] | AgentSkillCata
         const freshByName = new Map(fresh.map(skill => [skill.name, skill]));
         verified = selection.map(skill => canonicalBuiltin(skill) ? skill : freshByName.get(skill.name)!);
       } catch { return failure('Skill metadata is unavailable because an active revision changed, was revoked or failed verification. No external metadata was returned. Start a new turn to refresh the inventory.'); }
-      const entries = verified.map(skill => ({ name: skill.name, description: Array.from(redact(skill.description).normalize('NFC').replace(/[\p{Cc}\p{Cf}\s]+/gu, ' ').trim()).slice(0, 200).join(''), source: skill.source }));
+      const entries = verified.map(skill => ({ name: skill.name, description: Array.from(redact(skill.description).normalize('NFC').replace(/[\p{Cc}\p{Cf}\s]+/gu, ' ').trim()).slice(0, 200).join(''), source: skill.source, ...routingMetadata(skill) }));
       const page = () => ({ skills: entries, snapshot: currentSnapshot, offset, ...(offset + entries.length < ranked.length ? { nextOffset: offset + entries.length } : {}), omitted: Math.max(0, ranked.length - offset - entries.length), incomplete: owned?.incomplete === true || offset + entries.length < ranked.length });
       while (JSON.stringify(page()).length > 4000 && entries.length) entries.pop();
       return { ok: true, output: JSON.stringify(page()) };

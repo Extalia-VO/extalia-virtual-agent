@@ -1,3 +1,4 @@
+import { generatedSkillMetadata, completeSkillInstructions } from './generatedSkillFixtures.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AnyTool, ModelProvider, ModelRequest, ModelResult, ToolResultEntry, TurnResult } from '@extalia/runtime';
 import type { EventBody } from '@extalia/protocol';
@@ -12,7 +13,7 @@ const sidecars: DaemonSidecar[] = [];
 afterEach(async () => { await Promise.all(sidecars.splice(0).map(sidecar => sidecar.stop())); });
 const evidence: ToolResultEntry[] = [{ toolCallId: 'current-read', name: 'read_file', content: 'The parser validates input before saving.', isError: false }];
 const source: TurnResult = { outcome: 'completed', history: [{ role: 'tool', results: [{ ...evidence[0]!, toolCallId: 'old-read', content: 'Older unrelated content.' }] }], usage: {} };
-const skill = { name: 'validate-before-saving', description: 'Validate before saving', instructions: 'Validate input before saving and report failures.' };
+const skill = { name: 'validate-before-saving', description: 'Validate before saving', ...generatedSkillMetadata(), instructions: completeSkillInstructions('Validate input before saving and report failures.') };
 const submission = { title: 'Validate first', lesson: 'Validate inputs before saving.', evidenceIds: ['current-read'], skill };
 const receipt = { packageId: skill.name, revisionId: 'revision-one', state: 'quarantined' as const, created: true, inspection: 'recorded' as const, activationPerformed: false as const, cancellationObserved: false };
 const completed: ModelResult = { text: 'Finished.', toolCalls: [], stop: 'end', usage: { inputTokens: 7, outputTokens: 2 } };

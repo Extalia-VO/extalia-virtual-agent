@@ -39,6 +39,8 @@ use super::{Origin, ProfileId, Refusal, SkillError, is_workspace_id, refused};
 use crate::adapters::sqlite::CoreStore;
 use crate::time::{format_utc, parse_utc};
 
+mod evaluation;
+pub use evaluation::{EvaluationSubjectOutput, PreparedEvaluation};
 mod preflight;
 mod routing;
 mod scanning;
@@ -281,8 +283,26 @@ impl<'s> SkillRegistry<'s> {
         let at = format_utc(now_ms);
         let profile = self.profile.as_str().to_owned();
 
-        let tx = immediate(self.conn())?;
+        let objects = &self.objects;
+        let limits = &self.limits;
+        let tx = immediate(self.store.connection())?;
         sources::check_package(&tx, &profile, &manifest.id, origin, source_ref)?;
+        if origin == Origin::Generated {
+            super::candidates::check_duplicate(
+                &tx,
+                &profile,
+                &manifest.id,
+                &tree,
+                objects,
+                limits,
+            )?;
+        }
+        if let Some(base) = refinement {
+            let prior = load_revision(&tx, &profile, base.revision_id)?;
+            let prior_tree = objects.verify(&prior.tree_sha256, limits)?;
+            super::candidates::preserve_tests(&prior_tree, &tree, objects)?;
+        }
+
         if let Some(base) = refinement
             && let Some(unchanged) =
                 super::candidates::check_refinement(&tx, &profile, &manifest.id, base, &tree)?
@@ -629,6 +649,9 @@ impl<'s> SkillRegistry<'s> {
         now_ms: i64,
     ) -> Result<RevisionState, SkillError> {
         let revision = self.require(revision_id, &[RevisionState::Validated])?;
+        if self.generated(revision_id)? {
+            return Err(SkillError::Denied("learned_evaluation_required"));
+        }
         self.verify_or_revoke(&revision, now_ms)?;
         let inspection = self.require_attestation(&revision, ctx, now_ms)?;
         self.require_resolvable(revision_id)?;
@@ -691,6 +714,9 @@ impl<'s> SkillRegistry<'s> {
         now_ms: i64,
     ) -> Result<RevisionState, SkillError> {
         let revision = self.require(revision_id, &[RevisionState::Validated])?;
+        if self.generated(revision_id)? {
+            return Err(SkillError::Denied("learned_evaluation_required"));
+        }
         if evidence_ref.is_some_and(|text| text.is_empty() || text.len() > LONG_TEXT) {
             return Err(SkillError::Denied("evidence_ref_invalid"));
         }
@@ -887,7 +913,10 @@ impl<'s> SkillRegistry<'s> {
         let inspection = self.require_attestation(revision, ctx, now_ms)?;
         let profile = self.profile.as_str().to_owned();
         let at = format_utc(now_ms);
-        let tx = immediate(self.conn())?;
+        let objects = &self.objects;
+        let limits = &self.limits;
+        let tx = immediate(self.store.connection())?;
+        evaluation::require_generated_evaluation(&tx, &profile, revision, objects, limits)?;
         if version_reused(
             &tx,
             &profile,
@@ -1027,6 +1056,11 @@ impl<'s> SkillRegistry<'s> {
                         }
                         Err(error) => return Err(error),
                         Ok(_) => {}
+                    }
+                    if action == "activate" && !consumed {
+                        evaluation::require_generated_evaluation(
+                            &tx, &profile, &revision, objects, &limits,
+                        )?;
                     }
                     let previous = active_pointer(&tx, &profile, &revision.package_id)?;
                     if let Some(previous) = &previous {

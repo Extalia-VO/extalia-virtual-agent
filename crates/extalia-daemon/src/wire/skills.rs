@@ -12,6 +12,7 @@ use super::{Check, MAX_SAFE_INTEGER, Op, RequestParams, ResponseResult, is_js_sp
 const PARAMS: &str = "frame.params";
 const RESULT: &str = "frame.result";
 
+mod evaluation;
 mod preflight;
 mod routing;
 pub use routing::RoutingInput;
@@ -99,6 +100,10 @@ impl ReviewDecision {
 /// Parameters of one skill operation.
 #[derive(Debug, Clone, PartialEq)]
 pub enum SkillRequest {
+    Evaluation {
+        complete: bool,
+        input: Value,
+    },
     RoutingPreview {
         input: RoutingInput,
     },
@@ -173,6 +178,13 @@ pub enum SkillRequest {
 impl SkillRequest {
     pub fn op(&self) -> Op {
         match self {
+            Self::Evaluation { complete, .. } => {
+                if *complete {
+                    Op::SkillEvaluationComplete
+                } else {
+                    Op::SkillEvaluationBegin
+                }
+            }
             Self::RoutingPreview { .. } => Op::SkillRoutingPreview,
             Self::Preflight { .. } => Op::SkillPreflight,
             Self::Import { .. } => Op::SkillImport,
@@ -198,6 +210,7 @@ impl SkillRequest {
         };
         let text = |value: &str| Value::from(value);
         match self {
+            Self::Evaluation { input, .. } => return input.clone(),
             Self::RoutingPreview { input } => {
                 return serde_json::to_value(input).expect("routing input serializes");
             }
@@ -779,6 +792,9 @@ pub(super) fn request(check: &mut Check, op: Op, params: &Value) -> Option<Reque
                 revision_id: check.revision_id(fields.get("revisionId"), &at("revisionId"))?,
             }
         }
+        Op::SkillEvaluationBegin | Op::SkillEvaluationComplete => {
+            evaluation::request(check, op, params)?
+        }
         Op::SkillRoutingPreview => routing::request(check, params)?,
         Op::SkillPreflight => preflight::request(check, params)?,
         Op::SkillScanner => {
@@ -846,8 +862,42 @@ fn summary(check: &mut Check, value: &Value, path: &str) -> Option<()> {
             "createdAt",
             "updatedAt",
         ],
-        &["stateReason", "marketplaceSource", "activationApprovalId"],
+        &[
+            "stateReason",
+            "marketplaceSource",
+            "activationApprovalId",
+            "categories",
+            "intents",
+            "description",
+        ],
     )?;
+    for (key, max, valid) in [
+        (
+            "categories",
+            32,
+            extalia_core::skills::manifest::is_category_id as fn(&str) -> bool,
+        ),
+        (
+            "intents",
+            64,
+            extalia_core::skills::manifest::is_intent as fn(&str) -> bool,
+        ),
+    ] {
+        if let Some(value) = fields.get(key) {
+            let values = value.as_array()?;
+            if values.len() > max
+                || values
+                    .iter()
+                    .any(|value| value.as_str().is_none_or(|text| !valid(text)))
+            {
+                check.fail(&at(key), "invalid skill metadata");
+                return None;
+            }
+        }
+    }
+    if let Some(value) = fields.get("description") {
+        check.text(Some(value), &at("description"), 500)?;
+    }
     let reason = match fields.get("stateReason") {
         None => true,
         Some(value) => check.reason(Some(value), &at("stateReason")).is_some(),
@@ -1344,12 +1394,20 @@ pub(super) fn result(check: &mut Check, op: Op, result: &Value) -> Option<Respon
                 &[
                     "instructions",
                     "instructionsUnavailable",
+                    "learnedQuality",
                     "sources",
                     "sourcesTotal",
                     "sourcesOmitted",
                 ],
             )?;
             all(&[
+                optional_field(
+                    check,
+                    fields,
+                    "learnedQuality",
+                    RESULT,
+                    |check, value, path| evaluation::quality(check, value, path).is_some(),
+                ),
                 source_evidence(check, fields),
                 !(fields.contains_key("instructions")
                     && fields.contains_key("instructionsUnavailable")),
@@ -1564,7 +1622,7 @@ pub(super) fn result(check: &mut Check, op: Op, result: &Value) -> Option<Respon
                 )?;
                 let reference_paths = fields.get("referencePaths")?.as_array();
                 let references_ok = reference_paths.is_some_and(|paths| {
-                    paths.len() <= 4
+                    paths.len() <= 6
                         && paths
                             .iter()
                             .all(|value| value.as_str().is_some_and(is_skill_path))
@@ -1576,7 +1634,7 @@ pub(super) fn result(check: &mut Check, op: Op, result: &Value) -> Option<Respon
                 if !references_ok {
                     check.fail(
                         &at("referencePaths"),
-                        "expected up to four unique relative paths",
+                        "expected up to six unique relative paths",
                     );
                 }
                 if fields.get("untrusted") != Some(&Value::Bool(true)) {
@@ -1624,6 +1682,9 @@ pub(super) fn result(check: &mut Check, op: Op, result: &Value) -> Option<Respon
                         .is_some(),
                 ])
             }
+        }
+        Op::SkillEvaluationBegin | Op::SkillEvaluationComplete => {
+            evaluation::result(check, op, result)
         }
         Op::SkillRoutingPreview => routing::result(check, result),
         Op::SkillPreflight => preflight::result(check, result),

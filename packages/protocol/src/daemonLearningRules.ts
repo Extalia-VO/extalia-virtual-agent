@@ -15,6 +15,8 @@ const json = rule((value, path, errors) => {
 const jsonObject = rule((v,p,e) => { if (!isPlainObject(v)) fail(p, 'expected object', e); else json.check(v,p,e); }, { ...json.schema, type: 'object' });
 const id = string(200, 1), hash = string(64, 64);
 const proposal = object({ name: string(64, 1), description: string(500, 1), instructions: string(65536, 1), sourceUrls: optional(array(string(2048, 1), false, 0, 8)),
+  categories: array(string(128, 1), true, 1, 8), intents: array(string(64, 1), true, 1, 16),
+  verificationCases: array(object({ id: string(64, 1), input: string(2000, 1), expectedIncludes: array(string(300, 1), true, 1, 8), forbiddenIncludes: optional(array(string(300, 1), true, 0, 8)) }), false, 1, 6),
   baseRevisionId: optional(id), baseSkillSha256: optional(hash), baseReadReceipt: optional(hash), refinementReason: optional(string(500, 1)),
   references: optional(array(object({path:string(240,1),content:string(16384,1)}),false,0,4)) });
 const provenance = object({ sessionId: id, workspaceId: id, promptSha256: hash, profileId: optional(id), runId: optional(id) });
@@ -50,8 +52,16 @@ const queueDelay = union(literal(60),literal(600));
 const queueBinding = {...recoveryBinding,jobId:hash,queueRevision:hash};
 const queueCapture = {profileId:id,revision:string(512,1),workspaceId:id,sessionId:id,runId:id,promptSha256:hash,policy:object({enabled:boolean,skills:boolean,notes:boolean}),routeFingerprint:hash,sourceContext:optional(sourceContext)};
 const recoveryRecord = object({...recoveryBinding,jobId:hash,state:enumeration(['queued','resumable','publication','uncertain','terminal','expired']),active:boolean,updatedAt:count,expiresAt:count,modelRequests:number(0,true,6),reads:number(0,true,8),skillReviewRequired:boolean,reason:optional(string(500)),noteSha256:optional(hash),skillSha256:optional(hash),queue:optional(object({revision:hash,delaySeconds:queueDelay}))});
+const projectSource = {sourceId:hash,path:string(1024,1),bytes:count};
+const projectExclusion = object({path:string(1024,1),reason:string(100,1)});
+const projectSummary = object({inventory:count,read:count,unique:count,deduplicated:count,excluded:count,notes:count,topics:count,created:count,updated:count,unchanged:count,conflicts:count,overviewPath:string(1024,1),paths:array(string(1024,1),true,0,5000),sourceFingerprint:hash});
 const actions: Record<string, [Rule,Rule]> = {
   ...workMemoryActions,
+  'project.begin': [object({sourceRoot:string(4096,1),root:string(4096,1),profileId:id,revision:string(512,1),workspaceId:id,sessionId:id}),object({buildId:hash,inventory:array(object(projectSource),false,0,2000),exclusions:array(projectExclusion,false,0,2000)})],
+  'project.capture': [object({buildId:hash,sourceIds:array(hash,true,0,32),rejectedSourceIds:optional(array(hash,true,0,32))}),object({sources:array(object({...projectSource,sha256:hash,projectionSha256:hash,text:string(16000),status:string(200,1),truncated:boolean}),false,0,32),exclusions:array(projectExclusion,false,0,64)})],
+  'project.seal': [object({buildId:hash}),object({unchanged:boolean,summary:projectSummary})],
+  'project.publish': [object({buildId:hash,topics:array(object({key:string(80,1),title:string(160,1),citations:array(object({sourceId:hash,quote:string(1600,1)}),false,1,6)}),false,1,96)}),object({summary:projectSummary})],
+  'project.release': [object({buildId:hash}),object({released:literal(true)})],
   'observed.capture': [object({scope:observedScope,episodeId:id,sourceRevision:string(512,1),entries:array(observedEntry,false,1,32),coverage:observedCoverage}),object({episode:observedEpisode,created:boolean})],
   'observed.search': [object({scope:observedScope,query:string(500),limit:optional(number(1,true,12))}),object({hits:array(object({episode:observedEpisode,excerpt:string(600)}),false,0,12),omitted:count})],
   'observed.read': [object({scope:observedScope,episodeId:hash,revision:hash,offset:optional(count),limit:optional(number(1,true,32))}),object({episode:observedEpisode,entries:array(observedStoredEntry,false,0,32),offset:count,total:number(1,true,32),nextOffset:optional(count)})],

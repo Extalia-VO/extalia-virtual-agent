@@ -20,6 +20,8 @@ export interface SkillBook {
   title: string;
   description: string;
   category: CatalogCategory;
+  categories?: readonly string[];
+  intents?: readonly string[];
   source: BookSource;
   origin?: SkillBookOrigin;
   status: string;
@@ -42,7 +44,8 @@ export function skillBooks(builtin: readonly BuiltinSkillInfo[], projects: reado
     category: catalogCategory(skill), source: 'builtin', origin: 'builtin', status: 'bundled', ...(skill.body !== undefined ? { body: skill.body } : {}) }));
   if (registry?.mode === 'registry') {
     for (const revision of registry.revisions) books.push({ id: `registry:${revision.revisionId}`, title: revision.packageId,
-      description: revision.version, category: 'uncategorized', source: 'registry', origin: registrySkillOrigin(revision), status: revision.active ? 'active' : revision.state,
+      description: revision.description ?? revision.version, category: revision.categories?.find((category): category is CatalogCategory => Object.hasOwn(BOOK_COLORS, category)) ?? 'uncategorized',
+      categories: revision.categories ?? [], intents: revision.intents ?? [], source: 'registry', origin: registrySkillOrigin(revision), status: revision.active ? 'active' : revision.state,
       digest: revision.treeSha256, revision: revision.revisionId });
   } else {
     for (const { name, report } of projects) {
@@ -62,18 +65,18 @@ const normalizeSearch = (text: string) => text.normalize('NFKC').toLocaleLowerCa
 
 /** Build once per catalog revision. The original book identity and instruction body stay untouched. */
 export function createSkillBookIndex(books: readonly SkillBook[]): SkillBookIndex {
-  return books.map(book => ({ book, searchText: normalizeSearch(`${book.title} ${book.description} ${book.workspace ?? ''} ${book.category}`) }));
+  return books.map(book => ({ book, searchText: normalizeSearch(`${book.title} ${book.description} ${book.workspace ?? ''} ${book.category} ${book.categories?.join(' ') ?? ''} ${book.intents?.join(' ') ?? ''}`) }));
 }
 
 /** A keystroke normalizes only its query, never all catalog metadata again. */
-export function filterSkillBookIndex(index: SkillBookIndex, query: string, source: SkillBookSourceFilter, category: CatalogCategory | 'all'): SkillBook[] {
+export function filterSkillBookIndex(index: SkillBookIndex, query: string, source: SkillBookSourceFilter, category: string): SkillBook[] {
   const terms = query.normalize('NFKC').toLocaleLowerCase().trim().slice(0, 200).split(/\s+/).filter(Boolean);
-  return index.filter(({ book, searchText }) => (source === 'all' || (source === 'registry' ? book.source === 'registry' : skillBookOrigin(book) === source)) && (category === 'all' || book.category === category)
+  return index.filter(({ book, searchText }) => (source === 'all' || (source === 'registry' ? book.source === 'registry' : skillBookOrigin(book) === source)) && (category === 'all' || book.category === category || book.categories?.includes(category) === true)
     && terms.every(term => searchText.includes(term))).map(entry => entry.book);
 }
 
 /** Compatibility convenience; interactive callers can memoize createSkillBookIndex separately. */
-export function filterSkillBooks(books: readonly SkillBook[], query: string, source: SkillBookSourceFilter, category: CatalogCategory | 'all'): SkillBook[] {
+export function filterSkillBooks(books: readonly SkillBook[], query: string, source: SkillBookSourceFilter, category: string): SkillBook[] {
   return filterSkillBookIndex(createSkillBookIndex(books), query, source, category);
 }
 

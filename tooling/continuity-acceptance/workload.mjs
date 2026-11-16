@@ -6,6 +6,7 @@ import { constants } from 'node:fs';
 import { lstat, mkdir, open, realpath, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { executePythonProbe } from './python-probe.mjs';
 
 const sha256 = value => createHash('sha256').update(value).digest('hex');
 const validRunId = value => typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/.test(value);
@@ -47,7 +48,7 @@ const ORACLE_CHECK_IDS = [
   'cli_exact_output', 'cli_error_contract',
 ];
 
-const ORACLE = String.raw`await (async function artifactOracleMain() {
+const ORACLE = `const executePythonProbe = ${executePythonProbe.toString()};\n` + String.raw`await (async function artifactOracleMain() {
   const { spawn } = await import('node:child_process');
   const { dirname, join } = await import('node:path');
   const { fileURLToPath } = await import('node:url');
@@ -57,6 +58,10 @@ const ORACLE = String.raw`await (async function artifactOracleMain() {
   const checks = [];
   // Transport observations only; there are no predicates, expected values or
   // check records in the interpreter that imports the candidate.
+  const startupSource = [
+    'import sys',
+    "sys.stderr.buffer.write(b'EXTALIA-PYTHON-READY\\n'); sys.stderr.buffer.flush()",
+  ];
   const probeSource = [
     'import importlib.util, json, sys',
     'def decode(value):',
@@ -82,6 +87,7 @@ const ORACLE = String.raw`await (async function artifactOracleMain() {
     "spec = importlib.util.spec_from_file_location('continuity_candidate', sys.argv[1])",
     'module = importlib.util.module_from_spec(spec)',
     'sys.modules[spec.name] = module',
+    ...startupSource,
     'spec.loader.exec_module(module)',
     'normalize = module.normalize_inventory',
     'observations = []',
@@ -99,44 +105,7 @@ const ORACLE = String.raw`await (async function artifactOracleMain() {
     "sys.stdout.buffer.write((json.dumps({'observations': observations}, ensure_ascii=False, separators=(',', ':')) + '\\n').encode('utf-8'))",
   ].join('\n');
 
-  function execute(argv, input) {
-    return new Promise(resolve => {
-      let stdout = Buffer.alloc(0), stderr = Buffer.alloc(0), problem, finished = false, killTimer;
-      const child = spawn(python, argv, { shell: false, windowsHide: true, cwd: dirname(target),
-        env: { PATH: process.env.PATH ?? '', HOME: dirname(target), USERPROFILE: dirname(target), LANG: 'C.UTF-8', LC_ALL: 'C.UTF-8' },
-        stdio: ['pipe', 'pipe', 'pipe'] });
-      const finish = (exitCode, signal) => {
-        if (finished) return;
-        finished = true; clearTimeout(timer); clearTimeout(killTimer);
-        let out = '', err = '';
-        try {
-          out = new TextDecoder('utf-8', { fatal: true }).decode(stdout);
-          err = new TextDecoder('utf-8', { fatal: true }).decode(stderr);
-        } catch { problem ??= 'Python output was not UTF-8.'; }
-        resolve({ exitCode, signal, stdout: out, stderr: err, problem });
-      };
-      const stop = reason => {
-        problem ??= reason;
-        try { child.kill('SIGKILL'); } catch { /* already closed */ }
-        if (!killTimer) killTimer = setTimeout(() => {
-          child.stdin.destroy(); child.stdout.destroy(); child.stderr.destroy(); finish(null, 'unconfirmed-close');
-        }, 250);
-      };
-      const timer = setTimeout(() => stop('Python probe exceeded its 2-second budget.'), 2000);
-      child.stdout.on('data', chunk => {
-        if (stdout.length + chunk.length > 131072) stop('Python stdout exceeded its byte budget.');
-        else stdout = Buffer.concat([stdout, chunk]);
-      });
-      child.stderr.on('data', chunk => {
-        if (stderr.length + chunk.length > 131072) stop('Python stderr exceeded its byte budget.');
-        else stderr = Buffer.concat([stderr, chunk]);
-      });
-      child.stdin.on('error', () => { /* Early interpreter exit is checked through its receipt. */ });
-      child.once('error', error => { problem = error.message; finish(null, null); });
-      child.once('close', finish);
-      child.stdin.end(input);
-    });
-  }
+  const execute = (argv, input) => executePythonProbe({ spawn, executable: python, argv, input, cwd: dirname(target) });
 
   // Isolated Python ignores encoding environment variables; explicitly select
   // UTF-8 for piped text input on Windows as well as POSIX (also for the CLI below).
@@ -213,7 +182,14 @@ const ORACLE = String.raw`await (async function artifactOracleMain() {
     }
     return returns(inputs, expected);
   });
-  const cli = stdin => execute(['-I', '-X', 'utf8', '-S', '-B', target], stdin);
+  // Execute the exact copied source as __main__ after the trusted startup
+  // boundary, keeping argv, __file__, UTF-8 input and strict CLI output intact.
+  const cliSource = ['import runpy', ...startupSource,
+    'target = sys.argv[1]',
+    'sys.argv = sys.argv[1:]',
+    "runpy.run_path(target, run_name='__main__')",
+  ].join('\n');
+  const cli = stdin => execute(['-I', '-X', 'utf8', '-S', '-B', '-c', cliSource, target], stdin);
   await check('cli_exact_output', async () => {
     const result = await cli(JSON.stringify([row(' Straße ', 5, ' 東 ')]));
     return !result.problem && result.exitCode === 0 && result.signal === null && result.stderr === ''

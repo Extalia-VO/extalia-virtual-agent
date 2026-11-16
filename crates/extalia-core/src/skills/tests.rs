@@ -1,6 +1,7 @@
 //! Skill registry tests. Every test works in its own temporary directory only.
 
 mod candidates;
+mod evaluation;
 mod preflight;
 mod routing;
 mod scanning;

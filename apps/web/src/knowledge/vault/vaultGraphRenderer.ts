@@ -8,11 +8,11 @@ import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import type { GraphTheme } from './graphTheme';
 import { graphAppearance, type GraphAppearance } from './graphAppearance';
-import { graphEdgeColour } from './graphVisualStyle';
+import { graphEdgeColour, graphEdgeOpacity } from './graphVisualStyle';
 import { createGraphNodeMaterial } from './graphNodeMaterial';
 import { GRAPH_STAR_HALO_GLSL } from './graphReferenceStyle';
 import { decodeFrame, encodeInit, encodeMask, graphDepthSeed, type Encoded, type SimCommand } from './simProtocol';
-import { graphClusters, labelCandidates, neighbourSet, nodeLook, QUALITY_TIERS, updateQuality, type NodeLook, type QualityState, type VaultGraph } from './vaultGraphModel';
+import { graphClusters, graphViewportInsets, minimumNodeScreenRadius, neighbourSet, nodeLook, nodeScreenRadius, placeGraphLabels, readableLabelCandidates, QUALITY_TIERS, updateQuality, type GraphLabelCandidate, type NodeLook, type QualityState, type VaultGraph } from './vaultGraphModel';
 
 /**
  * The imperative half of the whole-vault 3D graph. Three draw calls whatever the vault size: one
@@ -61,7 +61,7 @@ export interface OrbitLike { target: Vector3; enabled: boolean; update: () => un
 
 type GraphWindow = Window & { __EXTALIA_GRAPH_FPS__?: unknown; __EXTALIA_GRAPH_PROJECT__?: (index: number) => { x: number; y: number; hubs: number[] } };
 
-const LABEL_POOL = 24;
+const LABEL_POOL = 64;
 /** Hubs pulse for this long after the last interaction, then fade out and the canvas goes idle. */
 const PULSE_IDLE_MS = 15_000;
 const PULSE_HUBS = 6;
@@ -81,6 +81,7 @@ attribute float aGlow;
 attribute float aPulse;
 attribute float aFocus;
 attribute float aCoreSize;
+attribute float aMinRadius;
 uniform float uScale;
 uniform float uPixelRatio;
 uniform float uMaxSize;
@@ -100,14 +101,14 @@ void main() {
   float size = aSize * (1.0 + 0.16 * wave) * uScale / depth;
   // The core is clamped in CSS pixels; its halo must use the same screen scale.
   // The reference star texture's core occupies 40% of its diameter.
-  float coreRadius = clamp(aCoreSize * uScale / depth, 1.2 * uPixelRatio, 6.0 * uPixelRatio);
+  float coreRadius = clamp(aCoreSize * uScale / depth, aMinRadius * uPixelRatio, max(12.0, aMinRadius * 1.8) * uPixelRatio);
   size = max(size, coreRadius * 5.0);
   if (aFocus > 0.0) size = clamp(size, uFocusSize, uFocusSize * 3.0);
   gl_PointSize = aSize > 0.0 ? min(uMaxSize, size) : 0.0;
   float fog = clamp((uFogFar - depth) / max(uFogFar - uFogNear, 0.001), 0.08, 1.0);
   vFocus = aFocus;
   vGlow = aSize > 0.0 ? aGlow : 0.0;
-  vColor = aColor * aGlow * 1.2 * fog * (1.0 + 0.2 * wave);
+  vColor = aColor * aGlow * 0.9 * fog * (1.0 + 0.2 * wave);
 }`;
 const HALO_FRAGMENT = /* glsl */ `
 uniform float uLight;
@@ -124,8 +125,8 @@ void main() {
   float ring = (1.0 - smoothstep(0.018, 0.05, abs(sqrt(d) - 0.52))) * vFocus;
   vec3 ringColour = mix(vec3(0.55, 0.72, 0.95), vec3(0.08, 0.18, 0.35), uLight);
   gl_FragColor = uLight > 0.5
-    ? vec4(mix(vColor, ringColour, ring), max(falloff * min(vGlow, 1.0) * 0.3, ring * 0.85))
-    : vec4(vColor * falloff + ringColour * ring * 0.7, 0.0);
+    ? vec4(mix(vColor, ringColour, ring), max(falloff * min(vGlow, 1.0) * 0.3, ring * 0.55))
+    : vec4(vColor * falloff + ringColour * ring * 0.38, 0.0);
 }`;
 
 interface Buffers {
@@ -136,6 +137,7 @@ interface Buffers {
   target: Float32Array;
   display: Float32Array;
   scales: Float32Array;
+  minimumRadius: Float32Array;
   base: Float32Array;
   core: InstancedMesh;
   halos: Points;
@@ -148,6 +150,7 @@ interface Buffers {
   haloColour: Float32Array;
   haloFocus: Float32Array;
   edgeColour: Float32Array;
+  edgeOpacity: Float32Array;
   dispose: () => void;
 }
 
@@ -170,10 +173,13 @@ function createBuffers(graph: VaultGraph): Buffers {
   const haloGeometry = new BufferGeometry();
   const haloColour = new Float32Array(count * 3), haloSize = new Float32Array(count), haloGlow = new Float32Array(count), haloPulse = new Float32Array(count);
   const scales = new Float32Array(count);
+  const minimumRadius = new Float32Array(count);
+  geometry.setAttribute('aMinRadius', new InstancedBufferAttribute(minimumRadius, 1));
   graph.hubs.slice(0, PULSE_HUBS).forEach((index, rank) => { haloPulse[index] = 0.17 * (rank + 1); });
   const haloFocus = new Float32Array(count);
   haloGeometry.setAttribute('aFocus', new BufferAttribute(haloFocus, 1));
   haloGeometry.setAttribute('aCoreSize', new BufferAttribute(scales, 1));
+  haloGeometry.setAttribute('aMinRadius', new BufferAttribute(minimumRadius, 1));
   haloGeometry.setAttribute('position', new BufferAttribute(display, 3).setUsage(DynamicDrawUsage));
   haloGeometry.setAttribute('aColor', new BufferAttribute(haloColour, 3));
   haloGeometry.setAttribute('aSize', new BufferAttribute(haloSize, 1));
@@ -192,15 +198,30 @@ function createBuffers(graph: VaultGraph): Buffers {
   lineGeometry.setColors(new Float32Array(edgeCount * 6));
   const edgePositions = (lineGeometry.attributes.instanceStart as InterleavedBufferAttribute).data.array as Float32Array;
   const edgeColour = (lineGeometry.attributes.instanceColorStart as InterleavedBufferAttribute).data.array as Float32Array;
-  const lineMaterial = new LineMaterial({ vertexColors: true, transparent: true, alphaToCoverage: true, depthWrite: false, fog: true, toneMapped: false, linewidth: .85, blending: NormalBlending });
+  const edgeOpacity = new Float32Array(edgeCount);
+  lineGeometry.setAttribute('aEdgeOpacity', new InstancedBufferAttribute(edgeOpacity, 1));
+  const lineMaterial = new LineMaterial({ vertexColors: true, transparent: true, alphaToCoverage: false, depthWrite: false, fog: true, toneMapped: false, linewidth: .85, blending: NormalBlending });
+  // Keep Three's screen-space extrusion and endpoint colour interpolation, but
+  // feather the ribbon across its width on every device (not WebGL lineWidth).
+  lineMaterial.vertexShader = lineMaterial.vertexShader.replace('void main() {', `
+    attribute float aEdgeOpacity;
+    varying float vGraphOpacity;
+    void main() {
+      vGraphOpacity = aEdgeOpacity;`);
+  lineMaterial.fragmentShader = 'varying float vGraphOpacity;\n' + lineMaterial.fragmentShader.replace(
+    'gl_FragColor = vec4( diffuseColor.rgb, alpha );',
+    `float graphCrossSection = abs(vUv.x);
+      float graphFeather = 1.0 - smoothstep(0.12, 1.0, graphCrossSection);
+      gl_FragColor = vec4(diffuseColor.rgb, alpha * vGraphOpacity * graphFeather * 0.82);`,
+  );
   const lines = new LineSegments2(lineGeometry, lineMaterial);
   lines.frustumCulled = false;
   lines.renderOrder = 1;
 
   return {
     graph, count, edgeCount, looks: Array.from(graph.degree, degree => nodeLook(degree, graph.maxDegree)),
-    target: new Float32Array(count * 3), display, scales, base: new Float32Array(count * 3),
-    core, halos, haloMaterial, lines, lineMaterial, edgePositions, haloSize, haloGlow, haloColour, haloFocus, edgeColour,
+    target: new Float32Array(count * 3), display, scales, minimumRadius, base: new Float32Array(count * 3),
+    core, halos, haloMaterial, lines, lineMaterial, edgePositions, haloSize, haloGlow, haloColour, haloFocus, edgeColour, edgeOpacity,
     dispose: () => {
       geometry.dispose(); coreMaterial.dispose(); core.dispose();
       haloGeometry.dispose(); haloMaterial.dispose(); lineGeometry.dispose(); lineMaterial.dispose();
@@ -254,6 +275,9 @@ export class VaultGraphRenderer {
   private exploreFit = false;
   private labelIndices: number[] = [];
   private labelFocus = new Set<number>();
+  private labelNeighbours = new Set<number>();
+  private readonly labelWidths = new Map<string, number>();
+  private labelMeasure: CanvasRenderingContext2D | null = null;
   private lastActivity = performance.now();
   private quality: QualityState = { tier: 0, slow: 0, fast: 0 };
   private readonly meter = { frames: 0, seconds: 0, fps: 0, windowFrames: 0, windowSeconds: 0 };
@@ -261,6 +285,7 @@ export class VaultGraphRenderer {
   private readonly raycaster = new Raycaster();
   private readonly ndc = new Vector2();
   private readonly projected = new Vector3();
+  private readonly viewPoint = new Vector3();
   private readonly cleanups: (() => void)[] = [];
 
   constructor(private readonly ctx: GraphContext) {
@@ -290,6 +315,14 @@ export class VaultGraphRenderer {
       const root = ctx.labels;
       root.replaceChildren(...Array.from({ length: LABEL_POOL }, () => { const span = document.createElement('span'); span.className = 'vault-graph-label'; span.hidden = true; return span; }));
       this.cleanups.push(() => root.replaceChildren());
+      this.labelMeasure = document.createElement('canvas').getContext('2d');
+      if (document.fonts) {
+        let live = true;
+        const refreshFonts = () => { if (live) { this.labelWidths.clear(); this.ctx.invalidate(); } };
+        void document.fonts.ready.then(refreshFonts);
+        document.fonts.addEventListener('loadingdone', refreshFonts);
+        this.cleanups.push(() => { live = false; document.fonts.removeEventListener('loadingdone', refreshFonts); });
+      }
     }
   }
 
@@ -403,6 +436,7 @@ export class VaultGraphRenderer {
     this.sim?.dispose();
     if (this.buffers) { this.ctx.scene.remove(this.buffers.core, this.buffers.halos, this.buffers.lines); this.buffers.dispose(); }
     this.buffers = null; this.sim = null;
+    this.labelWidths.clear(); this.labelMeasure = null;
   }
 
   /** A new or refreshed vault: new buffers and simulation; notes it still has keep their place. */
@@ -462,13 +496,15 @@ export class VaultGraphRenderer {
     if (!buffers || !options) return;
     const { graph, mask, selected, highlight, activeResult, showHalos, showLabels } = options;
     const hovered = this.hovered;
-    const { scales, base, haloSize, haloGlow, haloColour, haloFocus, edgeColour, looks } = buffers;
+    const { scales, base, haloSize, haloGlow, haloColour, haloFocus, edgeColour, edgeOpacity, looks } = buffers;
     const coreColour = buffers.core.instanceColor!.array as Float32Array;
     const exploring = Boolean(options.explore);
     const exploreCurrent = options.explore?.current;
     const anchor = exploreCurrent !== null && exploreCurrent !== undefined && mask[exploreCurrent] === 1 ? exploreCurrent : null;
-    const centre = exploring ? anchor : hovered ?? (highlight ? null : selected);
+    const candidateCentre = exploring ? anchor : hovered ?? selected ?? activeResult;
+    const centre = candidateCentre !== null && mask[candidateCentre] === 1 ? candidateCentre : null;
     const focus = centre !== null ? neighbourSet(graph, centre) : !exploring && highlight ? new Set(highlight) : null;
+    if (this.ctx.labels) this.ctx.labels.dataset.focused = focus?.size ? 'true' : 'false';
     const tier = QUALITY_TIERS[this.quality.tier]!;
     const appearance = graphAppearance(options.appearance);
     const light = options.theme?.light ?? false;
@@ -478,17 +514,18 @@ export class VaultGraphRenderer {
     for (let e = 0; e < buffers.edgeCount; e++) if (mask[graph.edges[e * 2]!] && mask[graph.edges[e * 2 + 1]!]) visibleEdges++;
     const density = buffers.count > 300 ? .62 : buffers.count > 80 ? .76 : .92;
     buffers.lines.visible = appearance.showLinks;
-    buffers.lineMaterial.linewidth = appearance.linkWidth;
+    buffers.lineMaterial.linewidth = centre === null ? appearance.linkWidth : Math.max(1.0, appearance.linkWidth);
     for (let i = 0; i < buffers.count; i++) {
       const look = looks[i]!;
       const visible = mask[i] === 1;
       const lit = !focus || focus.has(i);
       const special = i === hovered || (exploring ? i === anchor : i === selected || i === activeResult);
+      buffers.minimumRadius[i] = minimumNodeScreenRadius(graph.degree[i]!, graph.maxDegree, special, appearance.nodeSize);
       scales[i] = visible ? look.radius * appearance.nodeSize * density * .72 * (special ? 1.4 : 1) : 0;
       const dim = lit ? 1 : 0.16;
       for (let c = 0; c < 3; c++) {
         const value = base[i * 3 + c]!;
-        const coreValue = (value * (1 - look.lift) + look.lift) * (light ? .65 : 1);
+        const coreValue = light ? .02 + value * .42 : value * (1 - look.lift) + look.lift;
         coreColour[i * 3 + c] = light ? coreValue + (backgroundChannels[c]! - coreValue) * (lit ? 0 : .85) : coreValue * dim;
         haloColour[i * 3 + c] = value;
       }
@@ -505,19 +542,34 @@ export class VaultGraphRenderer {
       for (let c = 0; c < 3; c++) { a3[c] = base[a * 3 + c]!; b3[c] = base[b * 3 + c]!; }
       const aimed = exploring && incident && hovered !== null && (a === hovered || b === hovered);
       const opacity = visible ? appearance.linkOpacity * (aimed ? 1.8 : 1) : 0;
-      const start = graphEdgeColour(a3, b3, backgroundChannels, light, opacity, visibleEdges, emphasis);
-      const end = graphEdgeColour(b3, a3, backgroundChannels, light, opacity, visibleEdges, emphasis);
+      const start = graphEdgeColour(a3, light);
+      const end = graphEdgeColour(b3, light);
+      edgeOpacity[e] = visible ? graphEdgeOpacity(light, opacity, visibleEdges, emphasis) : 0;
       edgeColour.set(start, e * 6); edgeColour.set(end, e * 6 + 3);
     }
     buffers.core.instanceColor!.needsUpdate = true;
+    buffers.core.geometry.attributes.aMinRadius!.needsUpdate = true;
     const halo = buffers.halos.geometry.attributes;
-    halo.aFocus!.needsUpdate = true; halo.aSize!.needsUpdate = true; halo.aCoreSize!.needsUpdate = true; halo.aGlow!.needsUpdate = true; halo.aColor!.needsUpdate = true;
+    halo.aFocus!.needsUpdate = true; halo.aMinRadius!.needsUpdate = true; halo.aSize!.needsUpdate = true; halo.aCoreSize!.needsUpdate = true; halo.aGlow!.needsUpdate = true; halo.aColor!.needsUpdate = true;
+    buffers.lines.geometry.attributes.aEdgeOpacity!.needsUpdate = true;
     (buffers.lines.geometry.attributes.instanceColorStart as InterleavedBufferAttribute).data.needsUpdate = true;
-    const labelTargets = exploring ? [anchor, hovered] : [hovered, selected, activeResult];
-    this.labelIndices = anchor !== null && focus
-      ? [...new Set([anchor, hovered, ...(showLabels ? [...focus] : [])])].filter((index): index is number => index !== null && mask[index] === 1).slice(0, LABEL_POOL)
-      : labelCandidates(graph, mask, labelTargets, showLabels ? tier.hubLabels : 0).slice(0, LABEL_POOL);
-    this.labelFocus = new Set(labelTargets.filter((item): item is number => item !== null));
+    const labelTargets = exploring ? [anchor, hovered] : [hovered, selected, activeResult, ...(highlight?.slice(0, 6) ?? [])];
+    this.labelIndices = readableLabelCandidates(graph, mask, labelTargets, showLabels);
+    this.labelFocus = new Set(labelTargets.filter((item): item is number => item !== null && mask[item] === 1));
+    // Keep a useful global hub, then one representative per folder before
+    // filling the remaining context slots. A single dense cluster cannot own
+    // every overview title; interaction priorities still precede this order.
+    const context = this.labelIndices.filter(index => !this.labelFocus.has(index));
+    const represented = new Set<string>();
+    const representatives: number[] = [];
+    for (const index of graph.hubs) if (showLabels && mask[index] === 1) {
+      const folder = graph.nodes[index]!.folder;
+      if (!represented.has(folder)) { represented.add(folder); representatives.push(index); }
+      if (representatives.length >= 24) break;
+    }
+    this.labelIndices = [...new Set([...this.labelFocus, ...representatives, ...context])];
+    this.labelNeighbours = new Set<number>();
+    for (const index of this.labelFocus) for (const neighbour of neighbourSet(graph, index)) if (mask[neighbour] === 1 && !this.labelFocus.has(neighbour)) this.labelNeighbours.add(neighbour);
     this.geometryDirty = true;
     this.ctx.invalidate();
   }
@@ -593,7 +645,7 @@ export class VaultGraphRenderer {
     this.raycaster.setFromCamera(this.ndc, this.ctx.camera);
     // Shader billboards face the camera, unlike their CPU-side base quads. Project their centres
     // for picking in every orientation; keep a six-CSS-pixel target even for tiny distant stars.
-    let nearest: number | null = null, distance = 36, depth = Infinity;
+    let nearest: number | null = null, distance = Infinity, depth = Infinity;
     const current = options.explore?.current;
     const reachable = current !== undefined && current !== null ? neighbourSet(options.graph, current) : null;
     for (let i = 0; i < buffers.count; i++) {
@@ -604,6 +656,10 @@ export class VaultGraphRenderer {
       const x = (point.x + 1) * rect.width / 2 + rect.left - event.clientX;
       const y = (1 - point.y) * rect.height / 2 + rect.top - event.clientY;
       const squared = x * x + y * y;
+      const viewDepth = -this.viewPoint.fromArray(buffers.display, i * 3).applyMatrix4(this.ctx.camera.matrixWorldInverse).z;
+      const pixelsPerWorldUnit = this.ctx.camera.projectionMatrix.elements[5]! * rect.height / (2 * Math.max(.001, viewDepth));
+      const radius = Math.max(6, nodeScreenRadius(buffers.scales[i]!, pixelsPerWorldUnit, buffers.minimumRadius[i]!) + 3);
+      if (squared > radius * radius) continue;
       if (squared < distance || (nearest !== null && Math.abs(squared - distance) < 1e-6 && point.z < depth)) {
         distance = squared; depth = point.z; nearest = i;
       }
@@ -751,8 +807,10 @@ export class VaultGraphRenderer {
       orbit.update();
       if (t >= 1) this.fly = null; else invalidate();
     } else if (orbit && !this.userMoved && this.hasFrame) {
-      const aspect = Math.max(0.45, Math.min(1, size.width / Math.max(1, size.height)));
-      const want = (this.radius / Math.sin(fovRad / 2)) / aspect * 0.9 + 20;
+      const insets = graphViewportInsets(size.width);
+      const usableHeight = Math.max(80, size.height - insets.top - insets.bottom);
+      const aspect = Math.max(0.45, Math.min(1, (size.width - 24) / usableHeight));
+      const want = (this.radius / Math.sin(fovRad / 2)) / aspect * .95 * size.height / usableHeight + 20;
       const direction = camera.position.clone().sub(orbit.target).normalize();
       const k = 1 - Math.exp(-dt * 4);
       orbit.target.lerp(this.centre, k);
@@ -780,31 +838,75 @@ export class VaultGraphRenderer {
     const idle = performance.now() - this.lastActivity;
     uniforms.uPulse!.value = this.pulseTimer ? Math.max(0, Math.min(1, 1 - (idle - PULSE_IDLE_MS) / 2_000)) : 0;
 
+    camera.updateMatrixWorld();
     this.placeLabels(buffers, size);
     this.measure(delta, options, buffers, pixelRatio);
   }
 
-  /** Label pool: plain DOM spans under their notes. */
+  /** Screen-space text remains readable at fit view, with bounded deterministic collision culling. */
   private placeLabels(buffers: Buffers, size: { width: number; height: number }) {
     const root = this.ctx.labels;
-    if (!root) return;
+    if (!root || !this.options) return;
     const spans = root.children;
-    const placed: { x: number; y: number; width: number }[] = [];
-    for (let slot = 0; slot < spans.length; slot++) {
-      const span = spans[slot] as HTMLElement;
-      const index = this.labelIndices[slot];
-      if (index === undefined) { if (!span.hidden) span.hidden = true; continue; }
+    const appearance = graphAppearance(this.options.appearance);
+    const fontFamily = typeof window !== 'undefined' && typeof window.getComputedStyle === 'function'
+      ? window.getComputedStyle(root).fontFamily || 'sans-serif' : 'sans-serif';
+    const candidates: GraphLabelCandidate[] = [];
+    const sizes = new Map<number, number>();
+    for (const index of this.labelIndices) {
       const p = this.projected.fromArray(buffers.display, index * 3).project(this.ctx.camera);
-      if (p.z > 1 || Math.abs(p.x) > 1.1 || Math.abs(p.y) > 1.1) { span.hidden = true; continue; }
+      if (p.z < -1 || p.z > 1 || Math.abs(p.x) > 1 || Math.abs(p.y) > 1) continue;
       const title = buffers.graph.nodes[index]!.title;
-      if (span.textContent !== title) span.textContent = title;
-      const focus = this.labelFocus.has(index) ? 'true' : 'false';
-      if (span.dataset.focus !== focus) span.dataset.focus = focus;
       const x = ((p.x + 1) / 2) * size.width, y = ((1 - p.y) / 2) * size.height;
-      const width = Math.min(220, title.length * 6.2);
-      if (focus === 'false' && placed.some(box => Math.abs(y - box.y) < 24 && Math.abs(x - box.x) < (width + box.width) / 2 + 8)) { span.hidden = true; continue; }
-      placed.push({ x, y, width }); span.hidden = false;
-      span.style.transform = `translate(${x}px, ${y}px) translate(-50%, 10px)`;
+      const focus = this.labelFocus.has(index), neighbour = this.labelNeighbours.has(index);
+      const fontSize = appearance.labelSize + (focus ? 2 : 0);
+      const weight = focus ? 700 : neighbour ? 600 : 550;
+      const key = `${fontFamily}:${fontSize}:${weight}:${title}`;
+      let width = this.labelWidths.get(key);
+      if (width === undefined) {
+        const context = this.labelMeasure;
+        if (context) context.font = `${weight} ${fontSize}px ${fontFamily}`;
+        width = Math.ceil(context && typeof context.measureText === 'function' ? context.measureText(title).width : title.length * fontSize * .6) + 14;
+        this.labelWidths.set(key, width);
+        if (this.labelWidths.size > 1024) this.labelWidths.delete(this.labelWidths.keys().next().value!);
+      }
+      const viewDepth = -this.viewPoint.fromArray(buffers.display, index * 3).applyMatrix4(this.ctx.camera.matrixWorldInverse).z;
+      const pixels = this.ctx.camera.projectionMatrix.elements[5]! * size.height / (2 * Math.max(.001, viewDepth));
+      candidates.push({ index, x, y, width: Math.min(width, focus ? Math.min(640, size.width - 24) : 260), height: Math.ceil(fontSize * 1.35) + 6,
+        radius: nodeScreenRadius(buffers.scales[index]!, pixels, buffers.minimumRadius[index]!), priority: focus ? 'focus' : neighbour ? 'neighbor' : 'context' });
+      sizes.set(index, fontSize);
+    }
+    const tier = QUALITY_TIERS[this.quality.tier]!;
+    const phone = size.width < 600;
+    const insets = graphViewportInsets(size.width);
+    const usableHeight = Math.max(80, size.height - insets.top - insets.bottom);
+    const aspect = Math.max(.45, Math.min(1, (size.width - 24) / usableHeight));
+    const fitDistance = (this.radius / Math.sin(this.ctx.camera.fov * Math.PI / 360)) / aspect * .95 * size.height / usableHeight + 20;
+    const distance = this.controls ? this.ctx.camera.position.distanceTo(this.controls.target) : fitDistance;
+    const zoomed = distance < fitDistance * .62;
+    const overviewLimit = phone ? (this.quality.tier === 2 ? 4 : zoomed ? 8 : 5) : (this.quality.tier === 2 ? 8 : zoomed ? 18 : 12);
+    const focused = this.labelFocus.size > 0;
+    // Focus gets room for its immediate neighborhood, with only two quiet
+    // overview landmarks. Font size remains readable instead of shrinking.
+    const contextLimit = focused ? 2 : overviewLimit;
+    let contexts = 0;
+    const relevant = candidates.filter(candidate => candidate.priority !== 'context' || contexts++ < contextLimit);
+    const limit = Math.min(spans.length, focused ? phone ? 12 : 24 : overviewLimit, tier.hubLabels);
+    const placed = placeGraphLabels(relevant, size, limit, insets);
+    for (let slot = 0; slot < spans.length; slot++) {
+      const span = spans[slot] as HTMLElement, box = placed[slot];
+      if (!box) { if (!span.hidden) span.hidden = true; continue; }
+      const title = buffers.graph.nodes[box.index]!.title;
+      if (span.textContent !== title) span.textContent = title;
+      span.dataset.focus = box.priority === 'focus' ? 'true' : 'false';
+      span.dataset.neighbor = box.priority === 'neighbor' ? 'true' : 'false';
+      span.dataset.priority = box.priority;
+      span.dataset.nodeIndex = String(box.index);
+      span.style.fontSize = `${sizes.get(box.index)}px`;
+      span.style.fontWeight = box.priority === 'focus' ? '700' : box.priority === 'neighbor' ? '600' : '550';
+      span.style.maxWidth = `${box.width}px`;
+      span.style.transform = `translate(${box.left}px, ${box.top}px)`;
+      span.hidden = false;
     }
   }
 

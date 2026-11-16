@@ -31,6 +31,12 @@ uses bounded guidance, while UI code only edits and presents the settings.
 Operating profiles are separate from display preferences, Knowledge vault
 profiles and storage namespaces. They grant no file, memory or skill access.
 
+Explicit [project Knowledge builds](../adr/0093-source-grounded-project-knowledge.md)
+use registered source access and approved idle Native routes. Rust owns source
+capture, hashes, exact quotation checks, linked Markdown rendering and managed
+publication; the host owns bounded provider coordination and admission. React
+only presents durable output and index receipts.
+
 [Native session project roots](../adr/0085-native-session-project-roots.md) let a saved
 conversation choose its relative-path base among registered workspace folders.
 Same-workspace drag/drop retains existing grants and history; transfers between
@@ -41,6 +47,12 @@ unchanged by a folder selection.
 profile-owned automatic curation and explicit current-message learning requests,
 without a prompt checkbox. Bounded Rust source reads supply untrusted evidence;
 generated user candidates remain separate from built-ins and activation consent.
+
+[Learned-skill evaluation](../adr/0094-learned-skill-quality-and-evaluation.md)
+adds persisted taxonomy, required procedure sections and immutable regression
+fixtures. Rust owns duplicate admission, hidden-assertion grading and pinned
+promotion gates; the host runs isolated tool-disabled Native inference, while
+React presents evidence and retains separate user approval and activation.
 
 ## Repository layout
 
@@ -91,8 +103,10 @@ admission lane so queue wait does not consume wire execution deadlines.
 [Idle team knowledge](../adr/0075-idle-team-knowledge-and-office-context.md)
 extends that same timer owner with real team discussions and acknowledged artifact
 results. Conflicting foreground work fences maintenance and drains its entered effects; the full chosen quiet interval restarts after actual conflicting foreground settlement. Unique non-default isolated vault profiles can curate alongside known unrelated Native and Observe work, including scoped observed-memory lifetimes. Unbound Observe activity is treated as default/global for admission only; no workspace or Knowledge access is granted. Shared/default maintenance, unknown ownership, privacy/settings changes and shared resources retain conservative guards. One curator runs at a time. Skills remain a shared, scanner-gated user library, separate from vault isolation.
-Office portals the shared countdown above its prompt while keeping source-context
-selection independent from the global character board and automatic camera.
+Office portals pending learning decisions above its prompt. Accepted and running
+work uses a compact top-left notification. Knowledge offers a manual saved-team
+review with a ten-second quiet interval and fresh idle-member checks. Source-context
+selection stays independent from the global character board and automatic camera.
 
 [Operational work memory](../adr/0089-operational-work-memory-and-context-reuse.md)
 adds a Rust-owned profile/workspace-scoped SQLite/FTS5 index for attributed Native

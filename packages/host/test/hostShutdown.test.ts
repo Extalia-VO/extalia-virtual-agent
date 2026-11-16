@@ -1,3 +1,4 @@
+import { generatedSkillMetadata, completeSkillInstructions } from './generatedSkillFixtures.js';
 import { skillStoragePaths } from '../src/skillStorage.js';
 import { createAgentHost } from '../src/service.js';
 import type { DaemonLearningParams, ExtaliaEvent } from '@extalia/protocol';
@@ -350,7 +351,7 @@ describe('host shutdown persistence fencing', () => {
       'skill.stage': { entered: stageEntered, release: stageRelease },
       'skill.cleanup': { entered: cleanupEntered, release: cleanupRelease },
     });
-    const fetch = vi.fn(async () => Response.json({ model: 'mock-agent', choices: [{ message: { content: '', tool_calls: [{ id: 's1', type: 'function', function: { name: 'skill_propose', arguments: JSON.stringify({ name: 'shutdown-review', description: 'Review a change', instructions: 'Read the diff and report evidence.' }) } }] }, finish_reason: 'tool_calls' }] }));
+    const fetch = vi.fn(async () => Response.json({ model: 'mock-agent', choices: [{ message: { content: '', tool_calls: [{ id: 's1', type: 'function', function: { name: 'skill_propose', arguments: JSON.stringify({ name: 'shutdown-review', description: 'Review a change', ...generatedSkillMetadata(), intents: ['review_change'], instructions: completeSkillInstructions('Read the diff and report evidence.', 'Use when reviewing a change.') }) } }] }, finish_reason: 'tool_calls' }] }));
     const h = await setup(fetch, true, false, true);
     await h.runtime.host.sendPrompt(h.session.id, '/learn-skill Save a review draft.');
     await stageEntered.promise;

@@ -29,7 +29,13 @@ export interface ScheduleAgentAssignment {
 export type ScheduleMissedPolicy = 'skip' | 'run-once';
 
 export type GeneralScheduleState = 'scheduled' | 'paused' | 'running' | 'completed' | 'failed';
-export type GeneralScheduleOutcome = 'succeeded' | 'failed' | 'skipped-busy' | 'missed';
+export type GeneralScheduleOutcome = 'succeeded' | 'failed' | 'skipped-busy' | 'missed' | 'deferred-connection';
+
+export interface GeneralScheduleRecovery {
+  reason: 'busy' | 'connection-unavailable';
+  dueAt: string;
+  attempt: number;
+}
 
 export interface GeneralSchedule {
   id: string;
@@ -44,6 +50,8 @@ export interface GeneralSchedule {
   boundSessionId?: string;
   assignment: ScheduleAgentAssignment;
   missedPolicy: ScheduleMissedPolicy;
+  /** A known pre-admission condition is being retried; this is catalog-only state. */
+  recovery?: GeneralScheduleRecovery;
   state: GeneralScheduleState;
   nextRunAt?: string;
   lastRunAt?: string;
@@ -58,6 +66,10 @@ export interface GeneralSchedule {
 export interface GeneralScheduleCatalog {
   revision: string;
   schedules: GeneralSchedule[];
+  /** IANA timezone used by the executing host for cron; older hosts may omit it. */
+  timeZone?: string;
+  /** Automatic execution is halted until the host can safely persist its state again. */
+  problem?: 'storage-unavailable';
 }
 
 export interface SaveGeneralScheduleInput {
@@ -184,40 +196,90 @@ function cronDayMatches(parsed: ParsedCron, dom: number, dow: number): boolean {
 }
 
 /** Compute the next local occurrence strictly after `afterMs` for a 5-field cron expression. */
+function nextCronWallTime(parsed: ParsedCron, afterWallMs: number): number | undefined {
+  const cursor = new Date(Math.floor(afterWallMs / 60_000) * 60_000);
+  const maxYear = cursor.getUTCFullYear() + 4;
+  while (cursor.getUTCFullYear() <= maxYear) {
+    const month = cursor.getUTCMonth() + 1;
+    if (!parsed.months.has(month)) {
+      cursor.setUTCMonth(cursor.getUTCMonth() + 1, 1);
+      cursor.setUTCHours(0, 0, 0, 0);
+      continue;
+    }
+    const dom = cursor.getUTCDate();
+    if (!cronDayMatches(parsed, dom, cursor.getUTCDay())) {
+      cursor.setUTCDate(dom + 1);
+      cursor.setUTCHours(0, 0, 0, 0);
+      continue;
+    }
+    const hour = cursor.getUTCHours();
+    if (!parsed.hours.has(hour)) {
+      cursor.setUTCHours(hour + 1, 0, 0, 0);
+      continue;
+    }
+    const minute = cursor.getUTCMinutes();
+    if (!parsed.minutes.has(minute)) {
+      cursor.setUTCMinutes(minute + 1, 0, 0);
+      continue;
+    }
+    return cursor.getTime();
+  }
+  return undefined;
+}
+
+function localMatchesCron(parsed: ParsedCron, date: Date, wall: Date): boolean {
+  return date.getFullYear() === wall.getUTCFullYear()
+    && date.getMonth() === wall.getUTCMonth()
+    && date.getDate() === wall.getUTCDate()
+    && parsed.months.has(date.getMonth() + 1)
+    && cronDayMatches(parsed, date.getDate(), date.getDay())
+    && date.getHours() === wall.getUTCHours()
+    && date.getMinutes() === wall.getUTCMinutes()
+    && date.getSeconds() === 0
+    && date.getMilliseconds() === 0;
+}
+
+/** Compute the next local occurrence strictly after `afterMs` for a 5-field cron expression.
+ * Wall-clock field search avoids local Date setters that can move backwards at an offset fold.
+ */
 export function nextCronRunAt(expression: string, afterMs: number): string | undefined {
   if (!Number.isFinite(afterMs)) return undefined;
   const parsed = parseCronExpression(expression);
-  const startMinuteMs = Math.floor(afterMs / 60_000) * 60_000 + 60_000;
-  const cursor = new Date(startMinuteMs);
-  const maxYear = cursor.getFullYear() + 4;
+  const minuteMs = 60_000;
+  const sampleOffsets = (atMs: number) => {
+    const result = new Set<number>();
+    for (let hours = -48; hours <= 48; hours += 6) {
+      result.add(new Date(atMs + hours * 60 * 60_000).getTimezoneOffset());
+    }
+    return result;
+  };
+  const nearbyOffsets = sampleOffsets(afterMs);
+  const offsetValues = [...nearbyOffsets];
+  const foldSpanMs = (Math.max(...offsetValues) - Math.min(...offsetValues)) * minuteMs;
+  // Search back by the observed fold span so a repeated wall-clock minute can still be
+  // returned after its first UTC occurrence (for example, 01:30 a second time in autumn).
+  let wallAfter = afterMs - new Date(afterMs).getTimezoneOffset() * minuteMs - foldSpanMs;
+  let earliest: number | undefined;
 
-  while (cursor.getFullYear() <= maxYear) {
-    const month = cursor.getMonth() + 1;
-    if (!parsed.months.has(month)) {
-      cursor.setMonth(cursor.getMonth() + 1, 1);
-      cursor.setHours(0, 0, 0, 0);
-      continue;
+  // A cron candidate in a spring gap is rejected and the next calendar occurrence is found
+  // using cron field jumps. Continue through a fold until later wall times cannot map to an
+  // earlier UTC instant. 3,000 rejected slots cover unusual whole-day changes.
+  for (let rejected = 0; rejected < 3_000; rejected++) {
+    const wallMs = nextCronWallTime(parsed, wallAfter);
+    if (wallMs === undefined) break;
+    const wall = new Date(wallMs);
+    const candidates = sampleOffsets(wallMs);
+    const minimumOffset = Math.min(...candidates);
+    if (earliest !== undefined && wallMs + minimumOffset * minuteMs > earliest) break;
+    for (const offset of candidates) {
+      const candidateMs = wallMs + offset * minuteMs;
+      if (candidateMs <= afterMs) continue;
+      if (!localMatchesCron(parsed, new Date(candidateMs), wall)) continue;
+      if (earliest === undefined || candidateMs < earliest) earliest = candidateMs;
     }
-    const dom = cursor.getDate();
-    const dow = cursor.getDay();
-    if (!cronDayMatches(parsed, dom, dow)) {
-      cursor.setDate(dom + 1);
-      cursor.setHours(0, 0, 0, 0);
-      continue;
-    }
-    const hour = cursor.getHours();
-    if (!parsed.hours.has(hour)) {
-      cursor.setHours(hour + 1, 0, 0, 0);
-      continue;
-    }
-    const minute = cursor.getMinutes();
-    if (!parsed.minutes.has(minute)) {
-      cursor.setMinutes(minute + 1, 0, 0);
-      continue;
-    }
-    return cursor.toISOString();
+    wallAfter = wallMs + minuteMs;
   }
-  return undefined;
+  return earliest !== undefined ? new Date(earliest).toISOString() : undefined;
 }
 
 /** Compute the next firing ISO timestamp for any schedule trigger. */
@@ -360,7 +422,7 @@ export function normalizeSaveGeneralSchedule(raw: unknown): SaveGeneralScheduleI
     throw new Error(`Enter a prompt of 1 to ${GENERAL_SCHEDULE_LIMITS.promptLength} characters.`);
   }
   if (raw.enabled !== undefined && typeof raw.enabled !== 'boolean') throw new Error('Invalid schedule enabled flag.');
-  const missedPolicy: ScheduleMissedPolicy = raw.missedPolicy === undefined ? 'skip' : raw.missedPolicy === 'skip' || raw.missedPolicy === 'run-once' ? raw.missedPolicy : (() => { throw new Error('Invalid missed-run policy.'); })();
+  const missedPolicy: ScheduleMissedPolicy = raw.missedPolicy === undefined ? 'run-once' : raw.missedPolicy === 'skip' || raw.missedPolicy === 'run-once' ? raw.missedPolicy : (() => { throw new Error('Invalid missed-run policy.'); })();
   return {
     ...(raw.id !== undefined ? { id: raw.id, expectedRevision: Number(raw.expectedRevision) } : {}),
     workspaceId: raw.workspaceId,

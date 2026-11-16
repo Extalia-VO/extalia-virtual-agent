@@ -7,7 +7,7 @@ import { errorMessage } from '../host/remote';
 import { paginateBookText } from './skillBookMotion';
 import { SkillBookNavigation } from './BookNavigationPanel';
 import { bookPageIndex } from './skillBookNavigation';
-import { CATALOG_FILTERS, type CatalogFilter } from './builtinCatalogModel';
+import { CATALOG_FILTERS } from './builtinCatalogModel';
 import { loadSkillCatalogBatch, SkillCatalogChanged } from './skillCatalogLoading';
 import { SkillCatalogPagination } from './SkillCatalogPagination';
 import { BOOK_COLORS, BOOKS_PER_SHELF, DEFAULT_LIST_PAGE_SIZE, LIST_PAGE_SIZES, SKILL_ORIGIN_FILTERS, catalogPage, catalogPageForAnchor, createSkillBookIndex, filterSkillBookIndex, skillBooks, type SkillBookSourceFilter, type SkillBook } from './skillLibraryModel';
@@ -81,9 +81,13 @@ export function SkillLibraryView({ t, books, previewContext, loading = false, er
   const [listPageSize, setListPageSize] = useState<number>(DEFAULT_LIST_PAGE_SIZE);
   const [query, setQuery] = useState('');
   const [source, setSource] = useState<SkillBookSourceFilter>('all');
-  const [category, setCategory] = useState<CatalogFilter>('all');
+  const [category, setCategory] = useState<string>('all');
   const [page, setPage] = useState(0);
   const [selection, setSelection] = useState<string | null>(null);
+  const categoryChoices = [...CATALOG_FILTERS, ...[...new Set(books.flatMap(book => book.categories ?? []))].filter(category => !CATALOG_FILTERS.includes(category as typeof CATALOG_FILTERS[number])).sort()];
+  const categoryLabel = (category: string) => CATALOG_FILTERS.includes(category as typeof CATALOG_FILTERS[number])
+    ? t.skillsPage.builtinCategories[category as typeof CATALOG_FILTERS[number]] : category;
+  const bookCategory = (book: SkillBook) => book.categories?.length ? book.categories.join(' · ') : categoryLabel(book.category);
   const searchIndex = useMemo(() => createSkillBookIndex(books), [books]);
   const shown = useMemo(() => filterSkillBookIndex(searchIndex, query, source, category), [searchIndex, query, source, category]);
   const hasBooks = shown.length > 0;
@@ -150,7 +154,8 @@ export function SkillLibraryView({ t, books, previewContext, loading = false, er
   const label = selected ? status(selected) : '';
   const selectedBookText = selected ? [
     selected.title, selected.description,
-    `${p.source}: ${p.origins[selected.origin ?? (selected.source === 'registry' ? 'imported' : selected.source)]}\n${label}\n${p.category}: ${t.skillsPage.builtinCategories[selected.category]}`,
+    `${p.source}: ${p.origins[selected.origin ?? (selected.source === 'registry' ? 'imported' : selected.source)]}\n${label}\n${p.category}: ${bookCategory(selected)}`,
+    selected.intents?.length ? `${p.intents}: ${selected.intents.join(', ')}` : '',
     selected.workspace ? `${p.workspace}: ${selected.workspace}` : '',
     selected.revision ? `${p.revision}: ${selected.revision}` : '',
     selected.digest ? `SHA-256: ${selected.digest}` : '',
@@ -180,9 +185,9 @@ export function SkillLibraryView({ t, books, previewContext, loading = false, er
     <div className="skill-library-tools">
       <label className="field"><span>{p.search}</span><input type="search" value={query} maxLength={200} placeholder={p.search} onChange={event => { setQuery(event.target.value); setPage(0); setSelection(null); setReadingShelf(null); }} /></label>
       <div className="field"><span>{p.source}</span><Select aria-label={p.source} value={source} onChange={value => { setSource(value); setPage(0); setSelection(null); setReadingShelf(null); }} options={SKILL_ORIGIN_FILTERS.map(item => ({ value: item, label: item === 'all' ? p.sources.all : p.origins[item] }))} /></div>
-      <div className="field"><span>{p.category}</span><Select aria-label={p.category} value={category} onChange={value => { setCategory(value); setPage(0); setSelection(null); setReadingShelf(null); }} options={CATALOG_FILTERS.map(item => ({ value: item, label: t.skillsPage.builtinCategories[item] }))} /></div>
+      <div className="field"><span>{p.category}</span><Select aria-label={p.category} value={category} onChange={value => { setCategory(value); setPage(0); setSelection(null); setReadingShelf(null); }} options={categoryChoices.map(item => ({ value: item, label: categoryLabel(item) }))} /></div>
       {view === 'list' && <div className="field skill-page-size"><span>{p.pageSize}</span><Select aria-label={p.pageSize} value={String(listPageSize)} onChange={value => resizeList(Number(value))} options={LIST_PAGE_SIZES.map(size => ({ value: String(size), label: String(size) }))} /></div>}
-      {view === 'shelf' && displayShelf.length > 0 && <div className="field"><span>{p.books}</span><Select aria-label={p.books} className="skill-shelf-picker" value={selected?.id ?? ''} placeholder={p.books} onChange={choose} options={displayShelf.map(book => ({ value: book.id, label: `${book.title} · ${book.workspace ?? p.origins[book.origin ?? (book.source === 'registry' ? 'imported' : book.source)]} · ${status(book)} · ${t.skillsPage.builtinCategories[book.category]}` }))} /></div>}
+      {view === 'shelf' && displayShelf.length > 0 && <div className="field"><span>{p.books}</span><Select aria-label={p.books} className="skill-shelf-picker" value={selected?.id ?? ''} placeholder={p.books} onChange={choose} options={displayShelf.map(book => ({ value: book.id, label: `${book.title} · ${book.workspace ?? p.origins[book.origin ?? (book.source === 'registry' ? 'imported' : book.source)]} · ${status(book)} · ${bookCategory(book)}` }))} /></div>}
       {(query || category !== 'all' || source !== 'all') && <button type="button" className="button small" onClick={clear}>{t.skillsPage.clearBuiltinFilters}</button>}
     </div>
     <p className="skill-origin-guide muted small">{p.originGuide}</p>
@@ -219,14 +224,14 @@ export function SkillLibraryView({ t, books, previewContext, loading = false, er
         </> : hasBooks && <span className="skill-shelf-caption">{p.shelfHint}</span>}
       </div>}
       {view === 'list' && hasBooks && <ul className="skill-book-index list" aria-label={p.books}>
-        {shelf.map((book, index) => <li key={book.id}><button type="button" className="skill-book-choice" data-book-id={book.id} aria-pressed={selected?.id === book.id} aria-label={`${book.title} · ${t.skillsPage.builtinCategories[book.category]} · ${p.origins[book.origin ?? (book.source === 'registry' ? 'imported' : book.source)]}${book.workspace ? ` · ${book.workspace}` : ''} · ${status(book)}`} aria-describedby={previewBook?.id === book.id && !preview?.exiting ? previewId : undefined}
+        {shelf.map((book, index) => <li key={book.id}><button type="button" className="skill-book-choice" data-book-id={book.id} aria-pressed={selected?.id === book.id} aria-label={`${book.title} · ${bookCategory(book)} · ${p.origins[book.origin ?? (book.source === 'registry' ? 'imported' : book.source)]}${book.workspace ? ` · ${book.workspace}` : ''} · ${status(book)}`} aria-describedby={previewBook?.id === book.id && !preview?.exiting ? previewId : undefined}
           onFocus={previewFocus} onBlur={previewBlur} onPointerEnter={previewPointer} onPointerMove={previewPointer} onPointerLeave={() => previewHover(null)} onPointerDown={clearPreview}
           onClick={() => choose(book.id)} style={{ borderInlineStartColor: BOOK_COLORS[book.category] }}>
-          <span className="skill-book-number">{String(pagination.start + index + 1).padStart(2, '0')}</span><span><strong>{book.title}</strong><span className="skill-book-category">{t.skillsPage.builtinCategories[book.category]}</span><span className="skill-book-origin-row"><SkillOriginBadge origin={book.origin ?? (book.source === 'registry' ? 'imported' : book.source)} t={t} /><span className="muted small">{book.workspace ? `${book.workspace} · ` : ''}{status(book)}</span></span></span>
+          <span className="skill-book-number">{String(pagination.start + index + 1).padStart(2, '0')}</span><span><strong>{book.title}</strong><span className="skill-book-category">{bookCategory(book)}</span><span className="skill-book-description">{book.description}</span>{!!book.intents?.length && <span className="skill-book-intents muted small">{p.intents}: {book.intents.join(', ')}</span>}<span className="skill-book-origin-row"><SkillOriginBadge origin={book.origin ?? (book.source === 'registry' ? 'imported' : book.source)} t={t} /><span className="muted small">{book.workspace ? `${book.workspace} · ` : ''}{status(book)}</span></span></span>
         </button></li>)}
       </ul>}
       {hasBooks && <SkillCatalogPagination t={t} page={currentPage} pageCount={pagination.pageCount} onPage={next => { setPage(next); setSelection(null); setNavigationOpen(false); setReadingShelf(null); }} />}
-    {previewBook && preview && <SkillBookPreview key={previewBook.id} id={previewId} preview={preview} book={previewBook} category={t.skillsPage.builtinCategories[previewBook.category]} originLabel={p.origins[previewBook.origin ?? (previewBook.source === 'registry' ? 'imported' : previewBook.source)]} />}
+    {previewBook && preview && <SkillBookPreview key={previewBook.id} id={previewId} preview={preview} book={previewBook} category={bookCategory(previewBook)} intentsLabel={p.intents} originLabel={p.origins[previewBook.origin ?? (previewBook.source === 'registry' ? 'imported' : previewBook.source)]} />}
     <p className="note small">{p.readOnly}</p>
   </section>;
 }

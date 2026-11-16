@@ -66,6 +66,7 @@ describe('GeneralScheduleManager', () => {
     });
 
     expect(saved.schedules).toHaveLength(1);
+    expect(saved.timeZone).toBe(Intl.DateTimeFormat().resolvedOptions().timeZone);
     const first = saved.schedules[0]!;
     expect(first.state).toBe('scheduled');
     expect(first.nextRunAt).toBe('2026-11-14T11:00:00.000Z');

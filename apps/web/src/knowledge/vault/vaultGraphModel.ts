@@ -170,6 +170,18 @@ export function nodeLook(degree: number, maxDegree: number): NodeLook {
   return { radius, halo: radius * (3 + 5 * w), glow: 0.16 + 0.84 * w ** 1.4, lift: 0.35 * w * w };
 }
 
+/** CSS-pixel radii survive auto-fit and device-pixel-ratio changes. */
+export function minimumNodeScreenRadius(degree: number, maxDegree: number, focused: boolean, nodeSize = 1.25): number {
+  const size = Math.max(.9, Math.min(1.35, Math.sqrt(Math.max(.25, nodeSize) / 1.25)));
+  return (focused ? 8 : 4.5 + 2 * degreeWeight(degree, maxDegree)) * size;
+}
+
+/** Matches the billboard shader and screen-space picking, including a fully hidden zero scale. */
+export function nodeScreenRadius(worldRadius: number, pixelsPerWorldUnit: number, minimum: number): number {
+  if (!(worldRadius > 0) || !(pixelsPerWorldUnit > 0)) return 0;
+  return Math.max(minimum, Math.min(Math.max(12, minimum * 1.8), worldRadius * pixelsPerWorldUnit));
+}
+
 /** Curated for the graph's near-black stage: saturated but not neon, distinct in hue and lightness. */
 export const GRAPH_PALETTE = GRAPH_GALAXY_PALETTE;
 /** Groups beyond the palette share a quiet slate. */
@@ -292,12 +304,69 @@ export function labelCandidates(graph: Pick<VaultGraph, 'hubs'>, mask: Uint8Arra
   return out;
 }
 
+/** Interaction context precedes overview hubs; candidates remain bounded before projection. */
+export function readableLabelCandidates(graph: VaultGraph, mask: Uint8Array, focus: readonly (number | null | undefined)[], showContext: boolean, limit = 192): number[] {
+  const out = labelCandidates(graph, mask, focus, 0);
+  if (!showContext) return out;
+  const neighbours = new Set<number>();
+  for (const index of out) for (const neighbour of neighbourSet(graph, index)) if (mask[neighbour]) neighbours.add(neighbour);
+  const ordered = [...neighbours].sort((a, b) => graph.degree[b]! - graph.degree[a]! || graph.nodes[a]!.nodeId.localeCompare(graph.nodes[b]!.nodeId));
+  const included = new Set(out);
+  for (const index of [...ordered, ...graph.hubs]) {
+    if (out.length >= limit) break;
+    if (mask[index] && !included.has(index)) { included.add(index); out.push(index); }
+  }
+  return out;
+}
+
+export interface GraphLabelCandidate {
+  index: number; x: number; y: number; width: number; height: number; radius: number;
+  priority: 'focus' | 'neighbor' | 'context';
+}
+export interface PlacedGraphLabel extends GraphLabelCandidate { left: number; top: number }
+
+/** The phone toolbar wraps; camera fitting and labels reserve the same control bands. */
+export function graphViewportInsets(width: number): { top: number; bottom: number } {
+  return { top: width < 600 ? 132 : 64, bottom: 54 };
+}
+
+/** Deterministic bounded screen-space placement; overview labels never collide or cross the viewport. */
+export function placeGraphLabels(candidates: readonly GraphLabelCandidate[], viewport: { width: number; height: number }, limit: number,
+  insets: { top?: number; bottom?: number; left?: number; right?: number } = {}): PlacedGraphLabel[] {
+  const placed: PlacedGraphLabel[] = [];
+  const leftInset = Math.max(8, insets.left ?? 8), rightInset = Math.max(8, insets.right ?? 8);
+  const topInset = Math.max(8, insets.top ?? 8), bottomInset = Math.max(8, insets.bottom ?? 8);
+  const rank = { focus: 0, neighbor: 1, context: 2 };
+  const ordered = candidates.map((candidate, order) => ({ candidate, order }))
+    .sort((a, b) => rank[a.candidate.priority] - rank[b.candidate.priority] || a.order - b.order);
+  for (const { candidate } of ordered) {
+    if (placed.length >= limit) break;
+    const { x, y, radius, height } = candidate;
+    const width = Math.min(candidate.width, viewport.width - leftInset - rightInset);
+    if (!(width > 0) || x < 0 || y < 0 || x > viewport.width || y > viewport.height) continue;
+    const gap = radius + 6;
+    const anchors = [[x - width / 2, y + gap], [x + gap, y - height / 2], [x - gap - width, y - height / 2],
+      [x - width / 2, y - gap - height], [x + gap, y + gap], [x - gap - width, y - gap - height],
+      [x - width / 2, y + gap + height + 4], [x - width / 2, y - gap - height * 2 - 4]];
+    for (const [anchorX, anchorY] of anchors) {
+      const left = Math.max(leftInset, Math.min(viewport.width - width - rightInset, anchorX!));
+      const top = Math.max(topInset, Math.min(viewport.height - height - bottomInset, anchorY!));
+      if (height > viewport.height - topInset - bottomInset) continue;
+      if (placed.some(box => left < box.left + box.width + 4 && left + width + 4 > box.left
+        && top < box.top + box.height + 4 && top + height + 4 > box.top)) continue;
+      placed.push({ ...candidate, width, left, top });
+      break;
+    }
+  }
+  return placed;
+}
+
 /** Steps the quality tier on measured frame rate: two slow windows step down, five smooth ones step back up. */
 export interface QualityState { tier: number; slow: number; fast: number }
 export const QUALITY_TIERS = [
-  { haloScale: 1, hubLabels: 8 },
-  { haloScale: 0.7, hubLabels: 5 },
-  { haloScale: 0.45, hubLabels: 0 },
+  { haloScale: 1, hubLabels: 48 },
+  { haloScale: 0.7, hubLabels: 32 },
+  { haloScale: 0.45, hubLabels: 16 },
 ] as const;
 export function updateQuality(state: QualityState, fps: number): QualityState {
   const slow = fps < 45 ? state.slow + 1 : 0;

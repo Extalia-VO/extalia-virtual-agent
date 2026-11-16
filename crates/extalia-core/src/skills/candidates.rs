@@ -8,7 +8,7 @@ use super::tree::{StagingLimits, Tree, TreeFile};
 use super::views::RevisionFile;
 use super::{RevisionState, SkillError};
 
-pub const CANDIDATE_MAX_BYTES: u64 = 160 * 1024;
+pub const CANDIDATE_MAX_BYTES: u64 = 224 * 1024;
 pub const CANDIDATE_SKILL_MAX_BYTES: u64 = 70 * 1024;
 pub const CANDIDATE_REFERENCE_MAX_BYTES: u64 = 16 * 1024;
 pub const CANDIDATE_MAX_REFERENCES: usize = 4;
@@ -57,11 +57,15 @@ pub fn reference_path(path: &str) -> bool {
 }
 
 pub fn review_path(path: &str) -> bool {
-    path == "SKILL.md" || path == PROVENANCE || reference_path(path)
+    path == "SKILL.md"
+        || path == PROVENANCE
+        || path == super::manifest::MANIFEST_FILE
+        || path == super::verification::TESTS_FILE
+        || reference_path(path)
 }
 
 fn bounded_files(files: &[TreeFile]) -> bool {
-    files.len() <= CANDIDATE_MAX_REFERENCES + 2
+    files.len() <= CANDIDATE_MAX_REFERENCES + 4
         && files.iter().filter(|f| reference_path(&f.path)).count() <= CANDIDATE_MAX_REFERENCES
         && files
             .iter()
@@ -78,6 +82,10 @@ fn bounded_files(files: &[TreeFile]) -> bool {
                 && f.size
                     <= if f.path == "SKILL.md" {
                         CANDIDATE_SKILL_MAX_BYTES
+                    } else if f.path == super::verification::TESTS_FILE {
+                        super::verification::MAX_TEST_BYTES as u64
+                    } else if f.path == super::manifest::MANIFEST_FILE {
+                        16 * 1024
                     } else if f.path == PROVENANCE {
                         24 * 1024
                     } else {
@@ -148,7 +156,11 @@ impl SkillRegistry<'_> {
         let reference_paths = tree
             .files
             .iter()
-            .filter(|f| reference_path(&f.path))
+            .filter(|f| {
+                reference_path(&f.path)
+                    || f.path == super::manifest::MANIFEST_FILE
+                    || f.path == super::verification::TESTS_FILE
+            })
             .map(|f| f.path.clone())
             .collect();
         Ok(CandidateFile {
@@ -269,4 +281,126 @@ fn latest_revision(
         "SELECT e.revision_id FROM skill_revision_events e JOIN skill_revisions r ON r.profile_id=e.profile_id AND r.revision_id=e.revision_id WHERE e.profile_id=?1 AND r.package_id=?2 AND e.reason='imported' ORDER BY e.event_seq DESC LIMIT 1",
         params![profile, package], |row| row.get(0),
     ).optional()?)
+}
+
+/// The import transaction checks other generated names in this learning scope.
+/// Exact procedure aliases are refused; high lexical overlap is only a review
+/// signal, never an automatic semantic merge.
+pub(super) fn check_duplicate(
+    conn: &Connection,
+    profile: &str,
+    package: &str,
+    tree: &Tree,
+    objects: &super::tree::ObjectStore,
+    limits: &StagingLimits,
+) -> Result<(), SkillError> {
+    use std::collections::BTreeSet;
+    let read = |tree: &Tree, path: &str| -> Result<Option<Vec<u8>>, SkillError> {
+        tree.file(path)
+            .map(|file| objects.read_file(&tree.sha256, path, file))
+            .transpose()
+    };
+    let Some(provenance_bytes) = read(tree, PROVENANCE)? else {
+        return Ok(());
+    };
+    let scope = provenance(&provenance_bytes)?;
+    let body = String::from_utf8(read(tree, "SKILL.md")?.ok_or(SkillError::Integrity)?)
+        .map_err(|_| SkillError::Integrity)?;
+    let normalized = super::verification::instruction_body(&body)
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase();
+    let tokens = |value: &str| {
+        value
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|s| s.len() > 3)
+            .take(4096)
+            .map(str::to_owned)
+            .collect::<BTreeSet<_>>()
+    };
+    let incoming_tokens = tokens(&normalized);
+    let references = |tree: &Tree| {
+        tree.files
+            .iter()
+            .filter(|f| reference_path(&f.path))
+            .map(|f| (f.path.clone(), f.sha256.clone()))
+            .collect::<Vec<_>>()
+    };
+    let incoming_manifest: Value = read(tree, super::manifest::MANIFEST_FILE)?
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+        .unwrap_or(Value::Null);
+    let mut statement=conn.prepare("SELECT r.revision_id FROM skill_packages p JOIN skill_revisions r ON r.profile_id=p.profile_id AND r.package_id=p.package_id WHERE p.profile_id=?1 AND p.origin='generated' AND p.package_id<>?2 AND r.state NOT IN ('blocked','revoked') AND (r.revision_id=(SELECT e.revision_id FROM skill_revision_events e JOIN skill_revisions newer ON newer.profile_id=e.profile_id AND newer.revision_id=e.revision_id WHERE e.profile_id=p.profile_id AND newer.package_id=p.package_id AND e.reason='imported' ORDER BY e.event_seq DESC LIMIT 1) OR EXISTS(SELECT 1 FROM skill_activations a WHERE a.profile_id=r.profile_id AND a.package_id=r.package_id AND a.revision_id=r.revision_id)) LIMIT 257")?;
+    let ids = statement
+        .query_map(params![profile, package], |row| row.get::<_, String>(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    if ids.len() > 256 {
+        return Err(SkillError::Denied("candidate_catalog_incomplete"));
+    }
+    for id in ids {
+        let revision = load_revision(conn, profile, &id)?;
+        let prior = objects.verify(&revision.tree_sha256, limits)?;
+        let Some(bytes) = read(&prior, PROVENANCE)? else {
+            continue;
+        };
+        let Ok(other) = provenance(&bytes) else {
+            continue;
+        };
+        if other.profile_id != scope.profile_id || other.workspace_id != scope.workspace_id {
+            continue;
+        }
+        let previous = String::from_utf8(read(&prior, "SKILL.md")?.ok_or(SkillError::Integrity)?)
+            .map_err(|_| SkillError::Integrity)?;
+        let previous = super::verification::instruction_body(&previous)
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .to_lowercase();
+        if previous == normalized && references(&prior) == references(tree) {
+            return Err(SkillError::Denied("generated_duplicate_candidate"));
+        }
+        let manifest: Value = serde_json::from_str(&revision.manifest_json)
+            .map_err(|_| SkillError::Corrupt("manifest"))?;
+        if incoming_manifest["intents"]
+            .as_array()
+            .is_some_and(|v| !v.is_empty())
+            && incoming_manifest["intents"] == manifest["intents"]
+        {
+            let previous_tokens = tokens(&previous);
+            let intersection = incoming_tokens.intersection(&previous_tokens).count();
+            let union = incoming_tokens.union(&previous_tokens).count();
+            if intersection >= 16 && union > 0 && intersection * 100 >= union * 82 {
+                return Err(SkillError::Denied("generated_possible_duplicate"));
+            }
+        }
+    }
+    Ok(())
+}
+
+pub(super) fn preserve_tests(
+    old: &Tree,
+    new: &Tree,
+    objects: &super::tree::ObjectStore,
+) -> Result<(), SkillError> {
+    if old
+        .files
+        .iter()
+        .filter(|f| reference_path(&f.path))
+        .any(|f| new.file(&f.path).is_none())
+    {
+        return Err(SkillError::Denied("refinement_references_removed"));
+    }
+    let name = super::verification::TESTS_FILE;
+    let Some(entry) = old.file(name) else {
+        return Ok(());
+    };
+    let previous = super::verification::parse(&objects.read_file(&old.sha256, name, entry)?)?;
+    let entry = new
+        .file(name)
+        .ok_or(SkillError::Denied("refinement_tests_changed"))?;
+    let next = super::verification::parse(&objects.read_file(&new.sha256, name, entry)?)?;
+    if previous.iter().any(|case| !next.contains(case)) {
+        return Err(SkillError::Denied("refinement_tests_changed"));
+    }
+    Ok(())
 }

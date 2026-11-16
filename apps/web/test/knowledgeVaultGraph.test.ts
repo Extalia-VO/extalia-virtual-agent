@@ -297,7 +297,7 @@ describe('vault graph page shell', () => {
     expect(whole).toContain('role="combobox"');
     expect(whole).toContain(t.knowledge.vaultGraph.controls);
     expect(whole).toContain(t.knowledge.vaultGraph.expand);
-    expect(whole).toMatch(/aria-pressed="true"[^>]*>3D</);
+    expect(whole).toMatch(/aria-pressed="true"[^>]*>2D</);
   });
 
   it('shows loading, error and empty overview states, and the note panel for a selection', () => {

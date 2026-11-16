@@ -1,7 +1,10 @@
 import { mkdtemp, mkdir, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
+import { EventEmitter } from 'node:events';
+import { PassThrough } from 'node:stream';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { executePythonProbe } from '../continuity-acceptance/python-probe.mjs';
 import { createWorkload, prepareWorkload, verifyWorkload } from '../continuity-acceptance/workload.mjs';
 
 const roots: string[] = [];
@@ -36,7 +39,7 @@ async function fixture(content = implementation) {
   await writeFile(path.join(projectDirectory, 'normalizer.py'), content);
   return { runId: 'acceptance-test', projectDirectory, outputDirectory: path.join(root, 'verification') };
 }
-afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
+afterEach(async () => { vi.useRealTimers(); await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
 
 describe('cross-agent executable acceptance workload', () => {
   it('introduces the objective once and keeps the original decision out of pressure/recovery prompts', () => {
@@ -88,6 +91,15 @@ describe('cross-agent executable acceptance workload', () => {
     expect(report.passed, JSON.stringify(result, null, 2)).toBe(true);
     expect(report.checks).toContainEqual({ id: 'quiet_import', passed: true });
     expect(report.checks).toContainEqual({ id: 'cli_exact_output', passed: true });
+  });
+
+  it('keeps the candidate CLI in its actual __main__ module with script argv and file identity', async () => {
+    const mainIdentity = implementation.replace("if __name__ == '__main__':",
+      "if __name__ == '__main__':\n    import __main__\n    assert __main__.__dict__ is globals()\n    assert __main__.__file__ == __file__\n    assert sys.argv == [__file__]");
+    const report = await verifyWorkload(await fixture(mainIdentity));
+    expect(report.passed).toBe(true);
+    expect(report.checks).toContainEqual({ id: 'cli_exact_output', passed: true });
+    expect(report.checks).toContainEqual({ id: 'cli_error_contract', passed: true });
   });
 
   it('continues to reject CRLF bytes from the candidate CLI', async () => {
@@ -187,5 +199,48 @@ with oracle.open('a') as stream: stream.write('\n// candidate modification\n')
   it('keeps the oracle out of the agent project', async () => {
     const options = await fixture();
     await expect(verifyWorkload({ ...options, outputDirectory: path.join(options.projectDirectory, 'verification') })).rejects.toThrow('outside the agent project');
+  });
+});
+
+function simulatedPython() {
+  const child = Object.assign(new EventEmitter(), {
+    stdin: new PassThrough(), stdout: new PassThrough(), stderr: new PassThrough(),
+    kill: vi.fn(() => { queueMicrotask(() => child.emit('close', null, 'SIGKILL')); return true; }),
+  });
+  const result = executePythonProbe({ spawn: () => child, executable: 'fixture-python', argv: [], input: '', cwd: '.' });
+  return { child, result };
+}
+
+describe('bounded Python interpreter admission', () => {
+  it('does not charge delayed startup to candidate execution and retains exact candidate output', async () => {
+    vi.useFakeTimers(); const { child, result } = simulatedPython();
+    await vi.advanceTimersByTimeAsync(2100); expect(child.kill).not.toHaveBeenCalled();
+    child.stderr.write('EXTALIA-PYTHON-');
+    await vi.advanceTimersByTimeAsync(100); expect(child.kill).not.toHaveBeenCalled();
+    child.stderr.write('READY\n');
+    await vi.advanceTimersByTimeAsync(1999); expect(child.kill).not.toHaveBeenCalled();
+    child.stdout.write('exact\n'); child.stderr.write('candidate warning\n'); child.emit('close', 0, null);
+    expect(await result).toEqual({ exitCode: 0, signal: null, stdout: 'exact\n', stderr: 'candidate warning\n', problem: undefined });
+  });
+
+  it('still terminates candidate execution after two seconds without retrying it', async () => {
+    vi.useFakeTimers(); const { child, result } = simulatedPython();
+    child.stderr.write('EXTALIA-PYTHON-READY\n');
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(child.kill).toHaveBeenCalledTimes(1);
+    expect(await result).toMatchObject({ problem: 'Python probe exceeded its 2-second budget.', signal: 'SIGKILL' });
+  });
+
+  it('bounds startup independently and refuses a missing readiness marker', async () => {
+    vi.useFakeTimers(); const { child, result } = simulatedPython();
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(child.kill).toHaveBeenCalledTimes(1);
+    expect(await result).toMatchObject({ problem: 'Python startup exceeded its 5-second budget.', signal: 'SIGKILL' });
+  });
+
+  it('consumes only the trusted first marker and keeps a candidate lookalike as stderr', async () => {
+    vi.useFakeTimers(); const { child, result } = simulatedPython();
+    child.stderr.write('EXTALIA-PYTHON-READY\nEXTALIA-PYTHON-READY\n'); child.emit('close', 0, null);
+    expect(await result).toMatchObject({ exitCode: 0, stderr: 'EXTALIA-PYTHON-READY\n', problem: undefined });
   });
 });

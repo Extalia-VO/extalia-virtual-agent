@@ -130,7 +130,7 @@ fn prepare_rejects_stale_or_unproved_links_before_creating_note_folder() {
 #[test]
 fn refined_skill_stage_has_bounded_references_lineage_and_cleans_up() {
     let mut f = Fixture::new();
-    let proposal = json!({"name":"procedure-class","description":"Use when applying the matching procedure.","instructions":"## Procedure\nRead references/checks.md before verification.",
+    let proposal = json!({"name":"procedure-class","description":"Use when applying the matching procedure.","categories":["development.testing"],"intents":["verify_result"],"verificationCases":[{"id":"verify","input":"Verify a synthetic result.","expectedIncludes":["verified"]}],"instructions":"## When to Use\nVerify a synthetic result.\n## Procedure\nRead references/checks.md before verification.\n## Pitfalls\nDo not assume past outcomes.\n## Verification\nCheck the actual result.",
         "baseRevisionId":format!("skr_{}","a".repeat(64)),"baseSkillSha256":"b".repeat(64),"baseReadReceipt":"c".repeat(64),"refinementReason":"The user correction adds a reusable check.",
         "references":[{"path":"references/checks.md","content":"# Checks\nVerify the actual result."}]});
     let input = json!({"proposal":proposal,"provenance":{"profileId":"default","workspaceId":"workspace","sessionId":"session","runId":"run","promptSha256":"d".repeat(64)}});
@@ -157,7 +157,7 @@ fn refined_skill_stage_has_bounded_references_lineage_and_cleans_up() {
 
 #[test]
 fn malformed_refinement_or_reference_paths_are_refused() {
-    let base = json!({"name":"procedure-class","description":"Use for a procedure.","instructions":"Verify results."});
+    let base = json!({"name":"procedure-class","description":"Use for a procedure.","categories":["development.testing"],"intents":["verify_result"],"verificationCases":[{"id":"verify","input":"Verify a synthetic result.","expectedIncludes":["verified"]}],"instructions":"## When to Use\nVerify a synthetic result.\n## Procedure\nVerify results.\n## Pitfalls\nDo not assume past outcomes.\n## Verification\nCheck the actual result."});
     for path in [
         "../outside.md",
         "references/../outside.md",

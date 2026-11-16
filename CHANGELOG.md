@@ -16,6 +16,143 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.352] - 2026-11-16
+
+- Separate bounded Python interpreter startup from the continuity verifier’s
+  unchanged candidate-execution deadline, preserving strict output/oracle checks
+  and CLI module identity under Windows CI contention.
+
+- Compile project-Knowledge inventory helpers only on Unix, matching their
+  supported implementation and preserving strict Windows warning checks.
+
+## [0.4.351] - 2026-11-16
+
+- Retry scheduled Native work when a reachable router's upstream fails before
+  the first response, using a trusted settled zero-work receipt rather than
+  replaying accepted or uncertain work. Keep the same destination and one
+  pending model prompt across retry and restart.
+- Reject stale retry history, steering, streamed output, successful model
+  responses, tools, cancellation and unverified persistence as retry authority;
+  retain failed-attempt diagnostics without duplicate model-context prompts.
+- Recheck manual Run now revisions at actual reservation, so queued edits or
+  pauses cannot dispatch a different task under an old action.
+- Validate retained retry workspace boundaries again during Native admission,
+  including when the pending prompt is the conversation’s only message.
+
+## [0.4.350] - 2026-11-16
+
+- Default new Schedule jobs to one coalesced catch-up after host downtime or
+  sleep, preserving explicit skip policies and normal recurring cadence.
+  Use the same missed-run rules on startup and delayed timer wake-ups.
+- Persist bounded busy-session retries with visible retry timing; preserve a
+  pending retry when an explicit Run now confirms the session is still busy.
+  Guard stale timers, clock jumps and interval drift without replaying unknown
+  dispatches or interrupted work.
+- Defer genuinely unreachable Native HTTP endpoints before creating sessions or
+  submitting prompts, with one persisted pending occurrence and capped-rate
+  recovery. Preserve local model use and avoid replay after accepted work,
+  uncertain failures, unknown transport errors or upstream-router ambiguity.
+- Correct cron progression across DST repeated/missing hours and prevent past
+  deadlines. Keep missing derived conversations and nonpersistent reusable
+  targets from silently substituting work. Expose missed-run choice in Native
+  prompt scheduling while retaining the shared job list and creation receipts.
+
+## [0.4.349] - 2026-11-16
+
+- Give Knowledge graphs a soft Nebula default with restrained star glow, thin feathered paths and true gradients between node colours, using independent transparency instead of opaque background-colour mixing.
+- Reduce overview titles to representative landmarks while retaining readable hover, selection and search titles; reveal more on zoom and explain the Smart titles control in English and Indonesian.
+- Preserve graph membership, privacy masks, 2D/3D navigation, three GPU draws and on-demand rendering; zero-opacity paths remain fully hidden.
+
+## [0.4.348] - 2026-11-16
+
+- Persist generated-skill categories, task intents and bounded regression fixtures, enforce populated procedure sections, and use verified metadata in Native skill selection and Grimoire filtering.
+- Refine the existing immutable skill class, retain prior references and verification assertions, and refuse duplicate aliases or possible overlapping classes for review.
+- Add explicit tool-disabled candidate/baseline evaluation with hidden assertions graded by Rust. Require fresh revision-bound passing evidence before generated-skill approval and activation, retaining the active version on failure and requiring fresh approval after retesting.
+- Show candidate completeness, exact baseline comparison, test results and unavailable/stale states in English and Indonesian without automatically activating a learned revision.
+
+## [0.4.347] - 2026-11-16
+
+- Show the live Skills & Knowledge widget only while explicit resource accesses are active; hide unsupported, empty, prepared-only and settled feeds, while retaining an already-open popup for final receipts.
+- Let resource details close with the same node or a dedicated close button, restoring keyboard focus to the node or inspector when activity disappears.
+
+## [0.4.346] - 2026-11-16
+
+- Let the main Extalia Native conversation create persisted Schedule jobs from
+  ordinary prompts, using the host clock and project-scoped job listing first.
+  Default to the exact current conversation; honor explicit reusable/fresh new
+  sessions and paused jobs. Report acknowledged job IDs and next occurrences.
+- Bind prompt scheduling to the admitted workspace and turn, omit it from
+  workers and scheduled runs, and reject plan-mode creation or reusable
+  conversations without retained history. Keep job changes in the shared UI.
+- Retain bounded private creation receipts across manager restarts so retries
+  cannot duplicate jobs or overwrite/resurrect user-edited or deleted jobs.
+  Refuse ambiguous times and failed saves without claiming job creation.
+
+## [0.4.345] - 2026-11-16
+
+- Soften resource connectors into thin neutral inactive cables and slightly thicker source-to-target gradients while active, with a small travelling signal instead of a heavy solid stroke; keep active-only motion, reduced-motion support and scoped popup gradients.
+
+## [0.4.344] - 2026-11-16
+
+- Remember explicitly closed learning and Knowledge update notices across page navigation and reload, scoped to the host profile. New jobs, changed results and skill revisions can still notify.
+- Document current learned-skill category, completeness, task selection and improvement-evaluation limits alongside the existing revision and approval workflow.
+
+## [0.4.343] - 2026-11-16
+
+- Redesign Schedules around Suggested drafts and the saved schedule list, with
+  a compact project/session/frequency editor and collapsed Advanced settings.
+  Suggestions use project/session/vault metadata and require explicit Save.
+- Preserve exact session choices and custom triggers, show host cron timezone,
+  disclose host uptime requirements, and distinguish prompt acceptance from
+  completed agent work. Block stale drafts and unavailable schedule storage.
+- Consume one-off attempts without automatic retry loops, recheck automatic
+  deadlines before dispatch, and retain entered scheduling work through shutdown.
+  Halt automatic execution on storage failures without replaying uncertain work.
+- Refuse invalid model/permission/team assignments and missing, unreadable or
+  stale derivation sources instead of silently dispatching substitute work.
+
+## [0.4.342] - 2026-11-16
+
+- Make Knowledge graphs readable at fit view with a clean 2D default, larger screen-sized nodes, adjustable 14 px titles and collision-aware labels that remain visible at lower rendering quality.
+- Emphasize selected notes, neighbours and connecting paths, retain the focused anchor after closing its reader, and reserve toolbar space in desktop and phone layouts while preserving 3D/Explore and indexed graph contents.
+
+## [0.4.341] - 2026-11-16
+
+- Stop live resource pulses on nonrecoverable owner errors and explicit worker shutdown, retaining other agents' parallel accesses; preserve completed receipts, recoverable work and late-event deduplication while the enlarged diagram stays live.
+- Connect diagram cards through visible top/bottom ports, use direct first-child paths and smooth independent sibling routes, refine light/dark card hierarchy, and label Observe leads by harness identity instead of conversation topic.
+
+## [0.4.340] - 2026-11-16
+
+- Select project evidence through scoped source IDs instead of model-transcribed quotations, with compact bounded Native requests, settled approved-route retries and one latest Knowledge notice per workspace vault.
+- Add a live spatial Skills & Knowledge diagram to Native Chat and Observe inspectors, with canonical main/subagent ownership, revision-aware accessors, filters, a plain responsive canvas, smooth connectors and an enlarged live dialog; fixed 3× motion runs only during recorded active access and stops on completion or paused observation.
+- Distinguish prepared instructions from reported resource reads, preserve stable nodes and explicit source scope, bound graph history/rendering and reuse graph state during text streaming; Native Knowledge reads now report validated vault-relative note targets.
+
+## [0.4.339] - 2026-11-16
+
+- Build project Knowledge from actual registered Markdown sources using approved idle Native reviewers, exact checked quotations and source freshness checks, independently of meeting minutes or automatic-learning consent.
+- Publish Obsidian-compatible overview/maps/topics and hashed source snapshots with resolvable wikilinks, exact-content deduplication, preserved source statuses, conflict-safe managed updates and inference-free unchanged reruns; report source coverage and partial publication/index receipts.
+
+## [0.4.338] - 2026-11-16
+
+- Collapse conversation team activity into one compact, localized agent/status summary by default; retain expansion choices through live updates and keep individual worker previews accessible.
+
+## [0.4.337] - 2026-11-16
+
+- Keep Native Chat messages between a stationary header and composer, with independent session and activity scrolling, and preserve reading position and drafts during live updates.
+- Move Native skill preparation receipts and project skill notices into the right inspector; show active subagents first, fold completed history and open read-only worker previews with responsive drawer controls.
+- Anchor compact learning notifications inside the Office canvas below its toolbar and FPS, and inside the content area on other pages, including while scrolling and with expanded navigation.
+
+## [0.4.336] - 2026-11-16
+
+- Preserve an isolated Knowledge update’s elapsed quiet countdown during unrelated persistence activity while still waiting for local writes to drain before execution; previously started progress remains in the corner during a temporary hold.
+- Give exported automatic Knowledge reviews a concise title while retaining full execution provenance in session events, preventing instructional link examples from becoming graph nodes.
+
+## [0.4.335] - 2026-11-16
+
+- Give each completed team turn one Knowledge note writer while retaining independent skill learning, and keep curator notes available when meeting-note consent is unavailable.
+- Move accepted and running learning out of the main prompt into a compact top-left status notification, with distinct Knowledge and skill labels.
+- Add a manual Knowledge update action that queues the saved team after a ten-second quiet interval, excludes working members and confirms scoped note publication and indexing.
+
 ## [0.4.334] - 2026-11-16
 
 - Track Antigravity background tasks accurately across hooks, transcripts, and task logs (`C14`): align fallback `step-N` call ids, parse command exit lines in `@extalia/importers`, keep background `run_command` tools open across interim replies and settle them on `<SYSTEM_MESSAGE>` task results or `manage_task` cancellations, guard 30 s reply settle on open tool calls, monitor `.system_generated/tasks/task-*.log` writes in `NativeImportService`, and reconcile `PostToolUse`/`Stop` hooks against active background tasks in `Observations`.

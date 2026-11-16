@@ -149,6 +149,11 @@ fn process_kill_retains_prepared_work_and_independent_publication_receipts() {
     second.learning("job.enter", effect(&resumed));
     let mut advance = effect(&resumed);
     advance["completion"] = json!({"kind":"model","result":{"text":"","stop":"tool_use","toolCalls":[{"id":"submit-one","name":"submit_learning","input":{"title":"Check before reuse","lesson":"Treat the earlier report as a claim and run the check again.","evidenceIds":["source-1"],"skill":{"name":"check-before-reuse","description":"Use when reusing a previously reported result.","instructions":"## When to Use\nReuse a result.\n## Procedure\nRepeat the check.\n## Pitfalls\nAn old report can be stale.\n## Verification\nInspect current output."}}}]}});
+    advance["completion"]["result"]["toolCalls"][0]["input"]["skill"]["categories"] =
+        json!(["quality"]);
+    advance["completion"]["result"]["toolCalls"][0]["input"]["skill"]["intents"] =
+        json!(["verify_result"]);
+    advance["completion"]["result"]["toolCalls"][0]["input"]["skill"]["verificationCases"] = json!([{"id":"verify","input":"Verify a synthetic result before reuse.","expectedIncludes":["verified"]}]);
     let ready = second.learning("job.advance", advance)["job"].clone();
     assert_eq!(ready["status"], "ready");
     let note_key = json!({"profileId":"default","runId":"run","contentSha256":ready["noteSha256"]});

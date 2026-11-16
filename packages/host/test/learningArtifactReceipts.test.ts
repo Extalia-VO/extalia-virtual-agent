@@ -2,6 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { learningFailureCode, learningPublicationReason, readLearningArtifact } from '../src/learningArtifactReceipts.js';
 
 describe('learning artifact confirmation decoding', () => {
+  it.each(['skill_metadata_invalid', 'skill_instructions_incomplete', 'verification_cases_invalid', 'refinement_tests_changed',
+    'refinement_references_removed', 'generated_duplicate_candidate', 'generated_possible_duplicate', 'candidate_catalog_incomplete'])('keeps a definite generated-candidate denial reviewable (%s)', reason => {
+    const message = learningPublicationReason(new Error('Private adapter detail.', { cause: { reason } }));
+    expect(message).toBeTypeOf('string'); expect(message).not.toContain('Private adapter detail');
+  });
   it('explains known publication refusals without disclosing nested adapter diagnostics', () => {
     const failure = Object.assign(new Error('Private diagnostic text must not leave the adapter.'), { reason: 'refinement_base_required' });
     expect(learningPublicationReason(failure)).toContain('Read the current candidate');

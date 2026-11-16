@@ -1,3 +1,4 @@
+import type * as React from 'react';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createEvent, type EventBody } from '@extalia/protocol';
@@ -7,10 +8,20 @@ import { projectTranscript, type ToolItem } from '../src/chat/transcript';
 import { TranscriptView } from '../src/chat/TranscriptView';
 import { MESSAGES } from '../src/i18n';
 
+// SSR the same recorded worker before and after the user opens its group.
+const disclosure = vi.hoisted(() => ({ keys: [] as string[] }));
+vi.mock('react', async original => {
+  const actual = await original<typeof React>();
+  return { ...actual, useState: (initial: unknown) => actual.useState(() => {
+    const value = typeof initial === 'function' ? initial() : initial;
+    return value instanceof Map ? new Map([...value, ...disclosure.keys.map(key => [key, true] as const)]) : value;
+  }) };
+});
+
 const REF = 'a'.repeat(64), OTHER = 'b'.repeat(64);
 const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
 const image = (ref = REF, name = 'viewed.png') => ({ name, kind: 'image' as const, size: 68, ref });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => { vi.unstubAllGlobals(); disclosure.keys = []; });
 function urls() {
   let sequence = 0;
   const created = vi.fn((_blob: Blob) => `blob:private-${++sequence}`), revoked = vi.fn();
@@ -69,6 +80,10 @@ describe('passive tool image projection and rendering', () => {
     const items = projectTranscript(events), worker = items.find(item => item.kind === 'worker');
     expect(items.filter(item => item.kind === 'tool')).toEqual([]);
     expect(worker).toMatchObject({ toolCalls: 1, attachments: Array.from({ length: 10 }, (_, index) => image(index.toString(16).padStart(64, '0'), `image-${index}.png`)) });
+    const folded = render(items);
+    expect(folded).toContain(MESSAGES.en.tool.workerGroup(1));
+    expect(folded).not.toContain('bubble-thumb-button');
+    disclosure.keys = [`worker-group:${worker!.id}`];
     const html = render(items);
     expect(html).toContain('Inspector');
     expect(html.match(/bubble-thumb-button/g)).toHaveLength(10);

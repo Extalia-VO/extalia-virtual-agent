@@ -3,6 +3,8 @@ import type { WorkMemoryActions } from './daemonWorkMemory.js';
 export const DAEMON_LEARNING_OPS = ['learning.process'] as const;
 export interface LearningProposal {
   name: string; description: string; instructions: string; sourceUrls?: string[];
+  categories: string[]; intents: string[];
+  verificationCases: { id: string; input: string; expectedIncludes: string[]; forbiddenIncludes?: string[] }[];
   baseRevisionId?: string; baseSkillSha256?: string; baseReadReceipt?: string; refinementReason?: string;
   references?: { path: string; content: string }[];
 }
@@ -50,7 +52,19 @@ export interface ObservedMemoryEntry { id: string; kind: 'user' | 'assistant' | 
 export interface ObservedMemoryCoverage { mode: 'partial' | 'unknown'; omittedEntries: number; truncated: boolean; limits: string[] }
 export interface ObservedMemoryEpisode { id: string; episodeId: string; scope: ObservedMemoryScope; revision: string; sourceRevision: string; capturedAt: string; entries: number; trust: 'untrusted-observed'; coverage: ObservedMemoryCoverage }
 export interface ObservedMemoryPage { episode: ObservedMemoryEpisode; entries: ObservedMemoryEntry[]; offset: number; total: number; nextOffset?: number }
-export interface LearningActions extends WorkMemoryActions {
+export interface ProjectKnowledgeSource { sourceId: string; path: string; bytes: number }
+export interface ProjectKnowledgeExclusion { path: string; reason: string }
+export interface ProjectKnowledgeCapture extends ProjectKnowledgeSource { sha256: string; projectionSha256: string; text: string; status: string; truncated: boolean }
+export interface ProjectKnowledgeTopic { key: string; title: string; citations: { sourceId: string; quote: string }[] }
+export interface ProjectKnowledgeSummary { inventory: number; read: number; unique: number; deduplicated: number; excluded: number; notes: number; topics: number; created: number; updated: number; unchanged: number; conflicts: number; overviewPath: string; paths: string[]; sourceFingerprint: string }
+export interface ProjectKnowledgeActions {
+  'project.begin': { input: { sourceRoot: string; root: string; profileId: string; revision: string; workspaceId: string; sessionId: string }; result: { buildId: string; inventory: ProjectKnowledgeSource[]; exclusions: ProjectKnowledgeExclusion[] } };
+  'project.capture': { input: { buildId: string; sourceIds: string[]; rejectedSourceIds?: string[] }; result: { sources: ProjectKnowledgeCapture[]; exclusions: ProjectKnowledgeExclusion[] } };
+  'project.seal': { input: { buildId: string }; result: { unchanged: boolean; summary: ProjectKnowledgeSummary } };
+  'project.publish': { input: { buildId: string; topics: ProjectKnowledgeTopic[] }; result: { summary: ProjectKnowledgeSummary } };
+  'project.release': { input: { buildId: string }; result: { released: true } };
+}
+export interface LearningActions extends WorkMemoryActions, ProjectKnowledgeActions {
   'observed.capture': { input: { scope: ObservedMemoryScope; episodeId: string; sourceRevision: string; entries: ObservedMemoryEntry[]; coverage: ObservedMemoryCoverage }; result: { episode: ObservedMemoryEpisode; created: boolean } };
   'observed.search': { input: { scope: ObservedMemoryScope; query: string; limit?: number }; result: { hits: { episode: ObservedMemoryEpisode; excerpt: string }[]; omitted: number } };
   'observed.read': { input: { scope: ObservedMemoryScope; episodeId: string; revision: string; offset?: number; limit?: number }; result: ObservedMemoryPage };

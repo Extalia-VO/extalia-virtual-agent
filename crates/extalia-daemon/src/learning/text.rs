@@ -49,6 +49,9 @@ pub(super) fn proposal(v: &Value) -> Result<Value> {
                 "instructions",
                 "sourceUrls",
                 "references",
+                "categories",
+                "intents",
+                "verificationCases",
                 "baseRevisionId",
                 "baseSkillSha256",
                 "baseReadReceipt",
@@ -83,6 +86,14 @@ pub(super) fn proposal(v: &Value) -> Result<Value> {
     }
     let mut out =
         json!({"name":name,"description":trim(description),"instructions":trim(instructions)});
+    let (categories, intents, cases) = extalia_core::skills::verification::proposal_metadata(v)
+        .map_err(|_| refuse("invalid_skill_quality"))?;
+    if !extalia_core::skills::verification::missing_sections(instructions).is_empty() {
+        return Err(refuse("incomplete_skill_instructions"));
+    }
+    out["categories"] = json!(categories);
+    out["intents"] = json!(intents);
+    out["verificationCases"] = json!(cases);
     if let Some(urls) = v.get("sourceUrls") {
         let urls = urls.as_array().ok_or(refuse("invalid_source_url"))?;
         if urls.len() > 8 {
@@ -209,6 +220,9 @@ pub(super) fn proposal_json(v: &Value) -> String {
     }
     // A per-read capability proves review but is not artifact content or lineage.
     for key in [
+        "categories",
+        "intents",
+        "verificationCases",
         "references",
         "baseRevisionId",
         "baseSkillSha256",

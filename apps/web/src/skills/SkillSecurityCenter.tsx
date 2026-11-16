@@ -1,6 +1,6 @@
 import { Select } from '../ui/Select';
 import type {
-  AgentHostApi, FileSystemCapability, HostState, SkillImportSource, SkillRegistryReport, SkillReviewDecision, SkillRevisionDetails, SkillRevisionSummary, WorkspaceSkills,
+  AgentHostApi, FileSystemCapability, HostState, SkillActionResult, SkillImportSource, SkillRegistryReport, SkillReviewDecision, SkillRevisionDetails, SkillRevisionSummary, WorkspaceSkills,
 } from '@extalia/platform';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { errorMessage } from '../host/remote';
@@ -12,6 +12,7 @@ import { SkillRoutingPanel } from './SkillRoutingPanel';
 import { skillHostKey, skillPreflightContext } from './skillPreflightContext';
 import { registrySkillOrigin } from './skillLibraryModel';
 import { SkillOriginBadge } from './SkillOriginBadge';
+import { SkillQualityPanel, skillCandidateReady } from './SkillQualityPanel';
 import {
   applySkillCenterAction, approvalFor, groupSkillPackages, revisionActions, shortDigest, skillCenterSupported, stateTone,
   type SkillCenterAction, type SkillPackageGroup, type SkillRevisionAction,
@@ -49,6 +50,7 @@ function SkillSecurityCenterHost({ t, agents, picker, state, onChanged }: Center
   const [confirm, setConfirm] = useState<SkillConfirm>(null);
   const [importer, setImporter] = useState<SkillImporter>(null);
   const [details, setDetails] = useState<Details>({});
+  const [qualityDetails, setQualityDetails] = useState<Record<string, SkillRevisionDetails>>({});
 
   const load = useCallback(() => {
     if (!supported) return () => undefined;
@@ -68,7 +70,7 @@ function SkillSecurityCenterHost({ t, agents, picker, state, onChanged }: Center
     setError(outcome.error ?? null);
     if (outcome.result) {
       setConfirm(null);
-      setDetails({});
+      setDetails({}); setQualityDetails({});
       const result = outcome.result;
       const name = result.packageId ?? outcome.report?.revisions.find(item => item.revisionId === result.revisionId)?.packageId ?? '';
       const label = result.state ? s.states[result.state] ?? result.state : '';
@@ -94,7 +96,8 @@ function SkillSecurityCenterHost({ t, agents, picker, state, onChanged }: Center
   );
   return (<>
     <SkillSecurityCenterView t={t} report={report} busy={busy} scanning={scanning} error={error} notice={notice} confirm={confirm} importer={importer} details={details}
-      importPanel={importPanel} workspaceNames={workspaceNames} onRetry={() => { setError(null); load(); }} onConfirm={setConfirm} onImporter={next => { setNotice(null); setImporter(next); }}
+      importPanel={importPanel} workspaceNames={workspaceNames} qualityDetails={qualityDetails} onQualityInspected={detail => setQualityDetails(current => ({ ...current, [detail.revision.revisionId]: detail }))} agents={agents} workspaces={state.workspaces} onEvaluationBusy={setBusy}
+      onEvaluated={(result, detail) => { setReport(result.report); setQualityDetails(current => ({ ...current, [detail.revision.revisionId]: detail })); setDetails(current => current[detail.revision.revisionId] ? { ...current, [detail.revision.revisionId]: detail } : current); onChanged?.(); }} onRetry={() => { setError(null); load(); }} onConfirm={setConfirm} onImporter={next => { setNotice(null); setImporter(next); }}
       onAction={action => void run(action)} onToggleDetails={toggleDetails} />
     <SkillPreflightPanel key={skillPreflightContext(agents, report)} agents={agents} report={report} t={t} />
     <SkillRoutingPanel agents={agents} report={report} workspaces={state.workspaces} t={t} />
@@ -103,7 +106,7 @@ function SkillSecurityCenterHost({ t, agents, picker, state, onChanged }: Center
 
 /** Stateless so tests can render it and press its buttons. */
 export function SkillSecurityCenterView({
-  t, report, busy, scanning = false, error, notice, confirm, importer, details, importPanel, workspaceNames, onRetry, onConfirm, onImporter, onAction, onToggleDetails,
+  t, report, busy, scanning = false, error, notice, confirm, importer, details, importPanel, workspaceNames, qualityDetails = {}, onQualityInspected, agents, workspaces, onEvaluationBusy, onEvaluated, onRetry, onConfirm, onImporter, onAction, onToggleDetails,
 }: {
   t: Messages;
   report: SkillRegistryReport;
@@ -116,6 +119,12 @@ export function SkillSecurityCenterView({
   details: Details;
   importPanel?: ReactNode;
   workspaceNames?: WorkspaceNames;
+  qualityDetails?: Record<string, SkillRevisionDetails> | undefined;
+  onQualityInspected?: ((detail: SkillRevisionDetails) => void) | undefined;
+  agents?: AgentHostApi | undefined;
+  workspaces?: HostState['workspaces'] | undefined;
+  onEvaluationBusy?: ((busy: boolean) => void) | undefined;
+  onEvaluated?: ((result: SkillActionResult, detail: SkillRevisionDetails) => void) | undefined;
   onRetry: () => void;
   onConfirm: (next: SkillConfirm) => void;
   onImporter: (next: SkillImporter) => void;
@@ -162,7 +171,7 @@ export function SkillSecurityCenterView({
         <div className="skill-center-group">
           <h3>{s.packages(groups.length)}</h3>
           <ul className="skill-packages">
-            {groups.map(group => SkillPackageItem({ t, group, busy, report, confirm, details, workspaceNames, onConfirm, onAction, onToggleDetails }))}
+            {groups.map(group => SkillPackageItem({ t, group, busy, report, confirm, details, workspaceNames, qualityDetails, onQualityInspected, agents, workspaces, onEvaluationBusy, onEvaluated, onConfirm, onAction, onToggleDetails }))}
           </ul>
           {report.truncated && <p className="muted small">{s.truncated}</p>}
         </div>
@@ -198,8 +207,11 @@ export function SkillScannerBanner({ t, report }: { t: Messages; report: SkillRe
   );
 }
 
-function SkillPackageItem({ t, group, busy, report, confirm, details, workspaceNames, onConfirm, onAction, onToggleDetails }: {
+function SkillPackageItem({ t, group, busy, report, confirm, details, workspaceNames, qualityDetails, onQualityInspected, agents, workspaces, onEvaluationBusy, onEvaluated, onConfirm, onAction, onToggleDetails }: {
   t: Messages; group: SkillPackageGroup; busy: boolean; report: SkillRegistryReport; confirm: SkillConfirm; details: Details; workspaceNames?: WorkspaceNames;
+  qualityDetails: Record<string, SkillRevisionDetails>; onQualityInspected?: ((detail: SkillRevisionDetails) => void) | undefined;
+  agents?: AgentHostApi | undefined; workspaces?: HostState['workspaces'] | undefined; onEvaluationBusy?: ((busy: boolean) => void) | undefined;
+  onEvaluated?: ((result: SkillActionResult, detail: SkillRevisionDetails) => void) | undefined;
   onConfirm: (next: SkillConfirm) => void; onAction: (action: SkillCenterAction) => void; onToggleDetails: (revisionId: string) => void;
 }) {
   const s = t.skillCenter;
@@ -211,7 +223,7 @@ function SkillPackageItem({ t, group, busy, report, confirm, details, workspaceN
       </div>
       <ul className="skill-revisions">
         {group.revisions.map(revision => SkillRevisionRow({
-          t, revision, busy, report, confirm, detail: details[revision.revisionId], workspaceNames, onConfirm, onAction, onToggleDetails,
+          t, revision, busy, report, confirm, detail: details[revision.revisionId], workspaceNames, qualityDetail: qualityDetails[revision.revisionId], onQualityInspected, agents, workspaces, onEvaluationBusy, onEvaluated, onConfirm, onAction, onToggleDetails,
         }))}
       </ul>
     </li>
@@ -219,9 +231,12 @@ function SkillPackageItem({ t, group, busy, report, confirm, details, workspaceN
 }
 
 /** One revision: state chip, reason in plain language, permissions, short hashes and the actions its state offers. */
-export function SkillRevisionRow({ t, revision, busy, report, confirm, detail, workspaceNames, onConfirm, onAction, onToggleDetails }: {
+export function SkillRevisionRow({ t, revision, busy, report, confirm, detail, workspaceNames, qualityDetail, onQualityInspected, agents, workspaces, onEvaluationBusy, onEvaluated, onConfirm, onAction, onToggleDetails }: {
   t: Messages; revision: SkillRevisionSummary; busy: boolean; report: SkillRegistryReport; confirm: SkillConfirm;
   detail?: SkillRevisionDetails | 'loading' | { error: string }; workspaceNames?: WorkspaceNames;
+  qualityDetail?: SkillRevisionDetails | undefined; onQualityInspected?: ((detail: SkillRevisionDetails) => void) | undefined;
+  agents?: AgentHostApi | undefined; workspaces?: HostState['workspaces'] | undefined; onEvaluationBusy?: ((busy: boolean) => void) | undefined;
+  onEvaluated?: ((result: SkillActionResult, detail: SkillRevisionDetails) => void) | undefined;
   onConfirm: (next: SkillConfirm) => void; onAction: (action: SkillCenterAction) => void; onToggleDetails: (revisionId: string) => void;
 }) {
   const s = t.skillCenter;
@@ -230,13 +245,18 @@ export function SkillRevisionRow({ t, revision, busy, report, confirm, detail, w
   const open = confirm?.revisionId === revision.revisionId ? confirm.kind : null;
   const label = (action: string) => s.actionLabel(action, name, version);
   const actions = revisionActions(revision);
+  const inspected = detail && detail !== 'loading' && !('error' in detail) ? detail : qualityDetail;
+  const baseline = report.revisions.find(item => item.packageId === revision.packageId && item.active);
+  const promotionBlocked = revision.origin === 'generated' && !skillCandidateReady(revision, baseline, inspected?.learnedQuality);
+
   const button = (action: SkillRevisionAction) => {
-    const common = { type: 'button' as const, disabled: busy };
+    const blocked = promotionBlocked && (action === 'approve' || action === 'activate');
+    const common = { type: 'button' as const, disabled: busy || blocked, ...(blocked ? { title: s.quality.promotionBlocked } : {}) };
     if (action === 'review') return <button key={action} {...common} className="button small" aria-label={label(s.review)} aria-expanded={open === 'review'} onClick={() => onConfirm(open === 'review' ? null : { kind: 'review', revisionId: revision.revisionId })}>{s.review}</button>;
-    if (action === 'approve') return <button key={action} {...common} className="button small primary" aria-label={label(s.approve)} aria-expanded={open === 'approve'} onClick={() => onConfirm(open === 'approve' ? null : { kind: 'approve', revisionId: revision.revisionId })}>{s.approve}</button>;
-    if (action === 'activate') return <button key={action} {...common} className="button small primary" aria-label={label(s.activate)} onClick={() => onAction({ kind: 'activate', revisionId: revision.revisionId })}>{s.activate}</button>;
+    if (action === 'approve') return <button key={action} {...common} className="button small primary" aria-label={label(s.approve)} aria-expanded={open === 'approve'} onClick={() => { if (!blocked) onConfirm(open === 'approve' ? null : { kind: 'approve', revisionId: revision.revisionId }); }}>{s.approve}</button>;
+    if (action === 'activate') return <button key={action} {...common} className="button small primary" aria-label={label(s.activate)} onClick={() => { if (!blocked) onAction({ kind: 'activate', revisionId: revision.revisionId }); }}>{s.activate}</button>;
     if (action === 'deactivate') return <button key={action} {...common} className="button small" aria-label={label(s.deactivate)} onClick={() => onAction({ kind: 'deactivate', packageId: revision.packageId })}>{s.deactivate}</button>;
-    if (action === 'rollback') return <button key={action} {...common} className="button small" aria-label={label(s.rollback)} onClick={() => onAction({ kind: 'rollback', packageId: revision.packageId, revisionId: revision.revisionId })}>{s.rollback}</button>;
+    if (action === 'rollback') return <button key={action} {...common} className="button small" aria-label={label(s.rollback)} onClick={() => { if (!blocked) onAction({ kind: 'rollback', packageId: revision.packageId, revisionId: revision.revisionId }); }}>{s.rollback}</button>;
     return <button key={action} {...common} className="button small" aria-label={label(s.revoke)} aria-expanded={open === 'revoke'} onClick={() => onConfirm(open === 'revoke' ? null : { kind: 'revoke', revisionId: revision.revisionId })}>{s.revoke}</button>;
   };
   return (
@@ -250,6 +270,9 @@ export function SkillRevisionRow({ t, revision, busy, report, confirm, detail, w
           <span className="badge subtle">{s.risks[revision.riskClass] ?? revision.riskClass}</span>
         </span>
         {reason && <span className="small skill-revision-reason" title={s.reasonCode(reason)}>{s.reasons[reason] ?? s.reasonCode(reason)}</span>}
+        {revision.description && <span className="small skill-revision-description">{revision.description}</span>}
+        {!!revision.categories?.length && <span className="small">{t.skillLibrary.declaredCategories}: {revision.categories.join(' · ')}</span>}
+        {!!revision.intents?.length && <span className="muted small">{t.skillLibrary.intents}: {revision.intents.join(', ')}</span>}
         <SkillPermissions t={t} revision={revision} />
         <span className="muted small skill-revision-meta">
           <code className="skill-hash" title={s.treeTitle(revision.treeSha256)}>{shortDigest(revision.treeSha256)}</code>
@@ -265,7 +288,8 @@ export function SkillRevisionRow({ t, revision, busy, report, confirm, detail, w
           {detail ? s.hideDetails : s.details}
         </button>
       </div>
-      {open === 'approve' && SkillApproveConfirm({ t, revision, ttlMs: report.approvalTtlMs, busy, onApprove: () => onAction({ kind: 'approve', input: approvalFor(revision) }), onCancel: () => onConfirm(null) })}
+      {promotionBlocked && actions.some(action => action === 'approve' || action === 'activate') && <p className="note small">{s.quality.promotionBlocked}</p>}
+      {open === 'approve' && !promotionBlocked && SkillApproveConfirm({ t, revision, ttlMs: report.approvalTtlMs, busy, onApprove: () => onAction({ kind: 'approve', input: approvalFor(revision) }), onCancel: () => onConfirm(null) })}
       {open === 'review' && <SkillReviewForm t={t} revision={revision} available={report.review} busy={busy}
         onReview={(decision, note) => onAction({ kind: 'review', input: { revisionId: revision.revisionId, treeSha256: revision.treeSha256, decision, ...(note ? { note } : {}) } })}
         onCancel={() => onConfirm(null)} />}
@@ -278,6 +302,8 @@ export function SkillRevisionRow({ t, revision, busy, report, confirm, detail, w
           </div>
         </div>
       )}
+      <SkillQualityPanel key={JSON.stringify([revision.revisionId, revision.treeSha256, report.revisions.filter(item => item.packageId === revision.packageId && item.active).map(item => [item.revisionId, item.treeSha256])])} t={t} agents={agents} report={report} revision={revision} workspaces={workspaces} busy={busy} onBusy={onEvaluationBusy} onEvaluated={onEvaluated} onInspected={onQualityInspected}
+        detail={inspected} />
       {detail && <SkillDetails t={t} detail={detail} workspaceNames={workspaceNames} />}
     </li>
   );

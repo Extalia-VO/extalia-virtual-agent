@@ -1,10 +1,10 @@
-import { Color, CustomBlending, NormalBlending, PerspectiveCamera, Scene, Vector3, type ShaderMaterial, type InstancedMesh, type InterleavedBufferAttribute, type Points } from 'three';
+import { Color, CustomBlending, NormalBlending, PerspectiveCamera, Scene, Vector3, type ShaderMaterial, type InstancedMesh, type InstancedBufferAttribute, type InterleavedBufferAttribute, type Points } from 'three';
 import type { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { VaultGraphRenderer, type GraphOptions, type OrbitLike } from '../src/knowledge/vault/vaultGraphRenderer';
 import { encodeFrame, type SimCommand } from '../src/knowledge/vault/simProtocol';
 import { GRAPH_PRESETS } from '../src/knowledge/vault/graphAppearance';
-import { prepareVaultGraph } from '../src/knowledge/vault/vaultGraphModel';
+import { nodeScreenRadius, prepareVaultGraph } from '../src/knowledge/vault/vaultGraphModel';
 import type { KnowledgeOverview, KnowledgeOverviewNode } from '@extalia/platform';
 
 class FakeCanvas extends EventTarget {
@@ -15,7 +15,7 @@ class FakeCanvas extends EventTarget {
   setPointerCapture = vi.fn((id: number) => this.captured.add(id));
   releasePointerCapture = vi.fn((id: number) => this.captured.delete(id));
   hasPointerCapture = (id: number) => this.captured.has(id);
-  getBoundingClientRect = () => ({ left: 0, top: 0, width: 100, height: 100, right: 100, bottom: 100, x: 0, y: 0, toJSON: () => ({}) });
+  getBoundingClientRect = () => ({ left: 0, top: 0, width: this.clientWidth, height: this.clientHeight, right: this.clientWidth, bottom: this.clientHeight, x: 0, y: 0, toJSON: () => ({}) });
 }
 
 class FakeWorker {
@@ -53,19 +53,22 @@ function pointer(type: string, { x = 50, y = 50, id = 1, button = 0, buttons = t
   return event;
 }
 
-function harness(initial = options()) {
+function harness(initial = options(), viewport = { width: 100, height: 100, labels: false, dpr: 1 }) {
   FakeWorker.all = [];
   const canvas = new FakeCanvas();
+  canvas.clientWidth = viewport.width; canvas.clientHeight = viewport.height;
+  const labelRoot = { dataset: {} as Record<string, string>, children: [] as { hidden: boolean; textContent: string; dataset: Record<string, string>; style: Record<string, string> }[],
+    replaceChildren(...children: never[]) { this.children = children; } };
   const documentTarget = Object.assign(new EventTarget(), {
     hidden: false,
-    createElement: () => ({ width: 0, height: 0, getContext: () => ({
+    createElement: (tag: string) => tag === 'span' ? { hidden: true, textContent: '', dataset: {}, style: {} } : ({ width: 0, height: 0, getContext: () => ({
       createRadialGradient: () => ({ addColorStop: vi.fn() }), fillRect: vi.fn(), fillStyle: '',
     }) }),
   });
   vi.stubGlobal('document', documentTarget);
   vi.stubGlobal('Worker', FakeWorker);
   const scene = new Scene();
-  const camera = new PerspectiveCamera(50, 1, 0.5, 20_000);
+  const camera = new PerspectiveCamera(50, viewport.width / viewport.height, 0.5, 20_000);
   camera.position.set(0, 0, 10);
   camera.lookAt(0, 0, 0);
   camera.updateProjectionMatrix();
@@ -73,19 +76,19 @@ function harness(initial = options()) {
   const orbit: OrbitLike = { target: new Vector3(), enabled: true, update: vi.fn() };
   const invalidate = vi.fn();
   const renderer = new VaultGraphRenderer({
-    scene, camera, gl: { domElement: canvas, getPixelRatio: () => 1, info: { render: { calls: 0 } } } as never,
-    invalidate, labels: null, fps: null,
+    scene, camera, gl: { domElement: canvas, getPixelRatio: () => viewport.dpr, info: { render: { calls: 0 } } } as never,
+    invalidate, labels: viewport.labels ? labelRoot as unknown as HTMLDivElement : null, fps: null,
   });
   renderer.setControls(orbit);
   renderer.update(initial);
   const worker = FakeWorker.all[0]!;
   const drawFrame = (positions = initial.graph.nodes.flatMap(() => [0, 0, 0]), running = false) => {
     worker.frame(positions, running);
-    renderer.frame({ width: 100, height: 100 }, 0, 0);
+    renderer.frame(viewport, 0, 0);
     scene.updateMatrixWorld(true);
     camera.updateMatrixWorld(true);
   };
-  return { canvas, documentTarget, scene, camera, orbit, renderer, worker, drawFrame, initial };
+  return { canvas, documentTarget, scene, camera, orbit, renderer, worker, drawFrame, initial, labelRoot, viewport, invalidate };
 }
 
 afterEach(() => vi.unstubAllGlobals());
@@ -216,11 +219,13 @@ describe('vault graph renderer integration', () => {
       return (Math.max(a, b) + .05) / (Math.min(a, b) + .05);
     };
     const colours = () => Array.from((lines.geometry.attributes.instanceColorStart as InterleavedBufferAttribute).data.array as Float32Array);
-    const baseline = contrast(colours().slice(0, 3));
-    expect(baseline).toBeGreaterThan(light ? 1.9 : 2);
+    const alphas = lines.geometry.attributes.aEdgeOpacity!.array;
+    const composited = (edge: number) => colours().slice(edge * 6, edge * 6 + 3).map((value, index) => value * alphas[edge]! + [bg.r, bg.g, bg.b][index]! * (1 - alphas[edge]!));
+    const baseline = contrast(composited(0));
+    expect(baseline).toBeGreaterThan(1.05);
     h.renderer.update({ ...h.initial, selected: 0 });
-    expect(contrast(colours().slice(0, 3))).toBeGreaterThan(baseline);
-    expect(contrast(colours().slice(6, 9))).toBeLessThan(baseline);
+    expect(contrast(composited(0))).toBeGreaterThan(baseline);
+    expect(contrast(composited(1))).toBeLessThan(baseline);
     expect(Array.from(halos.geometry.attributes.aFocus!.array)).toEqual([1, 0, 0, 0]);
     // The selection cue survives disabling decorative glow.
     expect(Array.from(halos.geometry.attributes.aGlow!.array)).toEqual([0, 0, 0, 0]);
@@ -228,6 +233,32 @@ describe('vault graph renderer integration', () => {
     expect(Array.from(halos.geometry.attributes.aFocus!.array)).toEqual([0, 0, 0, 0]);
     expect(FakeWorker.all).toHaveLength(1);
     h.renderer.dispose();
+  });
+
+  it('interpolates distinct endpoint hues with independent feathered segment alpha and exact mask restoration', () => {
+    const g = prepareVaultGraph({ generation: 1, totalNodes: 2, totalEdges: 1, truncated: false, nodes: [node('a'), node('b')],
+      edges: [{ source: 'a', target: 'b', type: 'links_to' }] });
+    const h = harness(options(g, { colours: ['#ff3366', '#33ccff'], appearance: GRAPH_PRESETS.nebula }));
+    h.drawFrame([-10, 0, 0, 10, 0, 0]);
+    const lines = h.scene.children.find(child => 'isLineSegments2' in child) as LineSegments2;
+    const attribute = lines.geometry.attributes.aEdgeOpacity as InstancedBufferAttribute;
+    expect(attribute.count).toBe(1);
+    expect(lines.material.alphaToCoverage).toBe(false);
+    const rgb = Array.from((lines.geometry.attributes.instanceColorStart as InterleavedBufferAttribute).data.array);
+    expect(rgb[0]).toBeGreaterThan(rgb[2]!); expect(rgb[3]).toBeLessThan(rgb[5]!);
+    const midpoint = rgb.slice(0, 3).map((value, index) => (value + rgb[index + 3]!) / 2);
+    expect(midpoint[0]).toBeGreaterThan(rgb[3]!); expect(midpoint[0]).toBeLessThan(rgb[0]!);
+    const normal = attribute.array[0]!; expect(normal).toBeGreaterThan(0); expect(normal).toBeLessThan(.5);
+    expect(lines.material.fragmentShader).toContain('alpha * vGraphOpacity * graphFeather');
+    h.renderer.update({ ...h.initial, selected: 0, appearance: GRAPH_PRESETS.nebula });
+    expect(attribute.array[0]).toBeGreaterThan(normal); expect(lines.material.linewidth).toBe(1);
+    h.renderer.update({ ...h.initial, mask: Uint8Array.of(1, 0) }); h.renderer.frame(h.viewport, 0, 0);
+    expect(attribute.array[0]).toBe(0);
+    expect(Array.from((lines.geometry.attributes.instanceStart as InterleavedBufferAttribute).data.array)).toEqual([0, 0, 0, 0, 0, 0]);
+    h.renderer.update(h.initial); h.renderer.frame(h.viewport, 0, 0);
+    expect(attribute.array[0]).toBeGreaterThan(0); expect(attribute.version).toBeGreaterThan(1);
+    expect(Array.from((lines.geometry.attributes.instanceStart as InterleavedBufferAttribute).data.array)).toEqual([-10, 0, 0, 10, 0, 0]);
+    expect(h.scene.children).toHaveLength(3); h.renderer.dispose();
   });
 
   it('stops the actual pulse timer when idle and restarts it after interaction', () => {
@@ -550,4 +581,123 @@ describe('Explore camera and renderer lifecycle', () => {
     click(0); expect(select).toHaveBeenCalledWith(1);
     h.renderer.dispose();
   });
+});
+
+describe('readable graph renderer screen-space behavior', () => {
+  it.each([1, 2, 3])('keeps far normal nodes visible and selected nodes larger with matching picking at DPR %s', dpr => {
+    const select = vi.fn();
+    const h = harness(options(graph(['normal', 'selected', 'hidden']), { selected: 1, mask: Uint8Array.of(1, 1, 0), onSelect: select }),
+      { width: 900, height: 600, labels: false, dpr });
+    h.drawFrame([-100, 0, 0, 100, 0, 0, 0, 0, 0]);
+    h.renderer.userStart();
+    h.camera.position.set(0, 0, 3000); h.camera.lookAt(0, 0, 0); h.camera.updateMatrixWorld(true);
+    h.renderer.frame(h.viewport, 0, 0);
+    const core = h.scene.children.find(child => 'isInstancedMesh' in child) as InstancedMesh;
+    const min = core.geometry.attributes.aMinRadius!.array;
+    const pixels = h.camera.projectionMatrix.elements[5]! * 600 / 6000;
+    const normal = nodeScreenRadius(core.instanceMatrix.array[0]!, pixels, min[0]!);
+    const selected = nodeScreenRadius(core.instanceMatrix.array[16]!, pixels, min[1]!);
+    expect(normal * 2).toBeGreaterThanOrEqual(8);
+    expect(selected).toBeGreaterThan(normal);
+    expect(core.instanceMatrix.array[32]).toBe(0);
+    const p = new Vector3(100, 0, 0).project(h.camera);
+    const x = (p.x + 1) * 450, y = (1 - p.y) * 300;
+    h.canvas.dispatchEvent(pointer('pointerdown', { x: x + selected - 1, y }));
+    h.canvas.dispatchEvent(pointer('pointerup', { x: x + selected - 1, y }));
+    expect(select).toHaveBeenCalledWith(1);
+    expect(h.scene.children).toHaveLength(3);
+    h.renderer.dispose();
+  });
+
+  it('shows bounded overview labels in a fit 263-node graph and keeps them after quality degrades', () => {
+    const nodes = Array.from({ length: 263 }, (_, index) => node(`note-${index}`, `Knowledge ${String(index).padStart(3, '0')}`));
+    const g = prepareVaultGraph({ generation: 1, totalNodes: nodes.length, totalEdges: nodes.length - 1, truncated: false, nodes,
+      edges: nodes.slice(1).map((entry, index) => ({ source: nodes[Math.floor(index / 6)]!.nodeId, target: entry.nodeId, type: 'links_to' })) });
+    const h = harness(options(g, { dimensions: 2, reducedMotion: true }), { width: 1440, height: 900, labels: true, dpr: 1 });
+    h.drawFrame(nodes.flatMap((_, index) => [(index % 18 - 8.5) * 15, (Math.floor(index / 18) - 7) * 15, 0]));
+    for (let index = 0; index < 180; index++) h.renderer.frame(h.viewport, 1 / 60, index / 60);
+    const shown = () => h.labelRoot.children.filter(span => !span.hidden);
+    expect(shown().length).toBeGreaterThanOrEqual(12);
+    expect(shown().length).toBeLessThanOrEqual(12);
+    for (const span of shown()) expect(Number.parseFloat(span.style.fontSize!)).toBeGreaterThanOrEqual(14);
+    for (let index = 0; index < 180; index++) h.renderer.frame(h.viewport, .05, 3 + index * .05);
+    h.renderer.frame(h.viewport, 0, 10); // Quality changes invalidate one final demand frame.
+    expect(shown().length).toBeGreaterThanOrEqual(8);
+    expect(shown().length).toBeLessThanOrEqual(8);
+    h.renderer.dispose();
+    expect(h.labelRoot.children).toEqual([]);
+    expect(h.worker.terminate).toHaveBeenCalledOnce();
+  });
+
+  it('keeps sparse overview landmarks across folder groups and removes them when labels are disabled', () => {
+    const nodes = Array.from({ length: 48 }, (_, index) => ({ ...node(`note-${index}`, `Note ${index}`), folder: `Group ${Math.floor(index / 12)}`, degree: 48 - index }));
+    const g = prepareVaultGraph({ generation: 1, totalNodes: nodes.length, totalEdges: 0, truncated: false, nodes, edges: [] });
+    const h = harness(options(g, { dimensions: 2, reducedMotion: true }), { width: 1440, height: 900, labels: true, dpr: 1 });
+    h.drawFrame(nodes.flatMap((_, index) => [(index % 8 - 3.5) * 25, (Math.floor(index / 8) - 2.5) * 25, 0]));
+    for (let frame = 0; frame < 180; frame++) h.renderer.frame(h.viewport, 1 / 60, frame / 60);
+    const shown = h.labelRoot.children.filter(span => !span.hidden);
+    expect(shown.length).toBeLessThanOrEqual(12);
+    const groups = new Set(shown.map(span => nodes[Number(span.dataset.nodeIndex)]!.folder));
+    expect(groups.size).toBe(4);
+    h.renderer.update({ ...h.initial, showLabels: false }); h.renderer.frame(h.viewport, 0, 4);
+    expect(h.labelRoot.children.every(span => span.hidden)).toBe(true);
+    h.renderer.update({ ...h.initial, showLabels: false, activeResult: 24 }); h.renderer.frame(h.viewport, 0, 4);
+    expect(h.labelRoot.children.filter(span => !span.hidden).map(span => span.textContent)).toEqual(['Note 24']);
+    h.renderer.dispose();
+  });
+
+  it('labels selected neighbors first, flags contextual dimming and respects hidden nodes and overlay insets', () => {
+    const nodes = ['focus', 'neighbor', 'hidden', 'unrelated'].map(id => node(id));
+    const g = prepareVaultGraph({ generation: 1, totalNodes: 4, totalEdges: 2, truncated: false, nodes,
+      edges: [{ source: 'focus', target: 'neighbor', type: 'links_to' }, { source: 'focus', target: 'hidden', type: 'links_to' }] });
+    const h = harness(options(g, { selected: 0, mask: Uint8Array.of(1, 1, 0, 1), reducedMotion: true }),
+      { width: 900, height: 600, labels: true, dpr: 1 });
+    h.drawFrame([-1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 2, 0]);
+    const spans = h.labelRoot.children.filter(span => !span.hidden);
+    expect(spans.find(span => span.textContent === 'focus')?.dataset.priority).toBe('focus');
+    expect(spans.find(span => span.textContent === 'neighbor')?.dataset.priority).toBe('neighbor');
+    expect(spans.some(span => span.textContent === 'hidden')).toBe(false);
+    expect(h.labelRoot.dataset.focused).toBe('true');
+    for (const span of spans) {
+      const top = Number(span.style.transform!.match(/, ([\d.]+)px/)?.[1]);
+      expect(top).toBeGreaterThanOrEqual(64);
+      expect(top).toBeLessThan(546);
+    }
+    h.renderer.update({ ...h.initial, selected: null });
+    expect(h.labelRoot.dataset.focused).toBe('false');
+    h.renderer.dispose();
+  });
+});
+
+
+it('keeps a focused long title readable while static labels leave the demand renderer idle', () => {
+  const g = graph(['Project knowledge definitions and procedures for linked source evidence']);
+  const h = harness(options(g, { selected: 0, reducedMotion: true }), { width: 900, height: 600, labels: true, dpr: 1 });
+  h.renderer.userStart(); h.drawFrame();
+  const span = h.labelRoot.children.find(span => !span.hidden)!;
+  expect(span.dataset.priority).toBe('focus');
+  expect(Number.parseFloat(span.style.maxWidth!)).toBeGreaterThan(260);
+  expect(Number.parseFloat(span.style.maxWidth!)).toBeLessThanOrEqual(640);
+  h.invalidate.mockClear();
+  h.renderer.frame(h.viewport, 1 / 60, 1);
+  expect(h.invalidate).not.toHaveBeenCalled();
+  h.renderer.dispose();
+});
+
+
+it('keeps phone overview labels below the wrapped 132-pixel toolbar band', () => {
+  const nodes = Array.from({ length: 24 }, (_, index) => node(`node-${index}`, `Note ${index}`));
+  const g = prepareVaultGraph({ generation: 1, totalNodes: nodes.length, totalEdges: 0, truncated: false, nodes, edges: [] });
+  const h = harness(options(g, { dimensions: 2, reducedMotion: true }), { width: 390, height: 500, labels: true, dpr: 1 });
+  h.drawFrame(nodes.flatMap((_, index) => [(index % 4 - 1.5) * 20, (Math.floor(index / 4) - 2.5) * 20, 0]));
+  for (let index = 0; index < 180; index++) h.renderer.frame(h.viewport, 1 / 60, index / 60);
+  const spans = h.labelRoot.children.filter(span => !span.hidden);
+  expect(spans.length).toBeGreaterThanOrEqual(4);
+  expect(spans.length).toBeLessThanOrEqual(5);
+  for (const span of spans) {
+    const top = Number(span.style.transform!.match(/, ([\d.]+)px/)?.[1]);
+    expect(top).toBeGreaterThanOrEqual(132);
+    expect(top + 25).toBeLessThanOrEqual(446);
+  }
+  h.renderer.dispose();
 });

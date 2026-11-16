@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { SKILL_LOAD_LIMITS } from '@extalia/protocol';
 import { BUILTIN_SKILLS } from '../src/builtinSkills.js';
 import { autoLoadSkills, relevantSkillNames } from '../src/skillAutoLoad.js';
-import { buildAgentSkillCatalog, catalogSkillMetadata, readCatalogSkill, referenceSkill, type AgentSkillCatalog, type Skill } from '../src/skills.js';
+import { buildAgentSkillCatalog, catalogSkillMetadata, readCatalogSkill, referenceSkill, parseSkill, type AgentSkillCatalog, type Skill } from '../src/skills.js';
 
 const loadedNames = (result: Awaited<ReturnType<typeof autoLoadSkills>>) => result.report.skills.filter(item => item.status === 'loaded').map(item => item.name);
 const catalog = () => buildAgentSkillCatalog([], { relevantOnly: true, prompt: 'Hello' });
@@ -23,6 +23,33 @@ async function externalCatalog(skill: Skill) {
 }
 
 describe('automatic Native skill context preparation', () => {
+  it('routes from verified persisted category and intent metadata while retaining task, negation and ambiguity guards', async () => {
+    const parsed = parseSkill('---\nname: specialist-procedure\ndescription: A bounded reusable procedure.\ncategories: ["finance.invoice"]\nintents: ["reconcile_ledger"]\n---\nCompare each item and report mismatches.', 'specialist-procedure', 'generated');
+    const skill = { ...external(parsed.name, parsed.description, parsed.body), ...parsed };
+    const f = await externalCatalog(skill);
+    const metadata = catalogSkillMetadata(f.catalog).find(item => item.name === skill.name)!;
+    expect(metadata.categories).toEqual(['finance.invoice']);
+    expect(metadata.intents).toEqual(['reconcile_ledger']);
+    expect(Object.isFrozen(metadata.intents)).toBe(true);
+    expect(loadedNames(await autoLoadSkills(f.catalog, { prompt: 'Reconcile the invoice ledger.', orchestrator: false }))).toContain(skill.name);
+    for (const prompt of ['The invoice ledger is a topic.', 'Write a poem about the invoice ledger.', 'Do not reconcile the invoice ledger.', 'Build a dashboard, without invoice reconciliation.']) {
+      expect(loadedNames(await autoLoadSkills(f.catalog, { prompt, orchestrator: false }))).not.toContain(skill.name);
+    }
+    const duplicate = { ...skill, name: 'other-specialist' };
+    const ambiguous = await buildAgentSkillCatalog([referenceSkill(skill), referenceSkill(duplicate)], { relevantOnly: true, prompt: 'Hello', reload: async ref => ref.name === skill.name ? skill : duplicate });
+    expect(loadedNames(await autoLoadSkills(ambiguous, { prompt: 'Reconcile the invoice ledger.', orchestrator: false }))).toEqual(['memory-recall']);
+    f.set({ ...skill, intents: ['export_ledger'] });
+    expect(await readCatalogSkill(f.catalog, skill.name).catch(() => undefined)).toBeUndefined();
+  });
+
+  it('rejects malformed persisted routing metadata and keeps legacy packages readable', () => {
+    const file = '---\nname: sample-procedure\ndescription: Sample procedure\n';
+    expect(parseSkill(file + '---\nRead the source.', 'sample-procedure', 'generated').intents).toBeUndefined();
+    for (const field of ['categories: ["bad category"]', 'intents: ["reconcile invoices"]', 'intents: []', 'categories: ["finance", "finance"]', 'intents: unquoted']) {
+      expect(() => parseSkill(file + field + '\n---\nRead the source.', 'sample-procedure', 'generated')).toThrow();
+    }
+  });
+
   it('always loads memory guidance and only loads orchestrator for a configured lead', async () => {
     const c = await catalog();
     const solo = await autoLoadSkills(c, { prompt: 'Hello there', orchestrator: false });

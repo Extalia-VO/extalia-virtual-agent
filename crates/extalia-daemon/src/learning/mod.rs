@@ -12,6 +12,7 @@ mod knowledge_grounding;
 mod observed;
 #[cfg(all(test, unix))]
 mod observed_tests;
+mod project_knowledge;
 #[cfg(all(test, unix))]
 mod queue_tests;
 #[cfg(all(test, unix))]
@@ -94,6 +95,7 @@ pub struct Learning {
     intakes: HashMap<String, intake::Intake>,
     observed: HashMap<String, extalia_core::observed_memory::ObservedMemoryStore>,
     work_memory: HashMap<String, extalia_core::work_memory::WorkMemoryStore>,
+    projects: HashMap<String, project_knowledge::Project>,
     #[cfg(test)]
     hold: Option<(std::sync::mpsc::Sender<()>, std::sync::mpsc::Receiver<()>)>,
 }
@@ -111,6 +113,7 @@ impl Learning {
             intakes: HashMap::new(),
             observed: HashMap::new(),
             work_memory: HashMap::new(),
+            projects: HashMap::new(),
             #[cfg(test)]
             hold: None,
         }
@@ -128,6 +131,7 @@ impl Learning {
         let action = s(params, "action");
         let input = &params["input"];
         let mut result = match action {
+            action if action.starts_with("project.") => self.project_action(action, input)?,
             action if action.starts_with("memory.") => self.work_memory_action(action, input)?,
             action if action.starts_with("observed.") => self.observed_action(action, input)?,
             "evidence.begin" => {
@@ -238,6 +242,8 @@ impl Learning {
         self.drafts
             .retain(|_, d| d.created.elapsed() < RETAIN && self.pins.contains_key(&d.pin_id));
         self.stages.retain(|_, s| s.created.elapsed() < RETAIN);
+        self.projects
+            .retain(|_, p| p.created.elapsed() < Duration::from_secs(1800));
         // Outstanding effects remain owned until an explicit actual-drain acknowledgement.
         for job in self.jobs.values_mut() {
             job.expire();

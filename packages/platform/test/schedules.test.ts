@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   AGENT_HOST_METHODS,
   GENERAL_SCHEDULE_HOST_METHODS,
@@ -53,6 +53,47 @@ describe('general schedules contract and cron parser', () => {
     expect(nextScheduleRunAt({ kind: 'once', runAt: onceIso }, base, base)).toBeUndefined();
   });
 
+  it('keeps cron progression monotonic across repeated and missing local times', () => {
+    vi.stubEnv('TZ', 'America/New_York');
+    try {
+      const firstFallOccurrence = Date.parse('2026-11-01T05:30:00.000Z');
+      expect(nextCronRunAt('30 1 * * *', Date.parse('2026-11-01T05:00:00.000Z')))
+        .toBe('2026-11-01T05:30:00.000Z');
+      expect(nextCronRunAt('30 1 * * *', firstFallOccurrence))
+        .toBe('2026-11-01T06:30:00.000Z');
+      expect(nextCronRunAt('30 1 * * *', Date.parse('2026-11-01T06:00:00.000Z')))
+        .toBe('2026-11-01T06:30:00.000Z');
+      expect(nextCronRunAt('* * * * *', Date.parse('2026-11-01T05:00:00.000Z')))
+        .toBe('2026-11-01T05:01:00.000Z');
+      expect(nextCronRunAt('30 2 * * *', Date.parse('2026-03-08T05:00:00.000Z')))
+        .toBe('2026-03-09T06:30:00.000Z');
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('supports a half-hour daylight-saving fold without skipping the repeated interval', () => {
+    vi.stubEnv('TZ', 'Australia/Lord_Howe');
+    try {
+      expect(nextCronRunAt('45 1 * * *', Date.parse('2026-04-04T15:00:00.000Z')))
+        .toBe('2026-04-04T15:15:00.000Z');
+      expect(nextCronRunAt('* * * * *', Date.parse('2026-04-04T14:40:00.000Z')))
+        .toBe('2026-04-04T14:41:00.000Z');
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('discovers the seasonal offset for a future cron before that offset is active', () => {
+    vi.stubEnv('TZ', 'America/New_York');
+    try {
+      expect(nextCronRunAt('0 1,2 1 7 *', Date.parse('2026-01-01T00:00:00.000Z')))
+        .toBe('2026-07-01T05:00:00.000Z');
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it('normalizes schedule creation payloads with session modes and assigned workers', () => {
     const valid = normalizeSaveGeneralSchedule({
       workspaceId: 'ws-1',
@@ -86,5 +127,18 @@ describe('general schedules contract and cron parser', () => {
       },
       missedPolicy: 'run-once',
     });
+  });
+
+  it('defaults new schedules to one catch-up run and preserves an explicit skip choice', () => {
+    const input = {
+      workspaceId: 'ws-1',
+      name: 'Daily review',
+      prompt: 'Review the project.',
+      trigger: { kind: 'cron' as const, cron: '0 9 * * *' },
+      sessionTarget: { mode: 'create-and-reuse' as const },
+      assignment: { teamMode: 'workspace' as const },
+    };
+    expect(normalizeSaveGeneralSchedule(input).missedPolicy).toBe('run-once');
+    expect(normalizeSaveGeneralSchedule({ ...input, missedPolicy: 'skip' }).missedPolicy).toBe('skip');
   });
 });

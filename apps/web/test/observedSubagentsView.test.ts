@@ -23,7 +23,9 @@ const worker = (overrides: Partial<Extract<TranscriptItem, { kind: 'worker' }>> 
 
 function delegationCard(props: Parameters<typeof TranscriptView>[0]) {
   const run = nodes(TranscriptView(props)).find(node => typeof node.type === 'function' && 'onSetOpenKeys' in node.props && 'language' in node.props)!;
-  const card = nodes(invoke(run)).find(node => 'item' in node.props && 'onOpenWorker' in node.props)!;
+  // This test targets worker routing after the user opens its enclosing group.
+  const openedRun = { ...run, props: { ...run.props, openStates: new Map((run.props.items as TranscriptItem[]).map(item => [`worker-group:${item.id}`, true])) } };
+  const card = nodes(invoke(openedRun)).find(node => 'item' in node.props && 'onOpenWorker' in node.props)!;
   return invoke(card);
 }
 

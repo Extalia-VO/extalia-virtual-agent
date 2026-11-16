@@ -113,6 +113,8 @@ names!(
         SkillScanner = "skill.scanner",
         SkillPreflight = "skill.preflight",
         SkillRoutingPreview = "skill.routingPreview",
+        SkillEvaluationBegin = "skill.evaluationBegin",
+        SkillEvaluationComplete = "skill.evaluationComplete",
         KnowledgeScoped = "knowledge.scoped",
         KnowledgeStatus = "knowledge.status",
         KnowledgeSync = "knowledge.sync",
@@ -805,6 +807,8 @@ fn request(check: &mut Check, object: &Map<String, Value>, op: Op) -> Option<Fra
         | Op::SkillReviewRead
         | Op::SkillScanner
         | Op::SkillPreflight
+        | Op::SkillEvaluationBegin
+        | Op::SkillEvaluationComplete
         | Op::SkillRoutingPreview => skills::request(check, op, params),
         Op::KnowledgeScoped
         | Op::KnowledgeStatus
@@ -922,6 +926,8 @@ fn response(check: &mut Check, object: &Map<String, Value>, op: Op) -> Option<Fr
         | Op::SkillReviewRead
         | Op::SkillScanner
         | Op::SkillPreflight
+        | Op::SkillEvaluationBegin
+        | Op::SkillEvaluationComplete
         | Op::SkillRoutingPreview => skills::result(check, op, result),
         Op::KnowledgeScoped
         | Op::KnowledgeStatus

@@ -5,6 +5,10 @@
 - [PRD v2 tracking](prd-v2-tracking.md): milestones, issues and acceptance gates.
 - [Current published preview v0.4.288](v0.4.288.md): Desktop and Web/npm scope.
 
+## Prepared release candidates
+
+- [v0.4.352](v0.4.352.md): source prepared; CI and publication tracked separately.
+
 ## Historical release notes
 
 - [v0.4.227](v0.4.227.md)

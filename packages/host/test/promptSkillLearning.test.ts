@@ -1,3 +1,4 @@
+import { generatedSkillMetadata, completeSkillInstructions } from './generatedSkillFixtures.js';
 import { skillStoragePaths } from '../src/skillStorage.js';
 import { createAgentHost } from '../src/service.js';
 import { SkillRegistry } from '../src/skillRegistry.js';
@@ -24,7 +25,7 @@ interface RequestBody {
   messages: { role: string; content?: unknown }[];
 }
 type Reply = { text: string } | { tool: string; args: unknown };
-const proposal = { name: 'prompt-review', description: 'Review an example change', instructions: 'Inspect the patch and report evidence.', sourceUrls: ['https://example.com/review'] };
+const proposal = { name: 'prompt-review', description: 'Review an example change', ...generatedSkillMetadata(), intents: ['review_change'], instructions: completeSkillInstructions('Inspect the patch and report evidence.', 'Use when reviewing a change.'), sourceUrls: ['https://example.com/review'] };
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => { while (cleanups.length) await cleanups.pop()!(); });
 
@@ -240,7 +241,7 @@ describe('current-prompt skill learning authority through the Native host', () =
     expect(revision).toMatchObject({ packageId: proposal.name, origin: 'generated', state: 'quarantined', stateReason: 'scanner-unavailable', active: false });
     const details = await host.inspectSkill(revision.revisionId);
     expect(details.inspections.some(record => record.outcome === 'scanner-unavailable')).toBe(true);
-    expect(details.approvals).toEqual([]); expect(details.files.map(file => file.path).sort()).toEqual(['PROVENANCE.md', 'SKILL.md']);
+    expect(details.approvals).toEqual([]); expect(details.files.map(file => file.path).sort()).toEqual(['PROVENANCE.md', 'SKILL.md', 'TESTS.json', 'extalia-skill.json']);
     const toolReply = [...bodies[1]!.messages].reverse().find(message => message.role === 'tool');
     expect(String(toolReply?.content)).toContain('scanner-unavailable'); expect(String(toolReply?.content)).toContain('"activationPerformed":false');
     const turnEvents = events.filter(event => event.sessionId === session.id);

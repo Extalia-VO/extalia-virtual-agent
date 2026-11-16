@@ -113,6 +113,23 @@ const REFUSALS: Record<string, string> = {
   import_tree_changed: 'The package changed after preview. Prepare a new preview before importing.',
   refinement_base_required: 'This generated skill name already exists. Read the current candidate and its references, then submit its exact refinement base.',
   refinement_base_changed: 'A newer skill revision was imported after the candidate was read. Read the latest candidate before refining it.',
+  candidate_references_missing: 'Keep every existing reference path when refining this skill; improve its contents instead of dropping it.',
+  refinement_references_removed: 'Keep every existing reference path when refining this skill; improve its contents instead of dropping it.',
+  invalid_skill_quality: 'Provide complete skill metadata and declarative test cases before submitting this candidate.',
+  incomplete_skill_instructions: 'Populate the When to Use, Procedure, Pitfalls and Verification sections outside code fences.',
+  skill_instructions_incomplete: 'Populate the When to Use, Procedure, Pitfalls and Verification sections outside code fences.',
+  skill_metadata_invalid: 'Provide valid skill categories and task intent IDs before submitting this candidate.',
+  verification_cases_invalid: 'Provide bounded declarative test cases with literal required and forbidden response snippets.',
+  refinement_tests_changed: 'Keep every existing verification case unchanged when refining this skill; add cases for new behavior.',
+  generated_duplicate_candidate: 'The same generated procedure already exists under another name. Find and refine the existing candidate instead of creating a duplicate.',
+  generated_possible_duplicate: 'A similar generated procedure already exists. Review the existing candidate before proposing a separate skill.',
+  candidate_catalog_incomplete: 'The existing candidate catalog could not be checked completely. Refresh the library before submitting this candidate.',
+  learned_evaluation_required: 'Run the revision-bound skill tests before approving or activating this generated candidate. Its current active version stays in use.',
+  learned_evaluation_stale: 'The tested candidate or active baseline changed. Run the tests again against the current revisions before approval or activation.',
+  learned_candidate_required: 'Choose a generated skill candidate for this evaluation.',
+  evaluation_handle_invalid: 'This skill evaluation expired or no longer matches its candidate. Start a new evaluation.',
+  evaluation_handle_busy: 'A skill evaluation already owns this candidate. Wait for it to settle.',
+  evaluation_handle_capacity: 'The native core has reached its bounded evaluation capacity. Wait for running evaluations to settle.',
   candidate_not_latest: 'This is not the latest skill candidate. Refresh candidate discovery before reading it.',
   candidate_scope_mismatch: 'The candidate is outside the captured learning profile or workspace.',
   candidate_provenance_unavailable: 'The candidate has no verified learning provenance for this scope.',
@@ -224,7 +241,7 @@ export class SkillRegistry {
 
   /** The Security Center's view. Never throws: an unavailable daemon is a status, not an error. */
   async report(): Promise<SkillRegistryReport> {
-    const base = { scanner: 'unpinned' as const, review: false, preflight: false, approvalTtlMs: SKILL_APPROVAL_TTL_MS, revisions: [], truncated: false };
+    const base = { scanner: 'unpinned' as const, review: false, preflight: false, evaluation: false, approvalTtlMs: SKILL_APPROVAL_TTL_MS, revisions: [], truncated: false };
     if (!this.options.daemon) return { mode: 'legacy', status: 'off', ...base };
     try {
       const client = await this.client();
@@ -237,6 +254,7 @@ export class SkillRegistry {
         ...(listed.nextCursor ? { nextCursor: listed.nextCursor } : {}),
         scanner: inspector?.status === 'ready' && inspector.pinned ? 'pinned' : 'unpinned', ...(inspector ? { inspector } : {}),
         review: client.capabilities.includes('skill.review'),
+        evaluation: client.capabilities.includes('skill.evaluationBegin') && client.capabilities.includes('skill.evaluationComplete'),
         rescan: client.capabilities.includes('skill.rescan'),
         preflight: client.capabilities.includes('skill.preflight'),
         routingPreview: client.capabilities.includes('skill.routingPreview'),
@@ -412,8 +430,9 @@ export class SkillRegistry {
         throw new SkillRegistryError('Read every page of this exact candidate in the current learning turn before refining it.', { cause: { reason: 'refinement_base_required' } });
       }
       if (receipt.referencePaths.some(file => ![...this.candidateCoverage.values()].some(read => read.scope === scope && read.revisionId === input.baseRevisionId && read.path === file && covered(read)))) {
-        throw new SkillRegistryError('Read every existing Markdown reference before submitting a full replacement skill package.', { cause: { reason: 'candidate_references_unread' } });
+        throw new SkillRegistryError('Read every existing Markdown reference, test fixture and manifest before submitting a full replacement skill package.', { cause: { reason: 'candidate_references_unread' } });
       }
+      if (receipt.referencePaths.filter(file => file.startsWith('references/')).some(file => !input.references?.some(reference => reference.path === file))) throw new SkillRegistryError('Keep every existing Markdown reference path when refining a skill; improve its content instead of silently dropping it.', { cause: { reason: 'candidate_references_missing' } });
     }
     // Refuse unsupported/offline cores before any candidate directory or file is written.
     let client: DaemonClient;
@@ -490,9 +509,12 @@ export class SkillRegistry {
       seen.add(revision.packageId);
       const skill = parseSkill(read.content, revision.packageId, 'generated');
       const description = Array.from(skill.description ?? '').slice(0, 120).join('');
-      if (query && !`${revision.packageId} ${description}`.toLocaleLowerCase().includes(query)) continue;
+      if (query && !`${revision.packageId} ${description} ${skill.categories?.join(' ') ?? ''} ${skill.intents?.join(' ') ?? ''}`.toLocaleLowerCase().includes(query)) continue;
       if (result.candidates.length >= limit) { result.truncated = true; break; }
-      result.candidates.push({ packageId: revision.packageId, revisionId: revision.revisionId, description, state: revision.state, active: revision.active });
+      // Discovery previews stay small even for a complete, richly categorized package.
+      // Full exact metadata remains available through paged SKILL.md/manifest reads.
+      if ((skill.categories?.length ?? 0) > 2 || (skill.intents?.length ?? 0) > 4) result.truncated = true;
+      result.candidates.push({ packageId: revision.packageId, revisionId: revision.revisionId, description, ...(skill.categories ? { categories: skill.categories.slice(0, 2) } : {}), ...(skill.intents ? { intents: skill.intents.slice(0, 4) } : {}), state: revision.state, active: revision.active });
       if (JSON.stringify(result).length > SKILL_REVIEW_OUTPUT_CHARS) { result.candidates.pop(); result.truncated = true; break; }
     }
     return result;
