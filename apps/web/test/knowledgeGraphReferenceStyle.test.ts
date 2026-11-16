@@ -2,7 +2,7 @@ import { Color, NormalBlending } from 'three';
 import { describe, expect, it } from 'vitest';
 import { createGraphNodeMaterial } from '../src/knowledge/vault/graphNodeMaterial';
 import { GRAPH_GALAXY_BACKDROP, GRAPH_GALAXY_PALETTE, GRAPH_STAR_CORE_RATIO, graphStarHaloOpacity } from '../src/knowledge/vault/graphReferenceStyle';
-import { graphEdgeColour } from '../src/knowledge/vault/graphVisualStyle';
+import { graphEdgeColour, graphEdgeOpacity } from '../src/knowledge/vault/graphVisualStyle';
 
 describe('reference graph style', () => {
   it('keeps the halo faint at its rim and progressively brighter toward the compact core', () => {
@@ -34,35 +34,32 @@ describe('reference graph style', () => {
     }
   });
 
-  for (const light of [false, true]) it(`follows endpoint colours and preserves local focus in ${light ? 'light' : 'dark'} mode`, () => {
-    const background = light ? [.9, .92, .95] : [.003, .003, .006];
-    const first = [1, 0, 0], second = [0, .2, 1];
-    const edge = (emphasis: 'normal' | 'focus' | 'muted', opacity = .24) => graphEdgeColour(first, second, background, light, opacity, 1000, emphasis);
-    const normal = edge('normal');
-    const end = graphEdgeColour(second, first, background, light, .24, 1000, 'normal');
-    expect(normal[0]).toBeGreaterThan(end[0]!);
-    expect(end[2]).toBeGreaterThan(normal[2]!);
-    expect(graphEdgeColour(first, first, background, light, .24, 1000, 'normal')).toEqual(normal);
-    const midpoint = normal.map((value, index) => (value + end[index]!) / 2);
-    expect(midpoint[0]).toBeGreaterThan(end[0]!);
-    expect(midpoint[2]).toBeGreaterThan(normal[2]!);
-    expect(edge('normal', 0)).toEqual(background);
-    const distance = (rgb: readonly number[]) => Math.hypot(...rgb.map((value, index) => value - background[index]!));
-    expect(distance(edge('focus'))).toBeGreaterThan(distance(normal));
-    expect(distance(edge('muted'))).toBeLessThan(distance(normal));
+  for (const light of [false, true]) it(`retains saturated endpoint gradients with independent transparency in ${light ? 'light' : 'dark'} mode`, () => {
+    const first = graphEdgeColour([1, 0, 0], light), second = graphEdgeColour([0, .2, 1], light);
+    expect(first[0]).toBeGreaterThan(second[0]! + .5);
+    expect(second[2]).toBeGreaterThan(first[2]! + .5);
+    const midpoint = first.map((value, index) => (value + second[index]!) / 2);
+    expect(midpoint[0]).toBeGreaterThan(second[0]!); expect(midpoint[2]).toBeGreaterThan(first[2]!);
+    const normal = graphEdgeOpacity(light, .24, 1000, 'normal');
+    expect(graphEdgeOpacity(light, .24, 1000, 'focus')).toBeGreaterThan(normal);
+    expect(graphEdgeOpacity(light, .24, 1000, 'muted')).toBeLessThan(normal);
+    expect(graphEdgeOpacity(light, 0, 1000, 'focus')).toBe(0);
   });
 
-  for (const light of [false, true]) it(`keeps sparse paths visible without overpowering focused links in ${light ? 'light' : 'dark'} mode`, () => {
-    const backgroundColour = new Color(light ? '#eef2f7' : GRAPH_GALAXY_BACKDROP);
-    const background = [backgroundColour.r, backgroundColour.g, backgroundColour.b];
+  for (const light of [false, true]) it(`keeps sparse paths visible but softer than focus in ${light ? 'light' : 'dark'} mode`, () => {
+    const canvas = new Color(light ? '#eef2f7' : GRAPH_GALAXY_BACKDROP);
+    const background = [canvas.r, canvas.g, canvas.b];
     const luminance = (rgb: readonly number[]) => .2126 * rgb[0]! + .7152 * rgb[1]! + .0722 * rgb[2]!;
-    const contrast = (rgb: readonly number[]) => (Math.max(luminance(rgb), luminance(background)) + .05) / (Math.min(luminance(rgb), luminance(background)) + .05);
-    const edge = (emphasis: 'normal' | 'focus' | 'muted') => graphEdgeColour([1, 0, 0], [0, 0, 1], background, light, .24, 76, emphasis);
-    const baseline = contrast(edge('normal'));
-    expect(baseline).toBeGreaterThan(light ? 1.9 : 1.8);
-    if (!light) expect(baseline).toBeLessThan(3);
-    expect(contrast(edge('focus'))).toBeGreaterThan(baseline);
-    expect(contrast(edge('muted'))).toBeLessThan(baseline);
+    const contrast = (emphasis: 'normal' | 'focus' | 'muted') => {
+      const alpha = graphEdgeOpacity(light, .24, 76, emphasis), colour = graphEdgeColour([1, 0, 0], light);
+      const mixed = colour.map((value, index) => value * alpha + background[index]! * (1 - alpha));
+      return (Math.max(luminance(mixed), luminance(background)) + .05) / (Math.min(luminance(mixed), luminance(background)) + .05);
+    };
+    const normal = contrast('normal');
+    expect(normal).toBeGreaterThan(light ? 1.15 : 1.5);
+    expect(normal).toBeLessThan(3);
+    expect(contrast('focus')).toBeGreaterThan(normal);
+    expect(contrast('muted')).toBeLessThan(normal);
   });
 
   it('keeps core depth occlusion and independent Three fog uniforms while halos remain separate', () => {

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { LearningMeetingResult, LearningScheduleAction, LearningScheduleJob, LearningScheduleResult, LearningScheduleSnapshot, LearningSkillNotice } from '@extalia/platform';
+import type { LearningMeetingResult, LearningScheduleAction, LearningScheduleJob, LearningScheduleResult, LearningScheduleSnapshot, LearningSkillNotice, ProjectKnowledgeBuildResult } from '@extalia/platform';
 
 export interface ScheduledLearningInput {
   /** Immutable source invocation identity, also used to prevent repeated admission. */
@@ -10,11 +10,11 @@ export interface ScheduledLearningInput {
   sessionId: string;
   /** The host proved this non-default profile belongs only to its isolated workspace. */
   independent?: boolean;
-  kind?: 'learning' | 'knowledge-meeting';
+  kind?: LearningScheduleJob['kind'];
   workspaceName?: string;
   sessionName?: string;
   /** Restored quiet interval; an immediate action is never restored after restart. */
-  delaySeconds?: 60 | 600;
+  delaySeconds?: 10 | 60 | 600;
   /** Persist the interval before acknowledging a snooze or admitting this entry. */
   persistDelay?(seconds: 60 | 600): Promise<void>;
   /** Retire unentered work after invalidation; shutdown and foreground interruption preserve it. */
@@ -22,7 +22,10 @@ export interface ScheduledLearningInput {
   /** Callers retain bounded evidence only; no source run or conversation-history closure. */
   execute(signal: AbortSignal): Promise<void>;
   validate(): Promise<boolean>;
+  /** Foreground quiet-period readiness; false restarts the selected interval. */
   ready(): boolean;
+  /** Transient local admission hold; false preserves the elapsed quiet interval. */
+  admissionReady?(): boolean;
 }
 
 interface Entry {
@@ -33,6 +36,8 @@ interface Entry {
   immediate: boolean;
   /** The entry cannot enter validation while a durable schedule mutation is outstanding. */
   mutation?: Promise<void>;
+  /** Bounded polling while a due job waits for transient local admission. */
+  admissionRetryAt?: number;
   retiring?: boolean;
 }
 interface Active {
@@ -75,6 +80,16 @@ function knowledgeResult(value: unknown): value is NonNullable<LearningScheduleR
     && (value.indexed === undefined || value.status === 'saved' && typeof value.indexed === 'boolean');
 }
 
+function projectResult(value: unknown): value is ProjectKnowledgeBuildResult {
+  const required = ['status', 'inventory', 'read', 'unique', 'created', 'updated', 'unchanged', 'deduplicated', 'excluded', 'notes', 'topics', 'conflicts', 'modelRequests', 'synthesizedSources'];
+  if (!record(value) || !keys(value, required, ['overviewPath', 'indexed', 'omittedCitations', 'modelSources', 'truncatedSources']) || !['saved', 'unchanged', 'partial', 'failed'].includes(String(value.status))) return false;
+  if (!required.slice(1).every(key => Number.isSafeInteger(value[key]) && Number(value[key]) >= 0 && Number(value[key]) <= 100_000)) return false;
+  if ((value.status === 'saved' || value.status === 'unchanged') && !text(value.overviewPath, 4096)) return false;
+  if (['omittedCitations', 'modelSources', 'truncatedSources'].some(key => value[key] !== undefined && (!Number.isSafeInteger(value[key]) || Number(value[key]) < 0 || Number(value[key]) > 100_000))) return false;
+  return (value.overviewPath === undefined || text(value.overviewPath, 4096)) && (value.indexed === undefined || typeof value.indexed === 'boolean');
+}
+const knowledgeUpdate = (kind: LearningScheduleJob['kind']) => kind === 'knowledge-meeting' || kind === 'knowledge-build';
+
 /** Profile-aware admission queue. Nothing starts a Rust job or acquires a vault pin while waiting. */
 export class LearningSchedule {
   private readonly entries = new Map<string, Entry>();
@@ -113,13 +128,13 @@ export class LearningSchedule {
   schedule(input: ScheduledLearningInput): boolean {
     if (this.closed || this.admitted.has(input.id)) return false;
     const kind = input.kind ?? 'learning';
-    const replaced = kind === 'knowledge-meeting'
-      ? [...this.entries.values()].filter(entry => entry.view.state === 'scheduled' && entry.view.kind === kind && entry.view.workspaceId === input.workspaceId)
+    const replaced = knowledgeUpdate(kind)
+      ? [...this.entries.values()].filter(entry => entry.view.state === 'scheduled' && knowledgeUpdate(entry.view.kind) && entry.view.workspaceId === input.workspaceId)
       : [];
     if ([...this.entries.values()].filter(entry => entry.view.state === 'scheduled').length - replaced.length >= 16) return false;
     const createdAt = new Date(this.now()).toISOString();
     const { id, workspaceId, profileId, profileName, sessionId, workspaceName, sessionName } = input;
-    if (input.delaySeconds !== undefined && input.delaySeconds !== 60 && input.delaySeconds !== 600) throw new Error('Invalid learning quiet interval.');
+    if (input.delaySeconds !== undefined && input.delaySeconds !== 60 && input.delaySeconds !== 600 && !(input.delaySeconds === 10 && knowledgeUpdate(kind))) throw new Error('Invalid learning quiet interval.');
     const delayMs = input.delaySeconds !== undefined ? input.delaySeconds * 1_000 : replaced.at(-1)?.delayMs ?? 60_000;
     // Replaced source identities remain in the bounded dedupe window. No old
     // callback can resurrect evidence superseded by the latest workspace work.
@@ -188,16 +203,20 @@ export class LearningSchedule {
   recordResult(id: string, result: LearningScheduleResult): void {
     const entry = this.entries.get(id);
     if (!entry || this.active?.entry !== entry || !this.active.entered) throw new Error('That learning invocation is no longer recording results.');
-    if (!record(result) || !keys(result, [], ['meeting', 'skill', 'knowledge', 'problem']) || Object.keys(result).length === 0
+    if (!record(result) || !keys(result, [], ['meeting', 'project', 'skill', 'knowledge', 'problem']) || Object.keys(result).length === 0
       || result.meeting !== undefined && !meetingResult(result.meeting) || result.skill !== undefined && !skillNotice(result.skill)
       || result.knowledge !== undefined && !knowledgeResult(result.knowledge)
+      || result.project !== undefined && !projectResult(result.project)
       || result.problem !== undefined && !['connection', 'provider', 'timeout', 'invalid-request', 'authority', 'publication'].includes(String(result.problem)))
       throw new Error('Invalid learning artifact receipt.');
     if (result.skill && (result.skill.workspaceId !== entry.view.workspaceId || result.skill.profileId !== entry.view.profileId || result.skill.sessionId !== entry.view.sessionId))
       throw new Error('The learning receipt belongs to another source.');
     if (result.knowledge?.path && !result.knowledge.path.startsWith(`Learning/${entry.view.workspaceId}/`))
       throw new Error('The Knowledge receipt belongs to another workspace.');
+    if (result.project && (entry.view.kind !== 'knowledge-build' || result.project.overviewPath && result.project.overviewPath !== `Projects/${entry.view.workspaceId}/Knowledge/Overview.md`))
+      throw new Error('The project Knowledge receipt belongs to another workspace.');
     entry.view.result = { ...entry.view.result,
+      ...(result.project ? { project: structuredClone(result.project) } : {}),
       ...(result.meeting ? { meeting: structuredClone(result.meeting) } : {}),
       ...(result.skill ? { skill: structuredClone(result.skill) } : {}),
       ...(result.knowledge ? { knowledge: structuredClone(result.knowledge) } : {}),
@@ -243,6 +262,10 @@ export class LearningSchedule {
           delete entry.view.reason;
           entry.view.dueAt = new Date(this.now() + (entry.immediate ? 0 : entry.delayMs)).toISOString();
           this.changed();
+        }
+        if (ready && entry.admissionRetryAt !== undefined) {
+          try { if (entry.input!.admissionReady?.() !== false) delete entry.admissionRetryAt; }
+          catch { this.terminal(entry, 'failed', 'failed'); }
         }
       }
       this.arm();
@@ -307,7 +330,7 @@ export class LearningSchedule {
   private terminal(entry: Entry, state: 'completed' | 'failed' | 'cancelled', reason?: LearningScheduleJob['reason']): void {
     if ((reason === 'changed' || state === 'failed') && !(this.active?.entry === entry && this.active.entered)) this.retirePending(entry);
     const partial = state === 'failed' && (entry.view.result?.knowledge?.status === 'saved' || entry.view.result?.skill
-      || entry.view.result?.meeting?.knowledge === 'saved');
+      || entry.view.result?.meeting?.knowledge === 'saved' || Boolean(entry.view.result?.project && (entry.view.result.project.created + entry.view.result.project.updated + entry.view.result.project.unchanged > 0)));
     entry.view.state = partial ? 'partial' : state;
     entry.view.waitingForIdle = false;
     if (reason) entry.view.reason = reason; else delete entry.view.reason;
@@ -343,7 +366,8 @@ export class LearningSchedule {
     if (this.closed || this.active || this.foregroundHolds) return;
     const waiting = [...this.entries.values()].filter(entry => entry.view.state === 'scheduled' && !entry.mutation);
     if (!waiting.length) return;
-    const next = Math.min(...waiting.map(entry => entry.view.waitingForIdle ? this.now() + 1_000 : Date.parse(entry.view.dueAt)));
+    const next = Math.min(...waiting.map(entry => entry.view.waitingForIdle ? this.now() + 1_000
+      : Math.max(Date.parse(entry.view.dueAt), entry.admissionRetryAt ?? 0)));
     const generation = this.timerGeneration;
     this.timer = this.setTimer(() => {
       if (generation !== this.timerGeneration) return;
@@ -354,6 +378,7 @@ export class LearningSchedule {
   }
 
   private waitForIdle(entry: Entry, resetImmediate: boolean): void {
+    delete entry.admissionRetryAt;
     entry.view.state = 'scheduled';
     entry.view.waitingForIdle = true;
     entry.view.reason = 'busy';
@@ -378,6 +403,10 @@ export class LearningSchedule {
       let ready: boolean;
       try { ready = !this.held(entry) && input.ready(); } catch { this.terminal(entry, 'failed', 'failed'); continue; }
       if (!ready) { this.waitForIdle(entry, true); this.changed(); continue; }
+      try {
+        if (input.admissionReady?.() === false) { entry.admissionRetryAt = this.now() + 1_000; continue; }
+      } catch { this.terminal(entry, 'failed', 'failed'); continue; }
+      delete entry.admissionRetryAt;
       const controller = new AbortController();
       const active: Active = { entry, controller, done: Promise.resolve(), generation: this.generation, entered: false };
       // Defer the callback to install ownership before authorization starts or subscribers react.
@@ -388,6 +417,11 @@ export class LearningSchedule {
           if (controller.signal.aborted || active.generation !== this.generation) { this.interrupted(active); return; }
           if (!valid) { this.terminal(entry, 'cancelled', 'changed'); return; }
           if (this.held(entry) || !input.ready()) { this.waitForIdle(entry, true); this.changed(); return; }
+          if (input.admissionReady?.() === false) {
+            entry.view.state = 'scheduled';
+            entry.admissionRetryAt = this.now() + 1_000;
+            this.changed(); return;
+          }
           active.entered = true;
           await input.execute(controller.signal);
           if (controller.signal.aborted) this.interrupted(active);

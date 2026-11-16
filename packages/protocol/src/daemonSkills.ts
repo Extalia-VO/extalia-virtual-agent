@@ -1,4 +1,5 @@
 import type { SkillRoutingInput, SkillRoutingReport } from './daemonSkillRouting.js';
+import type { SkillEvaluationEvidence, SkillEvaluationPlan, SkillLearnedQuality } from './daemonSkillEvaluation.js';
 /**
  * Secure skill registry operations of the daemon wire contract v1 (W3, ADRs 0023, 0025,
  * 0026; gap-map decision 10). Additive: new operations and two error codes within schema
@@ -112,6 +113,9 @@ export const DAEMON_SKILL_LIMITS = {
 export interface SkillPermissionEntry { capability: SkillCapability; scope: string }
 export interface SkillRevisionSummary {
   packageId: string;
+  description?: string;
+  categories?: string[];
+  intents?: string[];
   revisionId: string;
   origin: SkillOrigin;
   /** Valid pinned marketplace source recorded for this exact revision; not approval. Older peers omit it. */
@@ -207,6 +211,8 @@ export interface SkillCandidateReadResult {
 }
 
 export interface DaemonSkillOperations {
+  'skill.evaluationBegin': { params: { revisionId: string; treeSha256: string }; result: SkillEvaluationPlan };
+  'skill.evaluationComplete': { params: SkillEvaluationEvidence; result: { revisionId: string; state: SkillRevisionState; learnedQuality: SkillLearnedQuality } };
   'skill.routingPreview': { params: SkillRoutingInput; result: SkillRoutingReport };
   'skill.preflight': { params: SkillPreflightInput; result: SkillPreflightReport };
   /** Stage a package from the import inbox into quarantine and run the installed inspector. */
@@ -231,6 +237,7 @@ export interface DaemonSkillOperations {
     params: { revisionId: string; /** Adds matching W0 consent of this workspace as review input. */ workspaceId?: string };
     result: {
       revision: SkillRevisionSummary; manifest: string; files: SkillFileEntry[]; inspections: SkillInspectionRecord[];
+      learnedQuality?: SkillLearnedQuality;
       approvals: SkillApprovalRecord[]; history: SkillStateEvent[]; consent: SkillConsentInput[];
       /** User-only literal preview; not an active skill read or model instruction. Never truncated. */
       instructions?: string;
@@ -282,4 +289,5 @@ export type DaemonSkillOp = keyof DaemonSkillOperations;
 export const DAEMON_SKILL_OPS = [
   'skill.import', 'skill.rescan', 'skill.list', 'skill.inspect', 'skill.review', 'skill.approve', 'skill.activate', 'skill.deactivate', 'skill.rollback',
   'skill.revoke', 'skill.read', 'skill.reviewRead', 'skill.scanner', 'skill.preflight', 'skill.routingPreview',
+  'skill.evaluationBegin', 'skill.evaluationComplete',
 ] as const satisfies readonly DaemonSkillOp[];

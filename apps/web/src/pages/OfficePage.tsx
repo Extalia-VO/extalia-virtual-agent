@@ -84,7 +84,7 @@ const getDark = () => document.documentElement.dataset.theme === 'dark';
 const getReduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const getFalse = () => false;
 
-export function OfficePage({ t, language, agents, hostDisconnected = false, state, onState, workspaceId, onWorkspace, onOpenSession, onOpenMissions, onStartChat, onOpenSettings, onOpenAgentSettings, inputFocus, onInputFocused, onLearningTarget }: {
+export function OfficePage({ t, language, agents, hostDisconnected = false, state, onState, workspaceId, onWorkspace, onOpenSession, onOpenMissions, onStartChat, onOpenSettings, onOpenAgentSettings, inputFocus, onInputFocused, onLearningTarget, onLearningCompactTarget }: {
   t: Messages; language: Language; agents?: AgentHostApi; hostDisconnected?: boolean; state: HostState | null; workspaceId?: string; onState(next: HostState): void;
   onWorkspace(id: string | undefined, sessionId?: string): void; onOpenSession(session: SessionSummary): void;
   /** v0.0.43 missions: open the Missions page, optionally for one session. */
@@ -94,6 +94,7 @@ export function OfficePage({ t, language, agents, hostDisconnected = false, stat
   inputFocus?: OfficeInputFocus | undefined;
   onInputFocused?: (token: number) => void;
   onLearningTarget?: (target: HTMLDivElement | null) => void;
+  onLearningCompactTarget?: (target: HTMLDivElement | null) => void;
 }) {
   // Floor view and lights are drawn in the App top bar; one shared store drives both. The Solar theme lets the scene follow the sun.
   const view = useOfficeControls(controls => controls.view);
@@ -594,6 +595,7 @@ export function OfficePage({ t, language, agents, hostDisconnected = false, stat
         {sessions.length > MAX_SESSIONS && <p className="note">{t.office.limited(MAX_SESSIONS, sessions.length)}</p>}
         </div></div>
       </aside>
+      <div ref={onLearningCompactTarget} className="learning-compact-slot office-learning-compact-slot" />
       {showDock && agents && state && <OfficePromptDock t={t} agents={agents} state={state} workspaceId={workspaceId} onState={onState} compact
         officeNames={officeNames} savedLooks={looks.saved} onLearningTarget={onLearningTarget}
         targetSessionId={dockTarget.sessionId} note={dockTarget.note} onTarget={sessionId => setDockTarget(sessionId ? { sessionId } : {})}

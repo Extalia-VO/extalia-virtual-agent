@@ -12,6 +12,12 @@ function port(): NativeKnowledgePort {
   };
 }
 describe('run-bound Native Knowledge reads', () => {
+  it('reports a validated vault-relative read target without leaking vault roots or search queries', async () => {
+    const tools = await createNativeKnowledgeTools(port());
+    expect(tools[1]!.describe?.({ path: 'Notes/Review.md' })).toEqual({ label: 'Reading workspace knowledge', target: 'Notes/Review.md' });
+    expect(tools[0]!.describe?.({ query: 'Private query' })).not.toHaveProperty('target');
+    for (const path of ['../Note.md', '/private/Note.md', '.obsidian/Config.md']) expect(() => tools[1]!.describe?.({ path })).toThrow();
+  });
   it('pages notes with source receipts and passes only the pinned destination to the host', async () => {
     const p = port(), tools = await createNativeKnowledgeTools(p);
     expect(tools.map(tool => tool.access)).toEqual(['read', 'read']);

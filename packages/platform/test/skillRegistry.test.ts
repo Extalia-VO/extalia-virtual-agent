@@ -2,12 +2,19 @@ import { describe, expect, it } from 'vitest';
 import {
   AGENT_HOST_METHODS, SKILL_APPROVAL_TTL_MS, SKILL_USER_PRINCIPAL, isAgentHostMethod, normalizeSkillApproval, normalizeSkillApprovalId, normalizeSkillImportSource,
   normalizeSkillPackageId, normalizeSkillReview, normalizeSkillRevisionId,
+  normalizeSkillEvaluationInput,
 } from '../src/index.js';
 
 const REVISION = `skr_${'a'.repeat(64)}`;
 const HEX = 'b'.repeat(64);
 
 describe('Skill Security Center contract (W3)', () => {
+  it('limits evaluation to a chosen revision and workspace without accepting grading or activation claims', () => {
+    expect(isAgentHostMethod('evaluateSkill')).toBe(true);
+    expect(normalizeSkillEvaluationInput({ revisionId: REVISION, workspaceId: 'w_exampledeadbeef' })).toEqual({ revisionId: REVISION, workspaceId: 'w_exampledeadbeef' });
+    for (const input of [null, { revisionId: REVISION }, { revisionId: REVISION, workspaceId: '../other' },
+      { revisionId: REVISION, workspaceId: 'w_exampledeadbeef', passed: true }, { revisionId: REVISION, workspaceId: 'w_exampledeadbeef', activate: true }]) expect(() => normalizeSkillEvaluationInput(input)).toThrow();
+  });
   it('forwards every Security Center method through Desktop IPC and the Bridge', () => {
     const methods = ['skillRegistry', 'inspectSkill', 'importSkill', 'reviewSkill', 'approveSkill', 'activateSkill', 'deactivateSkill', 'rollbackSkill', 'revokeSkill'];
     for (const method of methods) expect(isAgentHostMethod(method)).toBe(true);

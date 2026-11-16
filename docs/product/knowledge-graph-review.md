@@ -176,3 +176,58 @@ archive/Office tests during concurrent full suites; the bounded rerun passed
 without changing those tests. The built renderer's `THIRD_PARTY_SOFTWARE.md`
 was compared byte-for-byte with its complete source notice. No commit or
 publication was performed.
+
+
+## Readable graph view — v0.4.342
+
+The default now opens a clean 2D reading view, with the appearance panel closed.
+Nodes keep a visible CSS-pixel diameter at fit view; hubs and interaction targets
+are larger. Titles start at 14 px and can be adjusted through **Controls → Title
+size**. Text uses measured app fonts, bounded collision-aware placement and room
+for desktop or wrapped phone toolbars. A focused title can use more width.
+Lower rendering quality reduces the label count without removing every overview
+label. Three GPU draws and idle demand rendering remain unchanged.
+
+Hovering or selecting a note emphasizes its incident paths and direct neighbours.
+**Focus selected note** follows one to three hops of actual visible links. Closing
+the reader keeps that neighbourhood's anchor highlighted; clearing focus restores
+the overview. The Nebula/Minimal presets, 3D and Explore remain available.
+These presentation conventions follow the navigation and display controls of
+[Obsidian Graph view](https://obsidian.md/help/plugins/graph); they change no
+indexed note, source, relationship or permission.
+
+Validation includes 157 focused graph tests, dense/sparse views, theme changes,
+390 px Indonesian layout, DPR-aware picking, filtered-note suppression, font
+loading cleanup and idle rendering. Main-host UI verification used an authorized
+263-note/863-link graph: 37 titles remained visible at 14 px in the fitted overview.
+The existing 262 generated Markdown hashes were unchanged. Full `pnpm check`
+passed with 11,313 application tests, 29 skipped, 736 Rust tests and all builds.
+Private acceptance screenshots remain outside the tracked repository.
+
+## Soft Nebula presentation (2026-11-16)
+
+The default now uses restrained star glow and thin, feathered paths. Endpoint
+colours remain independent linear-RGB values; a separate per-segment opacity
+blends them over the actual canvas instead of baking an opaque background colour
+into each path. Focus remains distinguishable while respecting opacity tuning.
+Zero opacity and filtered endpoints remain fully hidden. Existing 2D/3D, Explore,
+picking, indexing and access rules are unchanged.
+
+Smart titles choose a few folder landmarks and connected notes, retaining
+selection, hover and active-search priority. The fitted overview allows at most
+twelve desktop or five phone titles, with a larger budget when zoomed. Font sizes
+remain readable; the whole graph still contains every permitted node and edge.
+
+The existing three GPU draws supply node cores, halos and paths. Continuous
+fullscreen effects are unnecessary: the canvas settles to idle, and reduced
+motion suppresses pulsing. Browser acceptance covers actual shader compilation,
+dark/light contrast, a 390 px Indonesian viewport, focus, 3D and linked Explore
+navigation. Synthetic-preview data and private main-host evidence remain outside
+the tracked repository.
+
+Verified in v0.4.349: 159 focused graph tests and full `pnpm check` pass
+(11,487 application tests, 29 skipped, 751 Rust tests and all build gates).
+The actual main-host 263-note/863-link graph shows eight overview titles at
+14 px, with visible focused endpoint gradients and no shader errors. Synthetic
+phone checks retain five titles within bounds. Reduced-motion idle frame count
+remains 285 across two seconds, with exactly three draws per rendered frame.

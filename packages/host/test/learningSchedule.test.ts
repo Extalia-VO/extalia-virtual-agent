@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { HostPersistenceGate } from '../src/hostPersistenceGate.js';
 import { LearningSchedule, type ScheduledLearningInput } from '../src/learningSchedule.js';
-import { normalizeLearningScheduleAction, type LearningSkillNotice } from '@extalia/platform';
+import { normalizeLearningScheduleAction, type LearningSkillNotice, type ProjectKnowledgeBuildResult } from '@extalia/platform';
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -16,6 +17,88 @@ function entry(id: string, overrides: Partial<ScheduledLearningInput> = {}): Sch
 describe('learning admission schedule', () => {
   beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-01-01T00:00:00Z')); });
   afterEach(() => { vi.useRealTimers(); });
+
+  it.each(['knowledge-meeting', 'knowledge-build'] as const)('waits exactly ten quiet seconds for an explicit %s', async kind => {
+    const queue = new LearningSchedule();
+    const task = entry('manual-knowledge', { kind, delaySeconds: 10 });
+    queue.schedule(task);
+    expect(queue.snapshot().jobs[0]).toMatchObject({ delaySeconds: 10, dueAt: '2026-01-01T00:00:10.000Z' });
+    await vi.advanceTimersByTimeAsync(9_999);
+    expect(task.execute).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(task.execute).toHaveBeenCalledTimes(1);
+    await queue.close();
+  });
+
+  it('preserves ten quiet seconds through unrelated persistence pulses and waits for their actual drain', async () => {
+    const persistence = new HostPersistenceGate();
+    const delays: number[] = [];
+    const queue = new LearningSchedule({ setTimer: (callback, milliseconds) => {
+      return setTimeout(() => { delays.push(milliseconds); callback(); }, milliseconds);
+    } });
+    persistence.onIdle(() => queue.wake());
+    const task = entry('manual-admission', { kind: 'knowledge-meeting', independent: true, delaySeconds: 10,
+      admissionReady: () => !persistence.isBusy });
+    queue.schedule(task);
+    const dueAt = queue.snapshot().jobs[0]!.dueAt;
+    for (let pulse = 0; pulse < 3; pulse++) {
+      await vi.advanceTimersByTimeAsync(2_000);
+      const release = deferred<void>();
+      const writing = persistence.run(() => release.promise);
+      queue.wake();
+      expect(queue.snapshot().jobs[0]).toMatchObject({ dueAt, waitingForIdle: false });
+      await vi.advanceTimersByTimeAsync(100);
+      release.resolve(); await writing;
+    }
+    await vi.advanceTimersByTimeAsync(2_700);
+    const release = deferred<void>();
+    const writing = persistence.run(() => release.promise);
+    queue.wake();
+    await vi.advanceTimersByTimeAsync(4_000);
+    expect(queue.snapshot().jobs[0]).toMatchObject({ state: 'scheduled', dueAt, waitingForIdle: false });
+    expect(task.validate).not.toHaveBeenCalled(); expect(task.execute).not.toHaveBeenCalled();
+    // The due deadline gets bounded retries, never a recurring zero-delay timer.
+    expect(delays.filter(milliseconds => milliseconds === 0)).toHaveLength(0);
+    release.resolve(); await writing;
+    await vi.advanceTimersByTimeAsync(0);
+    expect(task.validate).toHaveBeenCalledTimes(1); expect(task.execute).toHaveBeenCalledTimes(1);
+    await queue.close();
+  });
+
+  it('rechecks transient admission after asynchronous validation without restarting the quiet interval', async () => {
+    const validation = deferred<boolean>();
+    let admitted = true;
+    const queue = new LearningSchedule();
+    const task = entry('validation-admission', { kind: 'knowledge-meeting', delaySeconds: 10,
+      admissionReady: () => admitted, validate: vi.fn(() => validation.promise) });
+    queue.schedule(task);
+    const dueAt = queue.snapshot().jobs[0]!.dueAt;
+    await vi.advanceTimersByTimeAsync(10_000);
+    admitted = false; validation.resolve(true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(task.execute).not.toHaveBeenCalled();
+    expect(queue.snapshot().jobs[0]).toMatchObject({ state: 'scheduled', dueAt, waitingForIdle: false });
+    admitted = true; queue.wake(); await vi.advanceTimersByTimeAsync(0);
+    expect(task.execute).toHaveBeenCalledTimes(1);
+    await queue.close();
+  });
+
+  it('restarts the full quiet interval for real foreground work even during a transient admission hold', async () => {
+    let quiet = true, admitted = false;
+    const queue = new LearningSchedule();
+    const task = entry('foreground-admission', { kind: 'knowledge-meeting', delaySeconds: 10,
+      ready: () => quiet, admissionReady: () => admitted });
+    queue.schedule(task);
+    await vi.advanceTimersByTimeAsync(11_000);
+    quiet = false; queue.wake();
+    expect(queue.snapshot().jobs[0]).toMatchObject({ waitingForIdle: true });
+    await vi.advanceTimersByTimeAsync(1_000);
+    quiet = true; admitted = true; queue.wake();
+    expect(queue.snapshot().jobs[0]!.dueAt).toBe('2026-01-01T00:00:22.000Z');
+    await vi.advanceTimersByTimeAsync(9_999); expect(task.execute).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1); expect(task.execute).toHaveBeenCalledTimes(1);
+    await queue.close();
+  });
 
   it('reports the selected quiet interval while waiting and preserves a snoozed interval across conflicts', async () => {
     let ready = false;
@@ -333,6 +416,38 @@ describe('learning admission schedule', () => {
     expect(queue.snapshot().jobs.find(job => job.id === latest.id)).toMatchObject({ workspaceName: 'Latest project', sessionId: 'session-latest', sessionName: 'Latest work', dueAt: '2026-01-01T00:25:00.000Z', waitingForIdle: false });
     await vi.advanceTimersByTimeAsync(599_999); expect(latest.execute).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1); expect(latest.execute).toHaveBeenCalledTimes(1);
+    await queue.close();
+  });
+
+  it('replaces a pending review with one source build for the same workspace', async () => {
+    const queue = new LearningSchedule();
+    const old = entry('pending-review', { kind: 'knowledge-meeting' });
+    const build = entry('source-build', { kind: 'knowledge-build', delaySeconds: 10 });
+    queue.schedule(old); queue.schedule(build);
+    expect(queue.snapshot().jobs.map(job => [job.id, job.kind])).toEqual([['source-build', 'knowledge-build']]);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(old.execute).not.toHaveBeenCalled(); expect(build.execute).toHaveBeenCalledTimes(1);
+    await queue.close();
+  });
+
+  it('retains acknowledged project output when indexing fails and rejects foreign or malformed receipts', async () => {
+    const queue = new LearningSchedule(), finish = deferred<void>();
+    const project: ProjectKnowledgeBuildResult = { status: 'saved', overviewPath: 'Projects/workspace-a/Knowledge/Overview.md',
+      inventory: 3, read: 3, unique: 2, created: 6, updated: 0, unchanged: 0, deduplicated: 1, excluded: 0,
+      notes: 6, topics: 1, conflicts: 0, modelRequests: 1, synthesizedSources: 2, omittedCitations: 0 };
+    queue.schedule(entry('source-receipt', { kind: 'knowledge-build', delaySeconds: 10, execute: async () => {
+      queue.recordResult('source-receipt', { project }); await finish.promise;
+      queue.recordResult('source-receipt', { project: { ...project, status: 'partial', indexed: false }, problem: 'publication' });
+      throw new Error('Index refresh failed after publication.');
+    } }));
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(queue.snapshot().jobs[0]).toMatchObject({ state: 'running', result: { project } });
+    expect(() => queue.recordResult('source-receipt', { project: { ...project, read: -1 } })).toThrow('Invalid');
+    expect(() => queue.recordResult('source-receipt', { project: { ...project, omittedCitations: 0.5 } })).toThrow('Invalid');
+    expect(() => queue.recordResult('source-receipt', { project: { ...project, overviewPath: 'Projects/foreign/Knowledge/Overview.md' } })).toThrow('another workspace');
+    expect(() => queue.recordResult('source-receipt', { project: { ...project, overviewPath: 'Projects/workspace-a/Knowledge/../Overview.md' } })).toThrow('another workspace');
+    finish.resolve(); await vi.advanceTimersByTimeAsync(0);
+    expect(queue.snapshot().jobs[0]).toMatchObject({ state: 'partial', result: { project: { created: 6, indexed: false }, problem: 'publication' } });
     await queue.close();
   });
 

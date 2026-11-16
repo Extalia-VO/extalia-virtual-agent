@@ -29,7 +29,7 @@ import type { ExtaliaEvent } from '@extalia/protocol';
 import type { HostMissionRequest, HostMissionRun, HostMissionRecoveryResult, MissionPlan, MissionPlanRequest } from './missions.js';
 import type { AttachmentPreview, PromptAttachment, PromptAttachmentInput } from './attachments.js';
 import type { BuiltinSkillInfo, SkillConsentInput, WorkspaceSkills } from './skills.js';
-import type { SkillActionResult, SkillApprovalInput, SkillImportSource, SkillRegistryReport, SkillRegistryPage, SkillRegistryPageInput, SkillReviewInput, SkillRevisionDetails, SkillPreflightInput, SkillPreflightReport, SkillRoutingInput, SkillRoutingReport } from './skillRegistry.js';
+import type { SkillActionResult, SkillApprovalInput, SkillEvaluationInput, SkillImportSource, SkillRegistryReport, SkillRegistryPage, SkillRegistryPageInput, SkillReviewInput, SkillRevisionDetails, SkillPreflightInput, SkillPreflightReport, SkillRoutingInput, SkillRoutingReport } from './skillRegistry.js';
 import type {
   IntegrationApproval, IntegrationGateInput, IntegrationProposalView, IntegrationRequest, WorktreeDiffView, WorktreeDiscardConfirmation, WorktreeOrphanView, WorktreeStatusView, WorktreeView,
 } from './worktrees.js';
@@ -1085,6 +1085,8 @@ export interface AgentHostApi extends ObservedMemoryApi {
   previewSkillRouting?(input: SkillRoutingInput): Promise<SkillRoutingReport>;
   /** One revision with its manifest, files, inspections, approvals and state history. */
   inspectSkill(revisionId: string): Promise<SkillRevisionDetails>;
+  /** Run bounded synthetic declarative checks with the selected Native workspace; never approves or activates. */
+  evaluateSkill?(input: SkillEvaluationInput): Promise<SkillActionResult>;
   /** Explicitly rescan a quarantined stored revision. Older hosts omit this mutating operation. */
   rescanSkill?(revisionId: string): Promise<SkillActionResult>;
   /** Copy a chosen folder (or a project skill) into the profile's import inbox and stage it in quarantine. */
@@ -1206,6 +1208,8 @@ export interface AgentHostApi extends ObservedMemoryApi {
   /** Bounded post-task learning, separate from the completed foreground invocation. */
   learningSchedule?(): Promise<LearningScheduleSnapshot>;
   changeLearningSchedule?(id: string, revision: string, action: LearningScheduleAction['action']): Promise<LearningScheduleSnapshot>;
+  /** Explicit source-grounded project Knowledge build after ten quiet seconds using approved idle Native members. */
+  requestKnowledgeUpdate?(workspaceId: string): Promise<LearningScheduleSnapshot>;
   /** User-created one-off and recurring prompt schedules with session creation/continuation and assigned agents. */
   listSchedules?(): Promise<GeneralScheduleCatalog>;
   saveSchedule?(input: SaveGeneralScheduleInput): Promise<GeneralScheduleCatalog>;
@@ -1246,7 +1250,7 @@ export const AGENT_HOST_METHODS = [
   'listFiles', 'readFile', 'gitStatus', 'gitDiff', 'gitRepositories', 'workspaceSkills', 'allowWorkspaceSkills', 'revokeWorkspaceSkills',
   ...NATIVE_MEMORY_METHODS,
   ...MODEL_SELECTION_GUIDE_METHODS,
-  'skillRegistry', 'skillRegistryPage', 'preflightSkill', 'previewSkillRouting', 'inspectSkill', 'rescanSkill', 'importSkill', 'reviewSkill', 'approveSkill', 'activateSkill', 'deactivateSkill', 'rollbackSkill', 'revokeSkill', 'builtinSkills',
+  'skillRegistry', 'skillRegistryPage', 'preflightSkill', 'previewSkillRouting', 'inspectSkill', 'evaluateSkill', 'rescanSkill', 'importSkill', 'reviewSkill', 'approveSkill', 'activateSkill', 'deactivateSkill', 'rollbackSkill', 'revokeSkill', 'builtinSkills',
   'skillMarketSearch', 'previewMarketSkill', 'installMarketSkill', 'discardMarketSkillPreview',
   'runtimes', 'hermesModels', 'characterAppearances', 'saveCharacterAppearance', 'hookIngest', 'setHookPrivacy',
   'agentAppConnections', 'planAgentAppConnect', 'applyAgentAppConnect', 'disconnectAgentApp', 'testAgentAppConnection', 'recoverAgentAppConnection',
@@ -1254,7 +1258,7 @@ export const AGENT_HOST_METHODS = [
   'knowledgeStatus', 'syncKnowledge', 'knowledgeNode', 'knowledgeLinks', 'knowledgeBacklinks', 'searchKnowledge', 'knowledgeGraph', 'knowledgeOverview',
   'knowledgeSettings', 'setKnowledgeVaultRoot',
   ...VAULT_PROFILE_HOST_METHODS,
-  'learningSchedule', 'changeLearningSchedule',
+  'learningSchedule', 'changeLearningSchedule', 'requestKnowledgeUpdate',
   'workspaceKnowledge',
   'readKnowledgeNote', 'writeKnowledgeNote', 'knowledgeHistory', 'rollbackKnowledgeNote', 'importMemoryNotes',
 ] as const satisfies readonly Exclude<keyof AgentHostApi, 'subscribe'>[];

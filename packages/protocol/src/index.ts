@@ -59,3 +59,4 @@ export * from './providerModels.js';
 export * from './providerComplete.js';
 export * from './providerWorker.js';
 export * from './skillLoading.js';
+export * from './daemonSkillEvaluation.js';

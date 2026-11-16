@@ -385,6 +385,133 @@ for example when one runs out of quota.
 
 ## 11. Status tracker
 
+### Upstream schedule retry before agent work (2026-11-16)
+
+- Implemented locally v0.4.340 (Codex GPT orchestration): a reachable Native
+  router with an unavailable upstream can retain one occurrence after a trusted
+  first-request transient failure. A response, streamed text, tools, steering,
+  cancellation, changed history/ownership or uncertain persistence prohibits
+  automatic replay. Acknowledged terminal failure diagnostics and exact saved
+  history are checked before session ownership is released.
+- Private retry receipts retain one destination and pending model prompt across
+  restart, including fresh-per-run jobs. Intervening real messages stop stale
+  retry without losing history. Unknown/malformed receipts cannot replace a
+  pinned destination. Manual Run now revalidates its revision at reservation.
+  Retained retries recheck the workspace boundary at Native admission even when
+  removing the pending prompt leaves no earlier model history. The regression
+  fails with the old guard (a second provider request) and passes with the fix.
+- Twelve temporary-host integration cases pass for first-503 recovery, repeated
+  restart, history bounds, later fresh sessions, output/tool/auth fences,
+  steering, stale history, write/readback/terminal-event faults, a workspace
+  change after retry resolution, and bounded shutdown with an abort-ignoring
+  provider. A separate real loopback HTTP test
+  stops the upstream listener, verifies TCP refusal/router 503, then restores it
+  and confirms one successful run using the same session and one pending prompt.
+  Thirty-five provider-gate unit cases and 86 manager/recovery cases pass.
+- The development worktree's complete `VITEST_MAX_WORKERS=2 pnpm check` passed
+  (805 TypeScript suites / 11,098 tests, eight suites / 59 existing skips,
+  726 Rust tests and all builds); final terminal-publication and real-HTTP
+  and workspace-boundary regressions also pass with host typecheck and lint.
+  Integrated checkout v0.4.351 complete `VITEST_MAX_WORKERS=2 pnpm check` passed
+  after the final boundary fix: 836 TypeScript suites / 11,632 tests, four suites
+  / 29 existing skips, 751 Rust tests and all Web/CLI/Desktop builds. These tests
+  prove no Extalia
+  agent work was replayed, not zero remote computation, billing or universal
+  provider/power-loss certification. See [Schedules](../getting-started/schedules.md).
+
+### Schedule downtime, wake and recovery (2026-11-16)
+
+- Verified locally v0.4.339 (Codex GPT orchestration): new jobs default to one
+  coalesced catch-up after downtime or sleep, then resume fixed cadence. Explicit
+  skip choices and legacy stored policy remain unchanged. A bounded heartbeat,
+  timer generations and monotonic cron handling cover clock jumps and DST folds
+  or gaps. Interval slots stay anchored to planned occurrences.
+- Known-busy recurring work uses persisted bounded retries. A verified unreachable
+  Native HTTP endpoint is checked before creating a destination or submitting
+  instructions; one pending occurrence retries at a capped ten-minute rate until
+  reachable. Any HTTP response, local models and unknown transport failures are
+  handled conservatively. Accepted, interrupted or uncertain dispatch effects
+  are never automatically replayed. Missing derived conversations cannot silently
+  become new conversations. See the [guide](../getting-started/schedules.md).
+- Eight actual React browser cases (EN/ID, light/dark, desktop/390px) render
+  seeded busy/connection retry state, preserve explicit Skip edits and default
+  new jobs to catch-up without page errors or horizontal overflow. These UI
+  fixtures are separate from actual temporary-host failure/restart tests.
+- Complete `VITEST_MAX_WORKERS=2 pnpm check` passes: 803 TypeScript suites /
+  11,036 tests, 726 Rust tests and Web/CLI/Desktop builds; eight suites /
+  59 existing skips remain. Eighty new tracked tests cover recovery, trusted
+  preflight classification, endpoint outage, clock/DST behavior and defaults/UI.
+  These controlled tests do not certify every installed provider, upstream
+  router availability or exactly-once power-loss execution.
+
+### Schedules created from Native prompts (2026-11-16)
+
+- Integrated and verified in the active local checkout v0.4.346. Complete
+  `VITEST_MAX_WORKERS=2 pnpm check` passes: 826 TypeScript suites / 11,394
+  tests, 736 Rust tests, all builds and local avatar validation; four suites /
+  29 existing skips remain. The running host was not restarted during active
+  work; restart Desktop/Bridge to load the new Native capability.
+- Verified locally v0.4.338 (Codex GPT orchestration): the main Native
+  conversation can inspect the host clock/timezone and create the same persisted
+  jobs shown in Schedules from ordinary user requests. Current conversation is
+  the default; reusable/fresh new sessions and paused jobs are explicit choices.
+  Only acknowledged saves return job IDs and actual next occurrences.
+- Main-run/workspace ownership, serialized admission, plan-mode refusal,
+  history-retention checks and missing bound-session errors prevent silent
+  substitution. Workers, observed apps and scheduled invocations do not receive
+  this capability. User intent is model-guided; external documents are not
+  scheduling consent. Different user turns remain distinct creation requests.
+- Forty-two new tests cover runtime arguments/receipts, atomic-file manager
+  restart/retry and actual temporary-host scripted-provider flows, including
+  scoped lists, current/new targets, storage errors and history changes. Complete
+  `VITEST_MAX_WORKERS=2 pnpm check` passes: 800 TypeScript suites / 10,956 tests,
+  726 Rust tests and all builds; eight suites / 59 existing skips remain.
+  These fixtures do not certify installed-provider language understanding or
+  power-loss exactly-once execution. The [guide](../getting-started/schedules.md)
+  records host uptime and bounded private receipt limits.
+
+### Simple schedule library and contextual drafts (2026-11-16)
+
+- Integrated into the active local checkout at v0.4.343 while preserving its
+  independent changes. Its complete `VITEST_MAX_WORKERS=2 pnpm check` passes:
+  822 TypeScript suites / 11,339 tests, 736 Rust tests, all builds and local
+  avatar validation; four suites / 29 existing skips remain. Restart the host
+  to load the updated scheduler backend. This is local validation, not a release.
+- Verified locally v0.4.337 (Codex GPT orchestration): Suggested and saved
+  schedules appear first, with a compact project/session/frequency editor and
+  collapsed Advanced settings. Suggestions use project/session metadata and a
+  matching vault-profile binding; they do not read vault notes or create jobs
+  without explicit Save. Exact existing sessions, create-and-reuse and fresh
+  sessions remain distinct, with host cron timezone and uptime disclosed.
+- Eight actual-host React browser scenarios pass across EN/ID, light/dark and
+  desktop/390px using a temporary profile and fake provider: draft-only
+  suggestions, explicit save, exact session scope, Run now, deletion and no
+  horizontal overflow. Additional browser checks preserve custom cron, reuse
+  a new session, create fresh sessions per run, isolate project drafts and
+  explain a browser/host timezone mismatch. These are not live-provider tests.
+- Complete `VITEST_MAX_WORKERS=2 pnpm check` passes: 797 TypeScript suites /
+  10,914 tests, 726 Rust tests, lint, typechecks and Web/CLI/Desktop builds;
+  eight suites / 59 existing skips remain. Regression tests cover consumed
+  one-off attempts, stale due dispatch, owned shutdown, storage failure and
+  missing/stale derivation sources or invalid assignments. See the
+  [schedule guide](../getting-started/schedules.md) for remaining limits:
+  no OS/headless scheduler, persisted per-job timezone or certified exactly-once
+  external effects.
+
+### Readable Knowledge graph (2026-11-16)
+
+- Verified locally and on the main-host UI in v0.4.342 (Codex GPT orchestration): readable 2D default, visible screen-size nodes and collision-aware 14 px titles, adjustable title size, stronger incident paths and a visible neighbourhood anchor after reader closure. Lower rendering quality retains overview labels. Three GPU draws and on-demand idle rendering remain intact; indexed notes, graph topology, 3D/Explore and scoped access are preserved. Actual 263-note/863-link main-host graph shows 37 legible titles at fit view, with no horizontal overflow. Light/dark, sparse 61-note 3D, focused branches and Indonesian 390 px checks pass; phone labels use 14/16 px text and avoid the wrapped toolbar. All 262 generated Markdown hashes remain unchanged. 157 focused graph tests and full `pnpm check` pass: 11,313 application tests, 29 skipped, 736 Rust tests and all repository/build gates.
+
+### Source-grounded project Knowledge build (2026-11-16)
+
+- Verified locally and on the authorized main host in combined v0.4.340 (Codex GPT orchestration): manual updates read registered project Markdown and build source-grounded Knowledge independently of meeting minutes. Native selects current-batch evidence IDs; the host expands unchanged source text and Rust independently validates quotations, fresh hashes, managed CAS writes and resolvable links. Compact requests, bounded settled-route retries and nine primary batches within twelve requests address observed timeout and transcription failures. Source instructions remain untrusted data; canon/draft/legacy status stays attributed.
+- Live acceptance: 215 complete source files captured, all represented through bounded Native body excerpts (205 sampled/truncated); 92 sources support 117 independently checked quotations in 30 topic notes. Publication created 262 managed notes: 220 source pages, 30 topics, ten folder maps, overview and coverage. All 262 derived nodes belong to one connected component; the index has 994 directed edges (863 undirected display links), zero skipped files and zero unresolved links. The existing minutes note remains history, with no new minutes export. Scoped indexed search retrieves a substantive topic. Original project hashes and all 19 session identities remain intact after backed-up Bridge/daemon rollout.
+- An actual second manual update completed in six seconds, reread the 215 files and reused all 262 generated notes: zero new/updated files, zero model requests, identical file hashes and graph. Repeated pending/running requests reuse one job; the UI shows one latest notice per workspace/profile and keeps accepted/running work in the corner. Actual main-host Knowledge UI confirms 263 total notes including the preserved historical note; graph and dismissal checks pass. Full `pnpm check` passes: 11,284 application tests, 29 skipped, 736 Rust tests, all builds and repository gates. No private project content or paths enter repository fixtures or documentation; separate local acceptance artifacts retain the authorized evidence.
+
+### Unified Knowledge updates and compact learning status (2026-11-16)
+
+- Verified locally v0.4.335 (Codex GPT orchestration, 2026-11-16): full `pnpm check` passes (11,166 application tests, 29 skipped; 726 Rust tests; all builds and repository gates). Completed team work has one Knowledge writer, independent skill learning and effective minutes-consent fallback. Accepted/running status moves to a compact top-left notification. Manual updates preserve their ten-second quiet interval through foreground completion, refresh saved evidence and exclude working reviewers; conflicting resource lifetimes can postpone the interval. Real Rust scoped-vault publication/indexing, focused scheduler/host/UI tests and actual-component EN/ID light/dark desktop/390px browser checks pass. Active host diagnostics were read-only: its in-memory thirteen-member/six-step review predates the bounded source implementation. Existing cancelled jobs were not replayed. User-authorized main-host rollout verified in combined v0.4.337: backed up and restarted Bridge with matching daemon, preserving connections, workspace and 19 session identities. One real provider-backed manual review completed with three contributions and exactly one saved/indexed Markdown note; a read and indexed search confirmed it in the assigned vault. The same-file title correction preserved contributions and removed the instructional phantom link (one note, zero skipped files, zero unresolved links). v0.4.336 preserves elapsed isolated quiet time during transient persistence admission and exports concise review titles with full event provenance; previously started notifications remain compact through a temporary hold. Full combined `pnpm check` passes: 11,189 application tests, 29 skipped, 726 Rust tests and all builds/repository gates. No historical cancelled job replay or second review request.
+
 ### Office, Observe, and Antigravity integration — v0.4.334 (2026-11-16)
 
 | Item | Outcome | Status | Evidence / next step |
@@ -399,6 +526,13 @@ for example when one runs out of quota.
 | O-OBS-EMPTY-PLACEHOLDERS | Hide empty automatic Codex hook placeholders and recover real sources | Verified locally and on main host in 0.4.331 (2026-11-15) | Exact generated-title, metadata-only automatic rows are hidden; meaningful/manual/known history remains. Approved source hydration preserves ID, pauses and names, with rollback/retry. 112 focused tests, 18 follow-up tests, 16 browser assertions, pnpm check (10,407 app tests, 28 optional skipped, 620 Rust tests) and backup/preservation checks passed; both screenshot entries absent while their registry IDs remain. |
 | O-OBS-CROSS-HARNESS-VISIBILITY | Exclude automatic empty and source-identified internal Observe channels across supported harnesses | Verified locally and on main host in 0.4.333 (2026-11-15) | Five harnesses: lifecycle/config-only filtering, positive source setup/meta classification, same-ID hydration, rename/retry/privacy boundaries and valid work retained. 115 new cross-harness cases, 15 source-backed tests, 46 compatibility tests, 13 browser assertions, four transport/retention assertions and pnpm check (10,551 app tests, 28 optional skipped, 620 Rust tests) passed. Main-host backup/preservation, queue contents and database integrity verified. Internal purposes require source evidence; unknown cases remain visible. |
 | O-OBS-LIVE-HARNESS-EMPTY | Verify blank-to-work identity and history in installed Claude and Antigravity | Verified directly on main host 0.4.333 (2026-11-15) | Actual Claude Code 2.1.311 empty SessionStart registered but hidden, genuine prompt revealed same ID; two same-UUID process resumes retained prior context and successful replies. Initial default-model rejection resolved using per-launch existing-router Claude model override. Actual Antigravity blank draft has no native ID; two real turns retained one native/Extalia ID and recalled prior context. Both full histories verified after Observe page reload; 16 source/API assertions passed, no synthetic hooks or permanent configuration edits. |
+| O-RESOURCE-ACTIVE-VISIBILITY | Active-only resource widget and dismissible details | Implemented; frontend verified (2026-11-16) | Hide the widget for absent, prepared-only, paused or settled evidence; Observe uses explicit harness access metadata only. An open popup retains final receipts; same-node and close-button dismissal restore focus to the node or visible inspector. Twenty Native/Observe browser checks cover light/dark, phone, completion, pause and focus; long-title close controls stay within the 260px detail panel. Changed-file lint, web typecheck/build and 53 targeted tests pass. Global `pnpm check` is blocked by concurrent backend lint in `skillEvaluation.ts` and `skillRegistry.ts`; that backend was not changed for this UI task. Served JavaScript/CSS match the tested UI build, without a backend restart or profile writes. |
+| O-RESOURCE-CABLE-STYLE | Thin idle cables and active endpoint gradients | Implemented; verified (2026-11-16) | Thin neutral single-color inactive paths; active-only source-to-target gradients, slightly thicker strokes and small travelling signals. Forty-four focused tests and 17 browser checks cover vertical SVG gradients, distinct compact/popup IDs, light/dark themes, phone bounds, terminal errors and reduced motion. Four-second recorded UI preview verifies the fixed 3× animation without provider calls. Full `VITEST_MAX_WORKERS=2 pnpm check` passes on combined 0.4.346 source (11,352 JavaScript tests); served JavaScript/CSS match the build without backend restart or profile writes. |
+| O-RESOURCE-USAGE-DIAGRAM | Live skill/Knowledge access graph with agent ownership and enlargement | Implemented; verified (2026-11-16) | Shared Native/Observe inspector: preparation versus actual access, canonical main/subagent names, exact resource accessors and real team membership. Plain canvas with smooth paths, fixed 3× active-only motion and live dialog; paused or settled access has no pulse. Browser checks cover Native/Observe, 240/280/320px rails, phone modal, focus, filters and completion receipts without repeated target metadata. Bounded cached UI projection makes no provider requests. Full `pnpm check` passes at 0.4.340, including 11,287 JavaScript tests; built UI assets verified on the running host without restarting its backend. |
+| O-RESOURCE-PARALLEL-SETTLEMENT | Owner-scoped failure settlement during parallel live resource access | Implemented; verified (2026-11-16) | Nonrecoverable worker errors settle only their pending resource accesses; sibling/background work and recoverable activity remain live. Late invocation replay cannot restart settled pulses. Explicit lead shutdown opens a new run; lead completion preserves independent Observe children. Isolated actual Native host/Rust tools/HTTP SSE with three concurrent workers and a controlled provider verified completed reads and worker failure; no live-LLM acceptance claimed. Twenty additional Native/Observe browser assertions verify the open popup during transport-fault scenarios. Visible top/bottom ports, direct first-child links, independent sibling curves and light/dark cards passed 240/280/320px and phone checks. Full `pnpm check` passes on combined 0.4.342 source (11,316 JavaScript tests); current UI assets verified on the running host without profile changes. |
+| O-WORKER-RUN-FOLD | Compact collapsible team activity in conversation messages | Verified frontend v0.4.338; combined gate pending concurrent Knowledge changes (Codex, 2026-11-16) | Fold consecutive worker invocations by default with truthful status counts; preserve disclosure choices across append/completion/split/rejoin and exact inline/sidebar previews. 47 focused tests and 18 actual-component desktop/mobile browser assertions pass; three-member content reduces from 379px expanded to a 36px summary (47px at 390px). All 3,960 web tests and the web build pass; active Bridge assets match this UI build. Combined pnpm check is currently blocked by ownership review for concurrent Knowledge backend changes; those sources were not changed by this UI task. |
+| O-NATIVE-CHAT-INSPECTOR | Contain Native Chat scrolling and show skills/team/worker previews in the right inspector | Verified frontend v0.4.337 (Codex GPT orchestration, 2026-11-16) | Independent bounded message/session/inspector viewports; skill receipts deduplicated and paginated in the rail; working children first and 100 completed invocations folded. Actual-component desktop/mobile browser checks preserve history reading, Files position, drafts, exact nested/finished worker previews, main approval dispatch, profile/session ownership and keyboard focus. Full pnpm check passes (11,189 application and 726 Rust tests); served host assets match the vetted build. |
+| O-LEARNING-NOTICE-ANCHOR | Keep learning status within Office canvas or current page content | Verified frontend v0.4.337 (Codex GPT orchestration, 2026-11-16) | One stable notification owner with separate compact/decision targets; canvas notice clears toolbar, FPS and dock. Other pages use a zero-height content anchor clear of expanded navigation and sticky headers. Actual-component EN/light and ID/dark browser checks at 1440×900 and 390×844 verify scrolling, dismissal, fallback, one notice and pointer passthrough. Full repository check passes; served host assets match the vetted build. |
 
 ### Clean main integration — PRs #107, #109, #110 and #113 (2026-11-15)
 
@@ -599,7 +733,6 @@ Documentation/media scope; no runtime version bump or package publication.
 | O-SOCIAL-RENDEZVOUS | Bring both small-talk participants toward a shared meeting place | Implemented v0.4.279; scene/Web/build verified, full gate blocked by local native filesystem stall (Codex GPT orchestration, 2026-11-12) | Reciprocal route-balanced destinations and sofa gestures; 12s gathering/blocked-entry bounds, safe interruption and exact equipment dismount ownership. Clear Library door arcs, non-token lift retreats and acyclic active-door group yields preserve physical movement/FIFO. Final furnished 10/20 cases: 30/30 exact original desk returns, 36/36 pairs both depart, seven reached seated conversations, all doors/queues clear, no body/registry/seat/fade violations. All 3,092 Web tests, workspace types, lint/boundaries/public-safety/schemas, versions/assets and Web/Desktop/CLI builds pass. pnpm check then stalls in Cargo fingerprint filesystem stat with no progress for over three minutes; only owned check processes stopped, no full/native-gate success claimed. Temporary entries archived/removed and owned QA browser/server closed. [Design](../design/office-movement-recovery.md); local evidence: output/playwright/social-rendezvous/verification.json. |
 | O-RENDER-QUALITY-RECOVERY | Keep Office sharp when throughput permits and show live FPS | Implemented v0.4.277; renderer/UI/build verified, full gate blocked by concurrent ownership changes (Codex GPT orchestration, 2026-11-11) | Shared Web/Desktop starts near 1080p; six headroom windows or thirty stable windows probe sharper tiers, with failed-tier retry delays capped at 120 foreground windows. Passive top-left FPS shows raw throughput independently of scene updates; hidden/unmounted samples clear. All 3,056 Web tests, workspace types, owned lint, boundaries, public-safety, version/assets and all builds pass. Real Office QA checks EN/light desktop and ID/dark phone badge placement and throughput slowdown/retry; it does not establish a Desktop-versus-Web GPU benchmark. Full pnpm check stops on unrelated Knowledge/Office-context/host ownership changes. [Policy](../bench/office-adaptive.md); local evidence: output/playwright/office-quality/. |
 | D-DEPENDABOT-20261111 | Integrate reviewed dependency and Actions updates | Merged via PR #88; issue #89 closed (reconciled 2026-11-12) | [Tracking #89](https://github.com/Extalia-VO/extalia-virtual-agent/issues/89), [integration PR #88](https://github.com/Extalia-VO/extalia-virtual-agent/pull/88): consolidate npm and Actions PRs #18/#19/#22/#65/#66 across current workflows; retain scanner tar transport, add Linux artifact-transfer verification and scope the POSIX-only CLI fixture to Unix. Full pnpm check exit 0: 557 TS suites/8,002 tests passed, eight suites/58 tests skipped; Rust tests and all builds passed. Browser QA: WebGL scene/floor/camera, EN/light desktop and ID/dark phone layouts, persisted preferences; two pre-existing console warnings confirmed against main. Isolated checkout preserves concurrent Antigravity work. PR #88 merged at 4efb235 on 2026-11-11; original local evidence is retained here. |
-| N-GENERAL-SCHEDULES | General Schedule menu for one-off/recurring prompts with session creation/continuation and assigned agents | Requested; not implemented (2026-11-11) | Owner request: target an existing session, derive a command from a session, or create one on first execution and reuse it for later occurrences; choose the responsible lead/workers/subagents. The learning queue is specialized and ephemeral, and does not fulfill this general scheduling contract. |
 | O-CROSS-AGENT-HANDOVER | Reviewed cross-agent continuity and explicit destination handover | Host hardening verified locally v0.4.332; current live compaction acceptance open (2026-11-15) | One canonical work record, immutable original archives, editable notes, CAS-reviewed destinations and honest transport receipts. POSIX journal publication and exact external continuity-read filtering now have focused regressions. A real-host synthetic four-stage test recovers an archived middle decision after more than 4 MiB of source history, bounded-window loss, compaction markers and two restarts, with scoped grant denials and no recursive snapshot growth. The [current acceptance contract](../bench/cross-agent-continuity-acceptance.md) requires genuine native evidence; Gemini compaction remains unverified. The [v0.4.288 live CLI report](../bench/live-handover-chain.md) and [earlier Codex ↔ Antigravity UI roundtrip](../bench/native-antigravity-handover.md) remain historical evidence, not current compaction certification. Issue #112 and release gate #60 remain open. |
 | O-UI-CLI-HANDOVER | Direct reviewed handover from Extalia to linked CLI conversations | Implemented; runtime-specific acceptance recorded (2026-11-12) | Explicit installed CLI review/pairing, shell-free same-ID supervision and scoped archive reads. Actual UI return to the original Codex conversation passed in the native Antigravity roundtrip. A controlled real Gemini compression retained selected decisions and pending work; full-context saturation remains open. Claude support is fixture-tested; final live semantic acceptance was stopped because the account has no subscription. Original Desktop process attachment remains separate. |
 | O-HARNESS-HANDOVER-UX | Detected harness cards, reviewed native destination creation and Codex ↔ Antigravity acceptance | Verified locally v0.4.291 (2026-11-12) | Detected harness cards and Advanced settings; unsupported adapters remain unavailable. Actual native Antigravity creation, original-operation registration recovery, reviewed UI transfers and return to the original Codex ID preserved decisions, implementation and 14 tests. Controlled host restart retained one canonical work record without replay. See [native acceptance](../bench/native-antigravity-handover.md). |

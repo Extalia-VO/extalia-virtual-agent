@@ -291,3 +291,5 @@ pub(crate) fn refused(refusal: Refusal, path: Option<&str>) -> SkillError {
         path: path.map(str::to_owned),
     }
 }
+
+pub mod verification;

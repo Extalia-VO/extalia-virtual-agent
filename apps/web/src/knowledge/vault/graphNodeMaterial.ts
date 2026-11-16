@@ -20,6 +20,7 @@ export function createGraphNodeMaterial() {
     vertexShader: /* glsl */ `
       #include <fog_pars_vertex>
       uniform float uViewportHeight;
+      attribute float aMinRadius;
       varying vec3 vGraphColour;
       varying vec2 vGraphUv;
       void main() {
@@ -29,7 +30,7 @@ export function createGraphNodeMaterial() {
         float pixelsPerWorldUnit = projectionMatrix[1][1] * max(uViewportHeight, 1.0) / (2.0 * viewDepth);
         // Clamp in CSS pixels, without bringing filtered (zero-scale) instances back.
         float radius = worldRadius > 0.0
-          ? clamp(worldRadius * pixelsPerWorldUnit, 1.2, 6.0) / pixelsPerWorldUnit
+          ? clamp(worldRadius * pixelsPerWorldUnit, aMinRadius, max(12.0, aMinRadius * 1.8)) / pixelsPerWorldUnit
           : 0.0;
         mvPosition.xy += position.xy * radius;
         vGraphColour = instanceColor;
@@ -50,8 +51,12 @@ export function createGraphNodeMaterial() {
         if (alpha <= 0.0) discard;
         // Reference star textures have a flat opaque core, with the glow in a
         // separate transparent layer. Light themes use the reference flat style.
-        vec3 emissive = vGraphColour * 1.4;
-        vec3 ink = vGraphColour * 0.34;
+        // A compact stellar centre fades gently into its coloured disc; the
+        // separate bounded halo carries the surrounding nebula glow.
+        float stellarCore = 1.0 - smoothstep(0.0, 0.75, radialDistance);
+        vec3 emissive = mix(vGraphColour * 1.08, mix(vGraphColour, vec3(1.0), 0.28), stellarCore);
+        // Light-theme ink and background dimming are already composed once on the CPU.
+        vec3 ink = vGraphColour;
         vec3 colour = mix(emissive, ink, uLight);
         gl_FragColor = vec4(colour, alpha);
         // Retain the reference's far-node visibility floor instead of allowing

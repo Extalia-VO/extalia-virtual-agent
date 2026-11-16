@@ -1,4 +1,4 @@
-.knowledge .knowledge-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.knowledge .knowledge-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .knowledge .knowledge-title-row h1 { margin: 0; }
 .knowledge-connection { display: grid; gap: 12px; min-width: 0; }
 .knowledge-connection-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; }
@@ -50,3 +50,6 @@
   .knowledge-connection-workspace { max-width: none; }
   .knowledge-connection-config .actions > .button { flex: 1 1 auto; }
 }
+
+.knowledge-update-team { min-width: 0; }
+.knowledge-update-team .form-error { max-width: 320px; margin: 6px 0 0; overflow-wrap: anywhere; }

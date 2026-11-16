@@ -4,7 +4,7 @@ fn begin() -> Value {
     json!({"profileId":"default","revision":"r1","workspaceId":"workspace","sessionId":"session","runId":"run","promptSha256":"a".repeat(64),"policy":{"enabled":true,"skills":true,"notes":true},"evidence":[{"toolCallId":"source-one","name":"test_result","content":"Reported test output","isError":false}],"tools":[{"name":"knowledge_search","description":"Search the pinned vault","parameters":{"type":"object","properties":{"query":{"type":"string"}},"required":["query"],"additionalProperties":false}}]})
 }
 fn submit(ids: Value) -> Value {
-    json!({"id":"submit-one","name":"submit_learning","input":{"title":"Finding","lesson":"Retain the documented procedure and recheck outcomes before reuse.","evidenceIds":ids,"skill":{"name":"documented-procedure","description":"Use when applying the documented procedure.","instructions":"## When to Use\nUse for the matching procedure.\n## Procedure\nCheck the current documentation.\n## Pitfalls\nDo not assume a prior result still holds.\n## Verification\nCheck the actual result."}}})
+    json!({"id":"submit-one","name":"submit_learning","input":{"title":"Finding","lesson":"Retain the documented procedure and recheck outcomes before reuse.","evidenceIds":ids,"skill":{"name":"documented-procedure","description":"Use when applying the documented procedure.","categories":["development.testing"],"intents":["verify_result"],"verificationCases":[{"id":"verify","input":"Verify a synthetic result.","expectedIncludes":["verified"]}],"instructions":"## When to Use\nUse for the matching procedure.\n## Procedure\nCheck the current documentation.\n## Pitfalls\nDo not assume a prior result still holds.\n## Verification\nCheck the actual result."}}})
 }
 fn model(job: &mut Job, calls: Vec<Value>) {
     let effect_id = job.pending.as_ref().unwrap()["effectId"].clone();
@@ -33,9 +33,16 @@ fn nested_skill_schema_describes_all_required_fields() {
     let skill = &submit["parameters"]["properties"]["skill"];
     assert_eq!(
         skill["required"],
-        json!(["name", "description", "instructions"])
+        json!([
+            "name",
+            "description",
+            "instructions",
+            "categories",
+            "intents",
+            "verificationCases"
+        ])
     );
-    assert_eq!(skill["properties"].as_object().unwrap().len(), 9);
+    assert_eq!(skill["properties"].as_object().unwrap().len(), 12);
     assert_eq!(skill["properties"]["sourceUrls"]["items"]["type"], "string");
     assert_eq!(skill["additionalProperties"], false);
 }
@@ -352,7 +359,7 @@ fn estimated_input_has_per_request_and_aggregate_admission_caps() {
         }
         observed_finalization |= job.finalizing;
         let effect_id = job.pending.as_ref().unwrap()["effectId"].clone();
-        job.action("job.advance", &json!({"effectId":effect_id,"completion":{"kind":"model","result":{"text":"x".repeat(6000),"stop":"tool_use","toolCalls":[{"id":format!("unknown-{index}"),"name":"not_offered","input":{}}]}}})).unwrap();
+        job.action("job.advance", &json!({"effectId":effect_id,"completion":{"kind":"model","result":{"text":"x".repeat(4000),"stop":"tool_use","toolCalls":[{"id":format!("unknown-{index}"),"name":"not_offered","input":{}}]}}})).unwrap();
         assert!(job.estimated_input <= MAX_TOTAL_ESTIMATE);
         if let Some(effect) = &job.pending {
             assert!(

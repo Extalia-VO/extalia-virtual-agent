@@ -45,7 +45,7 @@ describe('skill origin markers', () => {
     expect(html).not.toContain('class="badge ok"');
     expect(renderToStaticMarkup(createElement(SkillOriginBadge, { origin: 'custom', t }))).toContain(t.skillLibrary.origins.custom);
     const row = renderToStaticMarkup(createElement(SkillRevisionRow, { t, revision: revision('review-only', 'generated'), busy: false,
-      report: { scanner: 'unpinned' } as SkillRegistryReport, confirm: null, onConfirm: () => {}, onAction: () => {}, onToggleDetails: () => {} }));
+      report: { mode: 'registry', status: 'ready', scanner: 'unpinned', review: true, approvalTtlMs: 600_000, truncated: false, revisions: [] } satisfies SkillRegistryReport, confirm: null, onConfirm: () => {}, onAction: () => {}, onToggleDetails: () => {} }));
     expect(row).toContain(t.skillLibrary.origins.custom);
     expect(row).toContain(t.skillCenter.states.quarantined);
   });

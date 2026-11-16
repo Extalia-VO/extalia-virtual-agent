@@ -1,0 +1,24 @@
+.native-chat-activity { display: flex; flex-direction: column; gap: 12px; min-width: 0; min-height: 0; overflow-y: auto; scrollbar-width: thin; }
+.native-chat-activity > .observe-subagents { max-height: none; }
+.native-chat-activity .observe-subagent-groups { max-height: 28dvh; }
+.native-chat-activity > .observe-subagent-preview { flex: 1 0 220px; min-height: min(220px, 48dvh); max-height: 48dvh; }
+.native-chat-activity .worker-preview-toggle[aria-pressed='true'] { background: var(--sunken); }
+.native-chat-skills, .native-chat-roster { flex: none; min-width: 0; border-top: 1px solid var(--line); padding-top: 8px; }
+.native-chat-skills > summary, .native-chat-roster > summary { display: flex; align-items: center; gap: 6px; cursor: pointer; list-style: none; font-size: .76rem; }
+.native-chat-skills > summary::-webkit-details-marker, .native-chat-roster > summary::-webkit-details-marker { display: none; }
+.native-chat-skills > summary > .icon, .native-chat-roster > summary > .icon { flex: none; width: 12px; height: 12px; }
+.native-chat-skills[open] > summary > .icon, .native-chat-roster[open] > summary > .icon { transform: rotate(90deg); }
+.native-chat-skills > summary:focus-visible, .native-chat-roster > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+.native-chat-skill-history { display: grid; gap: 8px; max-height: 36dvh; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; margin-top: 10px; }
+.native-chat-skill-history > .button { justify-self: start; }
+.native-chat-skill-history .skill-load-card { min-width: 0; }
+.native-chat-roster-setting { margin-inline-start: auto; color: var(--muted); font-size: .67rem; }
+.native-chat-roster > ul { display: grid; gap: 8px; padding: 0; margin: 10px 0 0; max-height: 26dvh; overflow-y: auto; scrollbar-width: thin; list-style: none; }
+.native-chat-roster li { display: grid; gap: 3px; min-width: 0; padding: 8px; background: var(--sunken); border-radius: 8px; font-size: .73rem; overflow-wrap: anywhere; }
+.native-chat-roster li > p, .native-chat-team-goal { margin: 0; color: var(--muted); font-size: .7rem; overflow-wrap: anywhere; }
+.native-chat-member-role, .native-chat-member-models { color: var(--muted); }
+.native-chat-team-goal { margin-top: 10px; }
+@media (max-width: 700px) {
+  .native-chat-activity > .observe-subagent-preview { flex-basis: 240px; min-height: min(240px, 55dvh); max-height: 55dvh; }
+  .native-chat-activity .observe-subagent-groups { max-height: 34dvh; }
+}

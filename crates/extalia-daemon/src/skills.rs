@@ -46,11 +46,12 @@ use crate::wire::{
     SkillRequest,
 };
 
+mod evaluation;
 mod preflight;
 mod routing;
 
 /// Skill operations served when a core store is open, advertised in the `hello` result.
-pub const CAPABILITIES: [Op; 15] = [
+pub const CAPABILITIES: [Op; 17] = [
     Op::SkillImport,
     Op::SkillList,
     Op::SkillInspect,
@@ -66,6 +67,8 @@ pub const CAPABILITIES: [Op; 15] = [
     Op::SkillScanner,
     Op::SkillPreflight,
     Op::SkillRoutingPreview,
+    Op::SkillEvaluationBegin,
+    Op::SkillEvaluationComplete,
 ];
 /// `DAEMON_SKILL_LIST_DEFAULT_LIMIT`.
 pub const LIST_DEFAULT_LIMIT: u64 = 50;
@@ -85,6 +88,7 @@ pub struct Skills {
     profile: ProfileId,
     inspector: Arc<dyn SkillInspector + Send + Sync>,
     builtins: BuiltinCatalog,
+    evaluations: evaluation::Plans,
 }
 
 impl std::fmt::Debug for Skills {
@@ -120,6 +124,7 @@ impl Skills {
             data_dir: data_dir.to_owned(),
             profile,
             inspector: Arc::from(inspector),
+            evaluations: Default::default(),
         }
     }
 
@@ -399,6 +404,9 @@ impl Skills {
     ) -> Result<Value, SkillError> {
         let now = now_millis();
         match request {
+            SkillRequest::Evaluation { complete, input } => {
+                self.evaluation(store, *complete, input, ctx, now)
+            }
             SkillRequest::Rescan { .. } => Err(SkillError::Denied("rescan_requires_owner")),
             SkillRequest::RoutingPreview { input } => routing::run(self, store, input, ctx, now),
             SkillRequest::Preflight {
@@ -799,6 +807,9 @@ impl Skills {
         let inputs = registry.review_inputs(revision_id)?;
         let skip = inputs.len().saturating_sub(MAX_CONSENT_INPUTS);
         let mut value = details_value(&details);
+        if let Some(quality) = registry.learned_quality(revision_id)? {
+            value["learnedQuality"] = quality;
+        }
         match registry.instruction_preview(revision_id, now)? {
             Some(instructions) => {
                 value["instructions"] = Value::String(instructions);
@@ -891,6 +902,13 @@ fn summary_value(summary: &RevisionSummary) -> Value {
         "createdAt": summary.created_at,
         "updatedAt": summary.updated_at,
     });
+    if let Ok(manifest) = serde_json::from_str::<Value>(&revision.manifest_json) {
+        for key in ["categories", "intents"] {
+            if let Some(values) = manifest.get(key) {
+                value[key] = values.clone();
+            }
+        }
+    }
     put_opt(&mut value, "stateReason", revision.state_reason.clone());
     if let Some(approval_id) = summary.activation_approval_id {
         value["activationApprovalId"] = approval_id.into();

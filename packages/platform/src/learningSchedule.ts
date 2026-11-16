@@ -33,8 +33,34 @@ export interface LearningSkillNotice {
   partial?: boolean;
 }
 
+/** Source-grounded project publication; verification refers to file/citation checks, not universal factual truth. */
+export interface ProjectKnowledgeBuildResult {
+  status: 'saved' | 'unchanged' | 'partial' | 'failed';
+  overviewPath?: string;
+  inventory: number;
+  read: number;
+  unique: number;
+  created: number;
+  updated: number;
+  unchanged: number;
+  deduplicated: number;
+  excluded: number;
+  notes: number;
+  topics: number;
+  conflicts: number;
+  modelRequests: number;
+  synthesizedSources: number;
+  /** Sources represented in this build's bounded Native input; full reads are counted separately. */
+  modelSources?: number;
+  truncatedSources?: number;
+  /** Proposed quotations omitted by the per-topic bound; full source snapshots remain available. */
+  omittedCitations?: number;
+  indexed?: boolean;
+}
+
 export interface LearningScheduleResult {
   meeting?: LearningMeetingResult;
+  project?: ProjectKnowledgeBuildResult;
   skill?: LearningSkillNotice;
   knowledge?: { status: 'saved' | 'failed' | 'skipped'; path?: string; indexed?: boolean };
   problem?: 'connection' | 'provider' | 'timeout' | 'invalid-request' | 'authority' | 'publication';
@@ -48,7 +74,7 @@ export interface LearningScheduleJob {
   profileName: string;
   sessionId: string;
   /** Absence on older hosts means ordinary post-task learning. */
-  kind?: 'learning' | 'knowledge-meeting';
+  kind?: 'learning' | 'knowledge-meeting' | 'knowledge-build';
   workspaceName?: string;
   sessionName?: string;
   state: 'scheduled' | 'running' | 'completed' | 'partial' | 'failed' | 'cancelled';

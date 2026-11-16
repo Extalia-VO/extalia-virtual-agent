@@ -1,3 +1,4 @@
+import { completeSkillInstructions, generatedSkillMetadata } from './generatedSkillFixtures.js';
 import { skillStoragePaths } from '../src/skillStorage.js';
 import { appendFile, chmod, lstat, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -41,8 +42,8 @@ async function fixture(enabled = true, holdCurator?: Promise<void>) {
       expect(evidence.every(item => item.content.includes('UNTRUSTED OBSERVED CLAIM'))).toBe(true);
       return response('', { name: 'submit_learning', input: { title: 'Parser decision from observed work',
         lesson: 'The observed Codex transcript reports that parser input is normalized before duplicates are checked; retain the first row and limit batches to 73. This is an attributed report, not independent verification.',
-        evidenceIds: evidence.map(item => item.id), skill: { name: 'observed-parser-review', description: 'Review observed parser decisions with attribution',
-          instructions: 'Read the attributed parser decision, verify the current project behavior and test it before relying on reported outcomes.' } } });
+        evidenceIds: evidence.map(item => item.id), skill: { ...generatedSkillMetadata(), name: 'observed-parser-review', description: 'Review observed parser decisions with attribution',
+          instructions: completeSkillInstructions('Read the attributed parser decision, verify the current project behavior and test it before relying on reported outcomes.', 'Use when reviewing an attributed parser decision; reported outcomes remain unverified.') } } });
     }, daemon: { log: () => {} } };
   let runtime = await createAgentHost(options); runtimes.add(runtime); stores.add(skillStoragePaths(data).root);
   const connection = (await runtime.host.saveConnection({ name: 'Fixture curator', preset: 'custom', api: 'openai-chat', baseUrl: 'https://example.com/v1',

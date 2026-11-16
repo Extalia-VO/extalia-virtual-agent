@@ -163,3 +163,10 @@
   .observe-session-header { gap: 6px; }
   .observe-session-actions > .icon-button, .observe-session-actions .continue-panel > .icon-button { width: 27px; height: 27px; }
 }
+
+/* The shared live diagram and worker previews share a bounded inspector viewport. */
+.observe-inspector-body { display: flex; flex: 1; flex-direction: column; gap: 12px; min-width: 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.observe-inspector-body > * { flex: none; min-width: 0; }
+.observe-inspector-body > .observe-subagents { max-height: min(260px, 30dvh); }
+.observe-inspector-body > .observe-subagent-preview { min-height: min(260px, 48dvh); max-height: 48dvh; }
+.observe-inspector-body > .observe-inspector-tools { overflow: visible; }

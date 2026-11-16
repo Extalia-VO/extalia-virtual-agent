@@ -11,6 +11,7 @@ publish.workspace = true
 rusqlite.workspace = true
 # Contract JSON (validation, canonical payloads); already the daemon's wire dependency.
 serde_json.workspace = true
+serde.workspace = true
 semver.workspace = true
 
 [target.'cfg(unix)'.dependencies]

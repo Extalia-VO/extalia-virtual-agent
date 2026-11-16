@@ -10,14 +10,14 @@ import { runTool } from './helpers.js';
 const digest = (text: string) => createHash('sha256').update(text).digest('hex');
 const revisionId = `skr_${'a'.repeat(64)}`;
 const provenance: SkillProposalProvenance = { profileId: 'profile-one', workspaceId: 'w_example', sessionId: 's_read', runId: 'run_read', promptSha256: 'b'.repeat(64) };
-const proposal = { name: 'review-checklist', description: 'Use when reviewing a small change.', instructions: 'Read the change and verify the expected result.' };
+const proposal = { name: 'review-checklist', description: 'Use when reviewing a small change.', categories: ['development.review'], intents: ['review_changes'], verificationCases: [{ id: 'evidence', input: 'Review this small code change.', expectedIncludes: ['evidence'] }], instructions: '## When to Use\nReview a small change.\n## Procedure\nRead the change and verify the expected result.\n## Pitfalls\nAvoid unsupported claims.\n## Verification\nCheck the evidence.' };
 const shortSkill = `---\nname: ${proposal.name}\ndescription: ${proposal.description}\n---\n${proposal.instructions}\n`;
 
-function fixture(files: Record<string, string> = { 'SKILL.md': shortSkill }) {
+function fixture(files: Record<string, string> = { 'SKILL.md': shortSkill }, evaluationOps: string[] = [], importReason?: string) {
   let sequence = 0;
   const calls: { op: string; params: Record<string, unknown> }[] = [];
   const summary: SkillRevisionSummary = { packageId: proposal.name, revisionId, origin: 'generated', state: 'quarantined', stateReason: 'scanner-unavailable', version: '0.0.0+tree.fixture', treeSha256: 'a'.repeat(64), skillMdSha256: digest(files['SKILL.md']!), riskClass: 'declarative', manifestInferred: true, permissionDigest: 'c'.repeat(64), permissions: [], active: false, createdAt: '2026-11-01T00:00:00Z', updatedAt: '2026-11-01T00:00:00Z' };
-  const client = { usable: true, capabilities: [...SKILL_REGISTRY_OPS, 'skill.reviewRead', 'learning.process'], request: async (op: string, params: Record<string, unknown>) => {
+  const client = { usable: true, capabilities: [...SKILL_REGISTRY_OPS, 'skill.reviewRead', 'learning.process', ...evaluationOps], request: async (op: string, params: Record<string, unknown>) => {
     calls.push({ op, params });
     if (op === 'skill.list') return { revisions: [summary], indexGeneration: 0 };
     if (op === 'skill.reviewRead') {
@@ -27,13 +27,14 @@ function fixture(files: Record<string, string> = { 'SKILL.md': shortSkill }) {
       return { revisionId, packageId: proposal.name, path: String(params.path), size: Buffer.byteLength(content), sha256: digest(content), content,
         skillMdSha256: summary.skillMdSha256, untrusted: true, reviewReceipt: digest(`read-${++sequence}`),
         provenance: { profileId: provenance.profileId!, workspaceId: provenance.workspaceId, sessionId: 's_original', promptSha256: 'd'.repeat(64) },
-        referencePaths: Object.keys(files).filter(name => name.startsWith('references/')).sort(),
+        referencePaths: Object.keys(files).filter(name => name.startsWith('references/') || ['TESTS.json', 'extalia-skill.json'].includes(name)).sort(),
       } satisfies SkillCandidateReadResult;
     }
     if (op === 'learning.process') {
       if (params.action === 'skill.stage') return { action: 'skill.stage', stageId: 'stage', path: 'proposal-fixture' };
       if (params.action === 'skill.cleanup') return { action: 'skill.cleanup', released: true };
     }
+    if (op === 'skill.import' && importReason) throw new DaemonRequestError('denied', importReason);
     if (op === 'skill.import') return { packageId: proposal.name, revisionId, treeSha256: summary.treeSha256, version: summary.version, state: 'quarantined', created: false };
     if (op === 'skill.inspect') return { revision: summary, inspections: [], approvals: [], history: [], files: [], manifest: '{}' };
     throw new Error(`Unexpected fixture operation ${op}`);
@@ -45,6 +46,24 @@ function fixture(files: Record<string, string> = { 'SKILL.md': shortSkill }) {
 const refinement = (page: SkillCandidateReadPage) => ({ ...proposal, baseRevisionId: page.revisionId, baseSkillSha256: page.skillMdSha256, baseReadReceipt: page.reviewReceipt, refinementReason: 'Add the evidenced verification step.' });
 
 describe('bounded candidate review and refinement admission', () => {
+  it.each([
+    ['generated_duplicate_candidate', 'refine the existing candidate'],
+    ['generated_possible_duplicate', 'Review the existing candidate'],
+    ['refinement_tests_changed', 'Keep every existing verification case unchanged'],
+    ['learned_evaluation_required', 'Run the revision-bound skill tests'],
+    ['learned_evaluation_stale', 'Run the tests again'],
+  ])('explains stable owner refusal %s without arbitrary diagnostics', async (reason, guidance) => {
+    const { registry } = fixture(undefined, [], reason);
+    await expect(registry.propose(proposal, provenance)).rejects.toThrow(guidance);
+  });
+
+  it('only advertises evaluation with both real revision-bound operations', async () => {
+    for (const capabilities of [[], ['skill.evaluationBegin'], ['skill.evaluationComplete'], ['skill.evaluationBegin', 'skill.evaluationComplete']]) {
+      const { registry } = fixture(undefined, capabilities);
+      expect((await registry.report()).evaluation).toBe(capabilities.length === 2);
+    }
+  });
+
   it('keeps the nested Markdown schema strict and rejects executable or partial refinement input', () => {
     const valid = { ...proposal, references: [{ path: 'references/checks.md', content: ' Verify the result. ' }] };
     expect(normalizeSkillProposal(valid).references).toEqual([{ path: 'references/checks.md', content: 'Verify the result.' }]);
@@ -100,6 +119,34 @@ describe('bounded candidate review and refinement admission', () => {
     const imported = calls.find(call => call.op === 'skill.import')!;
     expect(imported.params).toMatchObject({ expectedBaseRevisionId: revisionId, expectedBaseSkillSha256: digest(content), learningProfileId: provenance.profileId, learningWorkspaceId: provenance.workspaceId });
     expect(calls.some(call => ['skill.approve', 'skill.activate', 'skill.review'].includes(call.op))).toBe(false);
+  });
+
+  it('discovers category and intent vocabulary without overflowing bounded review previews', async () => {
+    const categories = Array.from({ length: 8 }, (_, index) => `domain${index}.invoice`);
+    const intents = Array.from({ length: 16 }, (_, index) => `reconcile_invoice_${index}`);
+    const content = shortSkill.replace('\n---\n', `\ncategories: ${JSON.stringify(categories)}\nintents: ${JSON.stringify(intents)}\n---\n`);
+    const { registry } = fixture({ 'SKILL.md': content });
+    const result = await registry.reviewCandidates(provenance, { query: 'reconcile_invoice_15' });
+    expect(result.candidates).toHaveLength(1);
+    expect(result.candidates[0]?.categories).toHaveLength(2);
+    expect(result.candidates[0]?.intents).toHaveLength(4);
+    expect(result.truncated).toBe(true);
+    expect(JSON.stringify(result).length).toBeLessThanOrEqual(SKILL_REVIEW_OUTPUT_CHARS);
+  });
+
+  it('requires full fixture and manifest reads and retains existing references during refinement', async () => {
+    const files = { 'SKILL.md': shortSkill, 'TESTS.json': JSON.stringify({ schema: 'extalia.skill-verification.v1', cases: proposal.verificationCases }), 'extalia-skill.json': JSON.stringify({ categories: proposal.categories, intents: proposal.intents }), 'references/checks.md': 'Verify every result.' };
+    const { registry, calls } = fixture(files);
+    const page = await registry.readCandidate(provenance, { revisionId });
+    await registry.readCandidate(provenance, { revisionId, path: 'references/checks.md' });
+    await registry.readCandidate(provenance, { revisionId, path: 'extalia-skill.json' });
+    await expect(registry.propose(refinement(page), provenance)).rejects.toThrow(/test fixture and manifest/);
+    let testPage = await registry.readCandidate(provenance, { revisionId, path: 'TESTS.json', limit: 10 });
+    await expect(registry.propose(refinement(page), provenance)).rejects.toThrow(/test fixture and manifest/);
+    while (!testPage.readComplete) testPage = await registry.readCandidate(provenance, { revisionId, path: 'TESTS.json', offset: testPage.nextOffset! });
+    await expect(registry.propose(refinement(page), provenance)).rejects.toThrow(/Keep every existing Markdown reference/);
+    expect(calls.some(call => call.op === 'skill.import')).toBe(false);
+    await expect(registry.propose({ ...refinement(page), references: [{ path: 'references/checks.md', content: 'Verify every result and retain prior checks.' }] }, provenance)).resolves.toMatchObject({ activationPerformed: false });
   });
 
   it('binds receipts to the actual session, run, profile and workspace instead of a supplied model label', async () => {

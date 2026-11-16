@@ -13,8 +13,8 @@ export function GraphAppearanceControls({ t, value, onChange }: { t: Messages; v
       onChange={name => { if (name) onChange({ ...GRAPH_PRESETS[name] }); }}
       options={presets.map(name => ({ value: name, label: k.presets[name] }))} /></div>
     {([
-      ['nodeSize', k.nodeSize, .25, 2, .05], ['glow', k.glowStrength, 0, 2, .05],
-      ['linkOpacity', k.linkOpacity, .01, .8, .01], ['linkWidth', k.linkWidth, .25, 3, .05],
+      ['nodeSize', k.nodeSize, .25, 2, .05], ['labelSize', k.labelSize, 12, 24, 1], ['glow', k.glowStrength, 0, 2, .05],
+      ['linkOpacity', k.linkOpacity, 0, .8, .01], ['linkWidth', k.linkWidth, .25, 3, .05],
     ] as const).map(([key, label, min, max, step]) => <label key={key} className="graph-range"><span>{label}<output aria-hidden="true">{value[key].toFixed(2)}</output></span>
       <input aria-label={label} type="range" min={min} max={max} step={step} value={value[key]} onChange={event => onChange({ ...value, [key]: Number(event.target.value) })} />
     </label>)}

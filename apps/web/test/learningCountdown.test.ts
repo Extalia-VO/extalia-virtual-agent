@@ -125,7 +125,7 @@ describe('learning countdown notification', () => {
 
   it('hides completed and dismissed jobs and escapes profile names/errors as text', () => {
     expect(render(snapshot('completed'))).toBe('');
-    expect(render(snapshot(), 'en', { dismissed: ['job'] })).toBe('');
+    expect(render(snapshot('failed'), 'en', { dismissed: ['job'] })).toBe('');
     const value = snapshot(); value.jobs[0]!.profileName = '<img src=x onerror=alert(1)>';
     const html = render(value, 'en', { error: '<script>bad()</script>' });
     expect(html).toContain('&lt;img');
@@ -243,5 +243,16 @@ describe('learning countdown notification', () => {
     for (let i = 0; i < 128; i++) memory.record(`later-${i}`);
     expect(memory.has('receipt')).toBe(false);
     expect(memory.has('later-127')).toBe(true);
+  });
+});
+
+
+describe('separate artifact owners', () => {
+  it.each(['en', 'id'] as const)('labels a skill-only update separately from the one Knowledge update (%s)', language => {
+    const value = snapshot();
+    value.jobs.push({ ...value.jobs[0]!, id: 'knowledge', kind: 'knowledge-meeting' });
+    const html = render(value, language);
+    expect(html.split(MESSAGES[language].learningCountdown.knowledgeUpdate)).toHaveLength(2);
+    expect(html.split(MESSAGES[language].learningCountdown.skillLearning)).toHaveLength(2);
   });
 });

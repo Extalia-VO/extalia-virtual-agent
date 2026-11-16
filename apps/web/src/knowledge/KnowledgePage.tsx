@@ -14,6 +14,7 @@ import { VaultGraphView } from './vault/VaultGraphView';
 import { useKnowledgeEditing, type KnowledgeEditSlots } from './KnowledgeEdit';
 import { isWorkspaceKnowledgeBindingError, workspaceKnowledgeHost } from './workspaceKnowledgeHost';
 import { KnowledgeVaultContext } from './KnowledgeVaultContext';
+import { KnowledgeUpdateButton } from './KnowledgeUpdateButton';
 
 /**
  * Knowledge (W5): search the profile's vault index, read a note with clickable wikilinks, see its
@@ -252,6 +253,7 @@ export interface KnowledgeViewProps {
   language: string;
   setup?: ReactNode;
   context?: ReactNode;
+  headerActions?: ReactNode;
   blocked?: boolean | undefined;
   onRefresh?: () => void;
   status: Loaded<KnowledgeStatus>;
@@ -350,7 +352,7 @@ export function KnowledgeView(props: KnowledgeViewProps) {
   const k = t.knowledge;
   const graphMode = props.onScope && props.scope === 'vault';
   const header = <><header className="page-header">
-    <div className="knowledge-title-row"><h1>{k.title}</h1>{props.onRefresh && <button type="button" className="button small" onClick={props.onRefresh}>{k.refresh}</button>}</div>
+    <div className="knowledge-title-row"><h1>{k.title}</h1>{props.headerActions}{props.onRefresh && <button type="button" className="button small" onClick={props.onRefresh}>{k.refresh}</button>}</div>
     {graphMode ? <details className="knowledge-about"><summary>{k.about}</summary><p className="lead">{k.lead}</p></details> : <p className="lead">{k.lead}</p>}
   </header>{props.context}{props.setup && <details className="knowledge-vault-setup"><summary>{t.knowledgeVault.title}</summary>{props.setup}</details>}</>;
   if (status.error && !status.value) return <div className="page knowledge">{header}<section className="card"><p className="form-error" role="alert"><Icon name="alert" />{status.error}</p><p className="muted">{k.hostHelp}</p></section></div>;
@@ -577,7 +579,8 @@ function KnowledgeSession({ t, language, agents, picker, onVaultChanged, catalog
     ? { loading: status.loading, ...(status.value ? { value: status.value } : {}) } : status;
 
   return (
-    <KnowledgeView t={t} language={language} blocked={Boolean(blockedReason)} context={<><KnowledgeVaultContext t={t} workspaces={workspaces} workspaceId={workspaceId} onWorkspace={onWorkspace}
+    <KnowledgeView t={t} language={language} blocked={Boolean(blockedReason)}
+      headerActions={<KnowledgeUpdateButton t={t} agents={session.agents} workspaceId={workspaceId} disabled={Boolean(mutationBlockedReason) || syncing || vaultBusy || editing.scopeLocked} />} context={<><KnowledgeVaultContext t={t} workspaces={workspaces} workspaceId={workspaceId} onWorkspace={onWorkspace}
       catalog={scopeChanged ? session.catalog : catalog} profile={scopeChanged ? session.profile : profile} error={catalogError} loading={catalogLoading} scoped stale={scopeChanged} configurable={Boolean(workspaceId)} locked={editing.scopeLocked || syncing || vaultBusy || Boolean(blockedReason)}
       onRefresh={onCatalogRefresh} configuration={workspaceId ? <KnowledgeVaultSection t={t} agents={session.agents} picker={picker} compact policy={scopeChanged ? session.profile : profile} showProfiles={false} onChanged={onVaultChanged} onBusyChange={setVaultBusy} locked={editing.scopeLocked || syncing || Boolean(blockedReason)} /> : null} />
       {!workspaceId && <p className="note">{t.knowledgeContext.workspaceRequired}</p>}

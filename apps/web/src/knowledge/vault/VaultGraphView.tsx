@@ -96,12 +96,12 @@ function VaultGraphLoaded({ t, overview, selectedId, onOpen, onClose, notePanel,
   const [timeWindow, setTimeWindow] = useState<TimeWindow>('all');
   const [filters, setFilters] = useState<GraphFacetFilters>(() => ({ ...EMPTY_GRAPH_FILTERS }));
   const [appearance, setAppearance] = useState<GraphAppearance>(() => ({ ...GRAPH_PRESETS.nebula }));
-  const [dimensions, setDimensions] = useState<2 | 3>(3);
+  const [dimensions, setDimensions] = useState<2 | 3>(2);
   const [explore, setExplore] = useState(createGraphExploreState);
   const [exploreReadId, setExploreReadId] = useState<string | null>(null);
   // Keep the user's dimension preference intact during the temporary 3D tour.
   const effectiveDimensions = explore.enabled ? 3 : dimensions;
-  const [controlsOpen, setControlsOpen] = useState(() => typeof window !== 'undefined' && window.innerWidth >= 1000);
+  const [controlsOpen, setControlsOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const explorer = useRef<HTMLElement>(null);
   // Glass surfaces establish their own fixed containing block. Measure its actual
@@ -156,6 +156,8 @@ function VaultGraphLoaded({ t, overview, selectedId, onOpen, onClose, notePanel,
   const selectedNode = selected !== null && baseMask[selected] === 1 ? graph.nodes[selected]! : null;
   const selectedVisible = selected !== null && mask[selected] === 1;
   const rootTitle = focus.status === 'active' && focus.root !== null ? graph.nodes[focus.root]!.title : null;
+  // Closing the reader leaves the neighbourhood's anchor visually identifiable.
+  const renderSelection = selectedVisible ? selected : focus.status === 'active' ? focus.root : null;
   const focusSelected = () => {
     if (selectedVisible && selectedNode) {
       setFocusRoot({ nodeId: selectedNode.nodeId });
@@ -289,7 +291,7 @@ function VaultGraphLoaded({ t, overview, selectedId, onOpen, onClose, notePanel,
           options={COLOUR_MODES.map(mode => ({ value: mode, label: k.colourModes[mode] }))} /></div>
         <GraphAppearanceControls t={t} value={appearance} onChange={setAppearance} />
         <div className="vault-graph-toggles">
-          <button type="button" className="chip-button" aria-pressed={showLabels} onClick={() => setShowLabels(value => !value)}>{k.labels}</button>
+          <button type="button" className="chip-button" title={k.labelsHint} aria-pressed={showLabels} onClick={() => setShowLabels(value => !value)}>{k.labels}</button>
           <button type="button" className="chip-button" aria-pressed={showHalos} onClick={() => setShowHalos(value => !value)}>{k.halos}</button>
           <button type="button" className="chip-button" aria-pressed={returnToLayout} title={k.returnHint} onClick={() => setReturnToLayout(value => !value)}>{k.returnToLayout}</button>
           <button type="button" className="chip-button" title={k.restoreHint} onClick={() => setRestoreRevision(value => value + 1)}>{k.restoreLayout}</button>
@@ -305,7 +307,7 @@ function VaultGraphLoaded({ t, overview, selectedId, onOpen, onClose, notePanel,
         <p className="visually-hidden" role="status">{results ? (results.length ? k.matches(results.length) : k.noMatches(query.trim())) : ''}</p>
           <CanvasBoundary fallback={<p className="vault-graph-webgl">{k.webgl}</p>}>
             <Suspense fallback={<p className="vault-graph-webgl" role="status">{k.loading}</p>}>
-              <VaultGraphCanvas graph={graph} colours={colours.colours} mask={mask} selected={selected} highlight={results} activeResult={activeIndex}
+              <VaultGraphCanvas graph={graph} colours={colours.colours} mask={mask} selected={renderSelection} highlight={results} activeResult={activeIndex}
                 showLabels={showLabels} showHalos={showHalos} reducedMotion={reducedMotion} showFps={showFps}
                 appearance={appearance} dimensions={effectiveDimensions} cameraAction={cameraAction}
                 explore={explore.enabled ? { current: exploration.current, revision: explore.revision } : null}

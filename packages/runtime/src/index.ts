@@ -10,6 +10,7 @@ export * from './policy.js';
 export * from './prompt.js';
 export * from './providers/index.js';
 export * from './requestBudget.js';
+export * from './scheduleTool.js';
 export * from './usage.js';
 export * from './teamTool.js';
 export * from './tools.js';

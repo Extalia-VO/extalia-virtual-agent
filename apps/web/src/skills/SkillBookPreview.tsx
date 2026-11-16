@@ -36,7 +36,7 @@ export function useSkillBookPreview(scope: string, context?: object) {
   return { preview, id, onHover, onFocus, onPointerMove, onKeyDown, onBlur: () => controller.leave('focus'), clear: controller.clear };
 }
 
-export function SkillBookPreview({ preview, book, category, originLabel, id }: { preview: BookPreviewSnapshot; book: SkillBook; category: string; originLabel?: string; id: string }) {
+export function SkillBookPreview({ preview, book, category, originLabel, intentsLabel, id }: { preview: BookPreviewSnapshot; book: SkillBook; category: string; originLabel?: string; intentsLabel?: string; id: string }) {
   const element = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const tooltip = element.current;
@@ -45,8 +45,8 @@ export function SkillBookPreview({ preview, book, category, originLabel, id }: {
     const position = bookPreviewPosition(preview, { width, height }, { width: window.innerWidth, height: window.innerHeight });
     tooltip.style.transform = `translate3d(${position.x}px, ${position.y}px, 0)`;
     tooltip.style.visibility = 'visible';
-  }, [preview, book.title, category, originLabel]);
+  }, [preview, book.title, book.description, book.intents, category, originLabel]);
   return createPortal(<div ref={element} id={id} role="tooltip" aria-hidden={preview.exiting || undefined} data-exiting={preview.exiting} className="skill-book-preview" style={{ visibility: 'hidden' }}>
-    <span className="skill-preview-sigil" aria-hidden="true">✦</span><div><strong>{book.title}</strong><span>{category}</span>{originLabel && <span className="skill-origin-badge" data-origin={book.origin ?? book.source}>{originLabel}</span>}</div>
+    <span className="skill-preview-sigil" aria-hidden="true">✦</span><div><strong>{book.title}</strong><span>{category}</span><span className="skill-preview-description">{book.description}</span>{!!book.intents?.length && <span className="skill-preview-intents">{intentsLabel}: {book.intents.slice(0, 3).join(', ')}</span>}{originLabel && <span className="skill-origin-badge" data-origin={book.origin ?? book.source}>{originLabel}</span>}</div>
   </div>, document.body);
 }

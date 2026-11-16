@@ -1,3 +1,4 @@
+import { generatedSkillMetadata } from './generatedSkillFixtures.js';
 import { chmod, lstat, mkdir, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
@@ -18,6 +19,7 @@ const packageId = 'validate-record';
 const referencePath = 'references/order.md';
 const instructions = (corrected: boolean) => `## When to Use\nUse before saving records.\n\n## Procedure\n${corrected ? '1. Validate input.\n2. Save valid records.' : '1. Save records.\n2. Validate input.'}\n\n## Pitfalls\nDo not assume input validity.\n\n## Verification\nReject invalid input. See [ordering](references/order.md).`;
 const proposal = (corrected = false): SkillProposalInput => ({ name: packageId,
+  ...generatedSkillMetadata(),
   description: 'Use when validating and saving records.', instructions: instructions(corrected),
   references: [{ path: referencePath, content: corrected ? '# Ordering\nValidate before saving; rejected input creates no record.' : '# Ordering\nThe initial draft saves before validating.' }] });
 const response = (name: string, input: Record<string, unknown>, call: number): ModelResult => ({
@@ -96,13 +98,24 @@ describe.skipIf(!HAS_DAEMON || process.platform === 'win32')('generated skill re
         }
         if (call === 3) {
           base = toolData<SkillCandidateReadPage>(request, 'skill_candidate_read');
-          expect(base).toMatchObject({ path: 'SKILL.md', readComplete: true, untrusted: true, referencePaths: [referencePath] });
+          expect(base).toMatchObject({ path: 'SKILL.md', readComplete: true, untrusted: true });
+          expect(new Set(base.referencePaths)).toEqual(new Set([referencePath, 'TESTS.json', 'extalia-skill.json']));
           expect(base.content).toContain('1. Save records.');
           return response('skill_candidate_read', { revisionId: base.revisionId, path: referencePath }, call);
         }
-        const reference = toolData<SkillCandidateReadPage>(request, 'skill_candidate_read');
-        expect(reference).toMatchObject({ path: referencePath, readComplete: true, untrusted: true });
-        expect(reference.content).toContain('saves before validating');
+        if (call === 4) {
+          const reference = toolData<SkillCandidateReadPage>(request, 'skill_candidate_read');
+          expect(reference).toMatchObject({ path: referencePath, readComplete: true, untrusted: true });
+          expect(reference.content).toContain('saves before validating');
+          return response('skill_candidate_read', { revisionId: base!.revisionId, path: 'TESTS.json' }, call);
+        }
+        if (call === 5) {
+          const tests = toolData<SkillCandidateReadPage>(request, 'skill_candidate_read');
+          expect(tests).toMatchObject({ path: 'TESTS.json', readComplete: true });
+          expect(tests.content).toContain('invalid-input');
+          return response('skill_candidate_read', { revisionId: base!.revisionId, path: 'extalia-skill.json' }, call);
+        }
+        expect(toolData<SkillCandidateReadPage>(request, 'skill_candidate_read')).toMatchObject({ path: 'extalia-skill.json', readComplete: true });
         return response('submit_learning', { title: 'Correct validation ordering', lesson: 'Invalid inputs must be rejected before writes.', evidenceIds: [evidenceId],
           skill: { ...proposal(true), baseRevisionId: base!.revisionId, baseSkillSha256: base!.skillMdSha256,
             baseReadReceipt: base!.reviewReceipt, refinementReason: 'The validation evidence requires rejecting invalid input before saving.' } }, call);
@@ -112,7 +125,7 @@ describe.skipIf(!HAS_DAEMON || process.platform === 'win32')('generated skill re
       expect(revisedId).not.toBe(initialId);
       expect(second.proposeSkill).toHaveBeenCalledTimes(1);
       expect(second.proposeSkill.mock.calls[0]![1]).toEqual(second.source);
-      expect(second.requests).toHaveLength(4);
+      expect(second.requests).toHaveLength(6);
       const third = await f.run('third', (request, call) => {
         if (call === 1) return response('skill_candidate_list', { query: packageId }, call);
         if (call === 2) {
@@ -143,7 +156,7 @@ describe.skipIf(!HAS_DAEMON || process.platform === 'win32')('generated skill re
       expect(old.instructions).toBe(base!.content);
       expect(old.revision.skillMdSha256).toBe(base!.sha256);
       const details = await f.registry.inspect(revisedId);
-      expect(details.files.map(file => file.path).sort()).toEqual(['PROVENANCE.md', 'SKILL.md', referencePath]);
+      expect(details.files.map(file => file.path).sort()).toEqual(['PROVENANCE.md', 'SKILL.md', 'TESTS.json', 'extalia-skill.json', referencePath]);
       expect(details.approvals).toEqual([]);
       const client = await f.daemon.connect();
       const lineage = await client.request('skill.reviewRead', { revisionId: revisedId, path: 'PROVENANCE.md', profileId: third.source.profileId!, workspaceId: third.source.workspaceId });

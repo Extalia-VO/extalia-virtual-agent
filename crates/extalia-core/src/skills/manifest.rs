@@ -270,10 +270,11 @@ pub fn resolve(
             None
         }
     };
-    let markdown_only = tree
-        .files
-        .iter()
-        .all(|file| file.path == MANIFEST_FILE || file.path.to_ascii_lowercase().ends_with(".md"));
+    let markdown_only = tree.files.iter().all(|file| {
+        file.path == MANIFEST_FILE
+            || file.path == super::verification::TESTS_FILE
+            || file.path.to_ascii_lowercase().ends_with(".md")
+    });
     let has_executable = tree.files.iter().any(|file| file.executable);
     let parsed = match manifest {
         Some(bytes) => match parse_manifest(bytes) {

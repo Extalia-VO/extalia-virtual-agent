@@ -28,20 +28,25 @@ const worker = (overrides: Partial<WorkerItem> = {}): WorkerItem => ({ kind: 'wo
 function harness(language: 'en' | 'id' = 'en', initial = worker()) {
   const onDecide = vi.fn(async () => undefined);
   const props: Parameters<typeof TranscriptView>[0] = { t: MESSAGES[language], language, items: [initial], approvalsEnabled: true, onDecide };
-  const draw = (id = initial.id) => {
+  const group = (id = initial.id) => {
     hooks.index = 0;
-    const transcript = TranscriptView(props);
-    const runs = nodes(transcript).filter(node => typeof node.type === 'function' && 'onSetOpenKeys' in node.props && 'language' in node.props);
-    for (const run of runs) {
-      const runTree = invoke(run);
-      const card = nodes(runTree).find(node => (node.props.item as WorkerItem | undefined)?.id === id);
-      if (card) return { tree: invoke(card), scope: nodes(runTree).find(node => node.type === HistoricalMessageFileScope) };
-    }
-    throw new Error(`Missing worker ${id}`);
+    const runs = nodes(TranscriptView(props)).filter(node => typeof node.type === 'function' && 'onSetOpenKeys' in node.props && 'language' in node.props);
+    const run = runs.find(node => (node.props.items as WorkerItem[]).some(item => item.id === id));
+    if (!run) throw new Error(`Missing worker group ${id}`);
+    return invoke(run);
+  };
+  const groupToggle = (id?: string) => nodes(group(id)).find(node => node.props.className === 'tool-run-head worker-group-head')!;
+  const clickGroup = (id?: string) => (groupToggle(id).props.onClick as () => void)();
+  const draw = (id = initial.id) => {
+    if (!groupToggle(id).props['aria-expanded']) clickGroup(id);
+    const runTree = group(id);
+    const card = nodes(runTree).find(node => (node.props.item as WorkerItem | undefined)?.id === id);
+    if (!card) throw new Error(`Missing worker ${id}`);
+    return { tree: invoke(card), scope: nodes(runTree).find(node => node.type === HistoricalMessageFileScope) };
   };
   const toggle = (id?: string) => nodes(draw(id).tree).find(node => node.type === 'button' && node.props.className === 'worker-preview-toggle')!;
   const click = (id?: string) => (toggle(id).props.onClick as () => void)();
-  return { props, draw, toggle, click, onDecide };
+  return { props, draw, toggle, click, onDecide, group, groupToggle, clickGroup };
 }
 
 beforeEach(() => { hooks.index = 0; hooks.states = []; hooks.ids = 0; });
@@ -125,5 +130,50 @@ describe('worker transcript previews', () => {
     const nested = nodes(tree).find(node => node.type === TranscriptView)!;
     expect(nested.props.previewAttachment).toBe(h.props.previewAttachment);
     expect((nested.props.items as TranscriptItem[])[0]!.fileScope).toBeNull();
+  });
+});
+
+
+describe('compact team activity groups', () => {
+  it.each(['en', 'id'] as const)('starts folded with truthful mixed-status counts and no mounted worker details (%s)', language => {
+    const h = harness(language), t = MESSAGES[language];
+    h.props.items = [worker(), worker({ id: 'completed', status: 'ok', state: 'idle' }), worker({ id: 'failed', status: 'failed', state: 'blocked' }), worker({ id: 'stopped', status: 'stopped', state: 'idle' })];
+    const tree = h.group();
+    expect(h.groupToggle().props['aria-expanded']).toBe(false);
+    expect(text(tree)).toContain(t.tool.workerGroup(4));
+    for (const status of Object.values(t.tool.status)) expect(text(tree)).toContain(`1 ${status}`);
+    expect(text(tree)).not.toContain('Review the source');
+    expect(nodes(tree).some(node => node.type === 'ul')).toBe(false);
+    h.clickGroup();
+    const expanded = h.group(), list = nodes(expanded).find(node => node.type === 'ul')!;
+    const summary = nodes(expanded).find(node => node.props.className === 'tool-run-head worker-group-head')!;
+    expect(summary.props).toMatchObject({ 'aria-expanded': true, 'aria-controls': list.props.id });
+    expect(nodes(list).filter(node => node.type === 'li')).toHaveLength(4);
+    expect(h.draw().scope?.props.scope).toBeUndefined();
+  });
+
+  it('preserves explicit grouping choices while invocations grow, finish, split and rejoin', () => {
+    const h = harness(); h.clickGroup();
+    const earlier = worker({ id: 'earlier', subagentId: 'another' });
+    h.props.items = [earlier, worker({ summary: 'Current progress' })];
+    expect(h.groupToggle().props['aria-expanded']).toBe(true);
+    h.clickGroup();
+    h.props.items = [earlier, worker({ status: 'ok', state: 'idle' }), worker({ id: 'appended' })];
+    expect(h.groupToggle().props['aria-expanded']).toBe(false);
+    h.props.items = [earlier, { kind: 'assistant', id: 'boundary', text: 'Lead update', streaming: true }, worker()];
+    expect(h.groupToggle('earlier').props['aria-expanded']).toBe(false);
+    expect(h.groupToggle().props['aria-expanded']).toBe(false);
+    h.clickGroup();
+    h.props.items = [worker({ status: 'ok', state: 'idle' }), worker({ id: 'appended' })];
+    expect(h.groupToggle().props['aria-expanded']).toBe(true);
+    h.props.items = [worker({ id: 'fresh', subagentId: 'reviewer' })];
+    expect(h.groupToggle('fresh').props['aria-expanded']).toBe(false);
+  });
+
+  it('retains a worker preview choice when the enclosing team is closed and reopened', () => {
+    const h = harness(); h.click();
+    expect(h.toggle().props['aria-expanded']).toBe(true);
+    h.clickGroup(); expect(h.groupToggle().props['aria-expanded']).toBe(false);
+    h.clickGroup(); expect(h.toggle().props['aria-expanded']).toBe(true);
   });
 });

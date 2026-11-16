@@ -155,13 +155,31 @@ function ToolRun({ t, items, previewAttachment, openStates, onSetOpenKeys }: {
   );
 }
 
-/** Consecutive workers (subagents) as one card with a row each. */
+/** Fold a delegation run without letting streamed status changes reopen its details. */
 function WorkerRun({ t, items, language, previewAttachment, openStates, onSetOpenKeys, onOpenWorker, selectedWorkerId }: {
   t: Messages; items: Extract<TranscriptItem, { kind: 'worker' }>[]; language: string; previewAttachment?: AttachmentPreviewLoader;
   openStates: ReadonlyMap<string, boolean>; onSetOpenKeys: SetToolOpenKeys;
   onOpenWorker?: (worker: WorkerItem) => void; selectedWorkerId?: string;
 }) {
-  return <ul className="tool-run-list worker-run">{items.map(item => <li key={item.id} data-transcript-id={item.id} className="tool-row"><HistoricalMessageFileScope scope={item.fileScope}><WorkerCard t={t} item={item} language={language} previewAttachment={previewAttachment} openStates={openStates} onSetOpenKeys={onSetOpenKeys} onOpenWorker={onOpenWorker} selectedWorkerId={selectedWorkerId} /></HistoricalMessageFileScope></li>)}</ul>;
+  const listId = useId();
+  const keys = items.map(item => ({ id: `worker-group:${item.id}` }));
+  const open = resolveToolGroupOpen(keys, openStates, false);
+  const statuses = (['running', 'failed', 'stopped', 'ok'] as const)
+    .map(status => ({ status, count: items.filter(item => item.status === status).length }))
+    .filter(({ count }) => count > 0);
+  return <div className="tool-run worker-group">
+    <button type="button" className="tool-run-head worker-group-head" aria-expanded={open} aria-controls={listId}
+      onClick={() => onSetOpenKeys(keys.map(key => key.id), !open)}>
+      <Icon name="users" />
+      <span className="worker-group-title">{t.tool.workerGroup(items.length)}</span>
+      <span className="worker-group-statuses">{statuses.map(({ status, count }) => <span key={status} className={`tool-status ${status}`}>
+        {status === 'running' && <span className="pulse" aria-hidden="true" />}
+        <span>{count} {t.tool.status[status]}</span>
+      </span>)}</span>
+      <Icon name="chevron" className="tool-run-chevron" />
+    </button>
+    {open && <ul id={listId} className="tool-run-list worker-run">{items.map(item => <li key={item.id} data-transcript-id={item.id} className="tool-row"><HistoricalMessageFileScope scope={item.fileScope}><WorkerCard t={t} item={item} language={language} previewAttachment={previewAttachment} openStates={openStates} onSetOpenKeys={onSetOpenKeys} onOpenWorker={onOpenWorker} selectedWorkerId={selectedWorkerId} /></HistoricalMessageFileScope></li>)}</ul>}
+  </div>;
 }
 
 const ignorePreviewDecision = async () => undefined;

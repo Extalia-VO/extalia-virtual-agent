@@ -50,18 +50,7 @@ fn activate_generated(
         .inspect(id, inspector, POLICY_VERSION, NOW)
         .unwrap();
     registry.validate(id, &ctx, NOW).unwrap();
-    registry
-        .record_evaluation(
-            id,
-            EvaluationResult::Passed,
-            None,
-            Some("evidence:review"),
-            NOW,
-        )
-        .unwrap();
-    registry
-        .decide(id, &ctx, &ProfileGrants::default(), NOW)
-        .unwrap();
+    super::evaluation::pass(registry, id, inspector);
     let revision = registry.revision(id).unwrap();
     let approval = registry
         .approve(
@@ -161,10 +150,15 @@ fn unknown_or_unbound_provenance_and_non_markdown_packages_are_not_review_data()
     {
         let mut registry =
             SkillRegistry::new(&mut store, &dir.data(), profile(&format!("case-{index}")));
-        let id = registry
-            .import(folder, origin, &recorded, NOW)
-            .unwrap()
-            .revision_id;
+        let imported = registry.import(folder, origin, &recorded, NOW);
+        if index == 0 {
+            assert!(matches!(
+                imported,
+                Err(SkillError::Denied("candidate_provenance_unavailable"))
+            ));
+            continue;
+        }
+        let id = imported.unwrap().revision_id;
         assert!(
             registry
                 .read_candidate_file(&id, "SKILL.md", "profile-one", "workspace-one")
@@ -211,7 +205,8 @@ fn omitting_the_base_cannot_bypass_refinement_but_identical_tree_retries_stay_id
 fn refinement_is_immutable_preserves_active_authority_and_rejects_a_stale_writer() {
     let dir = TempDir::new();
     let mut store = open(&dir);
-    let first = generated(&dir, "first", SKILL_MD, "session-one");
+    let complete = super::evaluation::body("demo", "Do the thing.");
+    let first = generated(&dir, "first", &complete, "session-one");
     let second_body =
         format!("{SKILL_MD}\nVerify the expected result and record a failing case.\n");
     let second = generated(&dir, "second", &second_body, "session-two");
@@ -221,6 +216,10 @@ fn refinement_is_immutable_preserves_active_authority_and_rejects_a_stale_writer
         &format!("{SKILL_MD}\nA concurrent writer.\n"),
         "session-three",
     );
+    for (index, folder) in [&first, &second, &third].into_iter().enumerate() {
+        fs::write(folder.join("extalia-skill.json"),json!({"schema":"extalia.skill-manifest.v1","id":"demo","version":format!("0.0.{}",index+1),"categories":["development.testing"],"intents":["verify_result"],"risk_class":"declarative"}).to_string()).unwrap();
+        fs::write(folder.join("TESTS.json"),json!({"schema":"extalia.skill-verification.v1","cases":[{"id":"verify","input":"Check a synthetic result.","expectedIncludes":["VERIFIED"]}]}).to_string()).unwrap();
+    }
     let mut registry = SkillRegistry::new(&mut store, &dir.data(), profile("default"));
     let id = registry
         .import(&first, Origin::Generated, &source("session-one"), NOW)
@@ -277,7 +276,7 @@ fn refinement_is_immutable_preserves_active_authority_and_rejects_a_stale_writer
             .read_revision_file(&id, "SKILL.md", &PolicyContext::current(&inspector), NOW)
             .unwrap()
             .bytes,
-        SKILL_MD.as_bytes()
+        complete.as_bytes()
     );
     // Same timestamp proves the compare uses durable import order, not clocks.
     assert!(matches!(

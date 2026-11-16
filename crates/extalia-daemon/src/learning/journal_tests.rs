@@ -62,7 +62,7 @@ fn model(calls: Vec<Value>) -> Value {
     json!({"kind":"model","result":{"text":"","stop":"tool_use","toolCalls":calls,"usage":{"inputTokens":20,"outputTokens":5}}})
 }
 fn submit() -> Value {
-    json!({"id":"submit-1","name":"submit_learning","input":{"title":"Retained finding","lesson":"Recheck the documented result before reuse.","evidenceIds":["source-1"],"skill":{"name":"check-results","description":"Use when checking a procedure result.","instructions":"## When to Use\nCheck a procedure result.\n## Procedure\nInspect current evidence.\n## Pitfalls\nPast outcomes may change.\n## Verification\nRecheck the actual result."}}})
+    json!({"id":"submit-1","name":"submit_learning","input":{"title":"Retained finding","lesson":"Recheck the documented result before reuse.","evidenceIds":["source-1"],"skill":{"name":"check-results","description":"Use when checking a procedure result.","categories":["development.testing"],"intents":["verify_result"],"verificationCases":[{"id":"verify","input":"Verify a synthetic result.","expectedIncludes":["verified"]}],"instructions":"## When to Use\nCheck a procedure result.\n## Procedure\nInspect current evidence.\n## Pitfalls\nPast outcomes may change.\n## Verification\nRecheck the actual result."}}})
 }
 fn knowledge(sha: &str) -> Value {
     json!({"status":"found","path":"Guides/Prior.md","sha256":sha,"profileId":"default","workspaceId":"workspace","body":"# Prior\nPrior finding.","offset":0,"truncated":false,"nativeTruncated":false})

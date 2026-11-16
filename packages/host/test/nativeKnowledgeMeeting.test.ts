@@ -1,8 +1,16 @@
+import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import type { TeamMember } from '@extalia/core';
 import type { EventBody } from '@extalia/protocol';
 import { checkRequestBudget, ProviderError, type AnyTool, type ModelRequest, type ModelResult, type NativeMeetingMinutes } from '@extalia/runtime';
 import { describe, expect, it, vi } from 'vitest';
 import { runNativeKnowledgeMeeting, type NativeKnowledgeMeetingOptions } from '../src/nativeKnowledgeMeeting.js';
+import { DaemonSidecar } from '../src/daemon/index.js';
+import { KnowledgeService } from '../src/knowledge.js';
+import { pinMeetingNotes } from '../src/meetingNotes.js';
+import { RustLearningBackend } from '../src/rustLearning.js';
+import { DAEMON_BINARY, HAS_DAEMON } from './daemonBackend.js';
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -145,6 +153,9 @@ describe('native knowledge meeting execution', () => {
     for (const projection of [h.requests, h.events, h.saved]) {
       const text = JSON.stringify(projection);
       expect(text).not.toContain('synthetic-credential-');
+    }
+    for (const projection of [h.requests, h.events]) {
+      const text = JSON.stringify(projection);
       expect(text).toContain('[redacted]');
       expect(text).toContain('Decision: reject invalid input before saving.');
     }
@@ -163,15 +174,66 @@ describe('native knowledge meeting execution', () => {
     expect(h.events.some(event => event.type === 'meeting.completed')).toBe(false);
     expect(h.requests).toHaveLength(2);
     expect(h.saved[0]?.contributions).toHaveLength(2);
-    expect(h.saved[0]?.topic.length).toBeLessThanOrEqual(2_000);
-    expect(h.saved[0]?.topic).toContain('Source session: session-one; completed run: run-one.');
-    expect(h.saved[0]?.topic).toContain('Latest verified finding: the project configuration is valid.');
+    expect(h.saved[0]?.topic).toBe('Project knowledge review');
+    const started = h.events.find(event => event.type === 'meeting.started');
+    expect(started?.type === 'meeting.started' && started.topic).toContain('Source session: session-one; completed run: run-one.');
+    expect(started?.type === 'meeting.started' && started.topic).toContain('Latest verified finding: the project configuration is valid.');
+    for (const request of h.requests) {
+      expect(JSON.stringify(request.messages)).toContain('Source session: session-one; completed run: run-one.');
+      expect(JSON.stringify(request.messages)).toContain('Latest verified finding: the project configuration is valid.');
+      expect(JSON.stringify(request)).not.toContain('[[wikilinks]]');
+    }
     for (const request of h.requests) expect(request.tools.map(tool => tool.name)).toEqual(['knowledge_search', 'knowledge_read', 'skill_read']);
     expect(h.saved[0]?.contributions.every(contribution => contribution.round === 1)).toBe(true);
     persisted.resolve('Meetings/workspace-one/acknowledged.md');
     expect(await running).toEqual({ outcome: 'completed', knowledge: 'saved', meetingId: h.saved[0]!.meetingId, notePath: 'Meetings/workspace-one/acknowledged.md' });
     expect(h.workers.size).toBe(0);
     expect(h.events.at(-1)).toMatchObject({ type: 'meeting.completed', outcome: 'completed', notePath: 'Meetings/workspace-one/acknowledged.md' });
+  });
+
+  it('preserves contribution links and the meeting identity when exporting the concise title', async () => {
+    const finding = 'Retain the procedure from [[Guides/Validation.md|Validation]].';
+    const h = harness(async () => reply(finding), 1);
+    const result = await runNativeKnowledgeMeeting(h.options);
+    const contribution = h.events.find(event => event.type === 'meeting.contribution');
+    const started = h.events.find(event => event.type === 'meeting.started');
+    expect(h.saved[0]).toMatchObject({ topic: 'Project knowledge review', meetingId: result.meetingId,
+      contributions: [{ agentId: 'member-0', round: 1, text: finding }] });
+    expect(contribution).toMatchObject({ meetingId: result.meetingId, round: 1, text: finding });
+    expect(started).toMatchObject({ meetingId: result.meetingId, participants: h.saved[0]!.participants.map(participant => participant.agentId) });
+  });
+
+  it.skipIf(!HAS_DAEMON || process.platform === 'win32')('indexes the real exported review title without an instructional wikilink edge', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'extalia-review-title-'));
+    const data = path.join(root, 'data'), vault = path.join(root, 'vault');
+    await Promise.all([mkdir(data), mkdir(vault)]);
+    const daemon = new DaemonSidecar({ binary: () => DAEMON_BINARY, dataDirectory: data, profile: 'default',
+      vaultRoot: () => vault, clientVersion: 'test', env: {}, log: () => undefined });
+    let writer: Awaited<ReturnType<typeof pinMeetingNotes>> | undefined;
+    try {
+      const backend = new RustLearningBackend(() => daemon.connect());
+      writer = await pinMeetingNotes({ backend, context: { workspaceId: 'workspace-one', sessionId: 'session-one' },
+        resolve: async () => ({ root: vault, profileId: 'default', revision: 'review-one' }) });
+      const h = harness(async () => reply('The supplied result reports successful input validation.'), 1);
+      h.options.onMinutes = writer;
+      const result = await runNativeKnowledgeMeeting(h.options);
+      expect(result).toMatchObject({ outcome: 'completed', knowledge: 'saved' });
+      const markdown = await readFile(path.join(vault, result.notePath!), 'utf8');
+      expect(markdown).toContain('\n# Project knowledge review\n');
+      expect(markdown).toContain('session: "session-one"');
+      expect(markdown).toContain(`meeting_id: "${result.meetingId}"`);
+      expect(markdown).toContain('The supplied result reports successful input validation.');
+      expect(markdown).not.toContain('[[wikilinks]]');
+      const knowledge = new KnowledgeService({ daemon, autoSyncAfterMs: Number.POSITIVE_INFINITY });
+      await knowledge.sync();
+      const note = await knowledge.node({ path: result.notePath! });
+      expect(note?.node.title).toBe('Project knowledge review');
+      expect((await knowledge.links(note!.node.nodeId)).links).toEqual([]);
+    } finally {
+      await writer?.close();
+      await daemon.stop();
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   it('forwards fresh participant preparation before budgeting without widening indexed read tools', async () => {

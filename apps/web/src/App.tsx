@@ -133,6 +133,8 @@ export function App({ platform }: { platform: Platform }) {
   const [missionFocus, setMissionFocus] = useState<{ id?: string; token: number } | null>(null);
   const [selection, setSelectionState] = useState<ChatSelection>({});
   const [officeLearningTarget, setOfficeLearningTarget] = useState<HTMLDivElement | null>(null);
+  const [officeLearningCompactTarget, setOfficeLearningCompactTarget] = useState<HTMLDivElement | null>(null);
+  const [contentLearningCompactTarget, setContentLearningCompactTarget] = useState<HTMLDivElement | null>(null);
   const [chatLearningTarget, setChatLearningTarget] = useState<HTMLDivElement | null>(null);
   const [settingsLearningTarget, setSettingsLearningTarget] = useState<HTMLDivElement | null>(null);
   const inputFocusSequence = useRef(0);
@@ -276,9 +278,10 @@ export function App({ platform }: { platform: Platform }) {
           </header>
           <ObservedInputAlert t={t} />
           <main className={`content ${activePage === 'chat' ? 'content-chat' : activePage === 'office' ? 'content-office' : activePage === 'knowledge' ? 'content-knowledge' : ''}`} key={activePage}>
+            <div ref={setContentLearningCompactTarget} className="learning-compact-slot content-learning-compact-slot" />
             <PageLoadBoundary t={t}>
             {activePage === 'office' && <OfficePage key={sourceContext} t={t} language={preferences.language} agents={agents} hostDisconnected={Boolean(host.error)} state={hostState} onState={host.apply} workspaceId={chatWorkspaceId} inputFocus={currentInputFocus} onInputFocused={inputFocused}
-              onWorkspace={(workspaceId, sessionId) => setSelection({ workspaceId, sessionId })} onLearningTarget={setOfficeLearningTarget}
+              onWorkspace={(workspaceId, sessionId) => setSelection({ workspaceId, sessionId })} onLearningTarget={setOfficeLearningTarget} onLearningCompactTarget={setOfficeLearningCompactTarget}
               onOpenSession={session => { setSelection({ workspaceId: session.workspaceId, sessionId: session.id }); setPage(session.control === 'observed' ? 'observe' : 'chat'); }}
               onOpenMissions={workflow === 'managed' && hostState?.workspaces.length ? session => { if (session) setSelection({ workspaceId: session.workspaceId, sessionId: session.id }); setPage('missions'); } : undefined}
               onStartChat={() => setPage(!agents ? 'start' : workflow === 'observe' ? 'observe' : 'chat')}
@@ -334,7 +337,8 @@ export function App({ platform }: { platform: Platform }) {
         <div className="toast-region" role="status" aria-live="polite">
           {toast && <p key={toast.id} className="toast"><Icon name="check" />{toast.text}</p>}
         </div>
-        {agents && hostState && <LearningCountdown key={sourceContext} agents={agents} t={t} target={activePage === 'office' ? officeLearningTarget : activePage === 'chat' ? chatLearningTarget : activePage === 'settings' ? settingsLearningTarget : null} embedded={activePage === 'chat' || activePage === 'settings' || undefined} />}
+        {agents && hostState && <LearningCountdown key={sourceContext} agents={agents} t={t} dismissalScope={sourceContext} target={activePage === 'office' ? officeLearningTarget : activePage === 'chat' ? chatLearningTarget : activePage === 'settings' ? settingsLearningTarget : null}
+          compactTarget={activePage === 'office' ? officeLearningCompactTarget ?? contentLearningCompactTarget : contentLearningCompactTarget} embedded={activePage === 'chat' || activePage === 'settings' || undefined} />}
       </div>
     );
   }

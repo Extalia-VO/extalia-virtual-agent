@@ -61,3 +61,38 @@
 @media (prefers-reduced-motion: reduce) {
   .learning-countdown-receipt[data-flash] { animation: none; }
 }
+
+.learning-countdown.is-compact {
+  top: auto;
+  left: auto;
+  right: 24px; bottom: 24px;
+  width: min(300px, calc(100vw - 48px));
+  max-height: min(240px, 32dvh);
+  padding: 10px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+}
+.learning-compact-slot { z-index: 70; min-width: 0; pointer-events: none; }
+.content-learning-compact-slot { position: sticky; top: var(--topbar-offset, 56px); flex: none; width: 100%; height: 0; align-self: stretch; }
+.content-chat > .content-learning-compact-slot { top: 0; }
+.office-learning-compact-slot { position: absolute; top: 44px; left: 16px; right: 16px; bottom: calc(var(--office-left-reserve, 56px) + 12px); }
+.learning-compact-slot > .learning-countdown.is-compact {
+  position: absolute; top: 12px; right: 0; left: auto; bottom: auto;
+  width: min(300px, 100%); margin: 0; pointer-events: auto; overscroll-behavior: contain;
+}
+.office-learning-compact-slot > .learning-countdown.is-compact {
+  top: 0; left: 0; right: auto; max-height: min(240px, 100%);
+}
+.learning-countdown.is-compact .learning-countdown-heading { font-size: 12px; }
+.learning-countdown.is-compact .learning-countdown-job { padding-top: 7px; margin-top: 7px; }
+.learning-countdown.is-compact .learning-countdown-status { margin: 3px 0 0; }
+.learning-countdown.is-compact .learning-countdown-profile { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.learning-countdown.is-compact .learning-countdown-result { margin: 4px 0; }
+.learning-countdown.is-compact .learning-countdown-quiet { display: none; }
+.learning-countdown.is-compact .learning-countdown-receipt { margin-top: 7px; padding: 7px; }
+@media (max-width: 600px) {
+  .learning-countdown.is-compact { right: 12px; bottom: 12px; width: min(300px, calc(100vw - 24px)); }
+  .office-learning-compact-slot { left: 12px; right: 12px; }
+}
+
+.learning-countdown-kind { display: block; color: var(--muted); font-size: 11px; font-weight: 500; }

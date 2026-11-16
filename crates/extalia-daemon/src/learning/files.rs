@@ -518,11 +518,44 @@ impl Learning {
             entries: Vec::new(),
         };
         let skill = format!(
-            "---\nname: {}\ndescription: {}\n---\n{}\n",
+            "---\nname: {}\ndescription: {}\ncategories: {}\nintents: {}\n---\n{}\n",
             s(&proposal, "name"),
             s(&proposal, "description"),
+            proposal["categories"],
+            proposal["intents"],
             s(&proposal, "instructions")
         );
+        let cases = extalia_core::skills::verification::cases(&proposal["verificationCases"])
+            .map_err(|_| refuse("invalid_skill_quality"))?;
+        let tests = extalia_core::skills::verification::canonical(&cases);
+        let logical = hash(
+            json!([
+                proposal["name"],
+                proposal["description"],
+                proposal["instructions"],
+                proposal["categories"],
+                proposal["intents"],
+                proposal["references"],
+                tests
+            ])
+            .to_string(),
+        );
+        let manifest = json!({"schema":"extalia.skill-manifest.v1","id":proposal["name"],"version":format!("0.0.0+learned.{}",&logical[..32]),
+            "categories":proposal["categories"],"intents":proposal["intents"],"risk_class":"declarative","permissions":json!({"filesystem_read":[],"filesystem_write":[],"network":false,"terminal":false,"secrets":false})});
+        for (path, body) in [
+            (
+                extalia_core::skills::manifest::MANIFEST_FILE,
+                manifest.to_string(),
+            ),
+            (extalia_core::skills::verification::TESTS_FILE, tests),
+        ] {
+            stage.entries.push((
+                Arc::new(stage.folder.try_clone().map_err(io_fail)?),
+                path.into(),
+                false,
+            ));
+            create(&stage.folder, path, body.as_bytes())?.ok_or(refuse("stage_conflict"))?;
+        }
         let mut receipt = provenance;
         receipt["schema"] = "extalia.skill-proposal.v1".into();
         receipt["kind"] = "model-generated-draft".into();

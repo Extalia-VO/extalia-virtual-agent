@@ -26,6 +26,7 @@ import { PromptSuggestions } from '../chat/PromptSuggestions';
 import { projectTranscript, type WorkerItem } from '../chat/transcript';
 import { ObservedSubagentList, ObservedSubagentPreview, observedSubagentRows } from '../observe/ObservedSubagents';
 import { TranscriptView } from '../chat/TranscriptView';
+import { ResourceUsagePanel } from '../chat/ResourceUsagePanel';
 import { ConversationTabs } from '../chat/ChangedFilesView';
 import { projectChangedFiles } from '../chat/changedFiles';
 import { attachmentPreviewLoader } from '../chat/attachments';
@@ -303,7 +304,9 @@ export function ObserverPage({ t, language, agents, state, initialSessionId, onS
               <button type="button" aria-pressed={!childVisible} onClick={openTools}><Icon name="settings" />{t.characterConsole.tools}</button>
               {!!subagents.length && <button type="button" aria-pressed={childVisible} onClick={() => { const worker = selectedWorker ?? subagents.find(({ worker }) => worker.status === 'running')?.worker ?? subagents[0]?.worker; if (worker) openWorker(worker); }}><Icon name="users" />{t.observer.subagents}<span className="badge">{subagents.length}</span></button>}
             </div>
+            <div className="observe-inspector-body">
             <ObservedSubagentList t={t} rows={subagents} selectedWorkerId={childVisible ? selectedWorker.id : undefined} onOpenWorker={openWorker} />
+            <ResourceUsagePanel key={`usage:${selected.id}`} primaryName={selected.agentName || (observation?.sourceId ? sourceLabel(observation.sourceId) : undefined)} live={Boolean(observation?.watching && observation.status === 'watching' && !eventsLoading && !eventError)} events={events} sessionId={selected.id} scopeKey={JSON.stringify([state.profile?.id, state.dataDirectory, selected.workspaceId])} t={t} language={language} />
             {childVisible ? <ObservedSubagentPreview t={t} language={language} worker={selectedWorker} onOpenWorker={openWorker} previewAttachment={previewAttachment} /> : <div className="observe-inspector-tools">
               {sessionFacts}
               {memoryWorkspace && !memoryWorkspace.providerProfileId && <p className="muted small">{t.observer.captureOnly}</p>}
@@ -311,6 +314,7 @@ export function ObserverPage({ t, language, agents, state, initialSessionId, onS
               {toolsSeen.has(selected.id) && (controlHub ? <ObservedSessionTools key={`tools:${selected.id}`} t={t} agents={agents} session={selected} disabled={busy} nativeControls={nativeControls} /> : nativeControls)}
               <p className="muted small observe-tools-note"><Icon name="shield" />{t.observer.note}</p>
             </div>}
+            </div>
           </aside>
         </MessageFileProvider>}
       </div>

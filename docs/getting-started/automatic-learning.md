@@ -78,12 +78,14 @@ problem before a curator model call. Extalia does not guess another account.
 
 The source task finishes before a **60-second idle countdown** begins. The shared
 notification shows the project or global source, session, profile and remaining
-time. In the Office it appears above the main prompt; it also remains available
-on other pages. **Run now** advances an armed deadline; **Snooze 10 min** chooses
+time. Pending decisions appear above the main prompt; accepted and running
+work appears as a compact top-left notification, including on other pages. **Run now** advances an armed deadline; **Snooze 10 min** chooses
 a longer idle interval. With no click, learning starts after the deadline when
 conflicting work has settled.
 
-Conflicting work restarts the full chosen delay after it settles. A waiting
+Conflicting work restarts the full chosen delay after it settles. For an isolated
+vault, unrelated local persistence holds dispatch until writes settle without
+restarting elapsed quiet time. A waiting
 notice shows the selected interval without an active clock. Run now cannot
 override active work or its queued successor. A unique isolated workspace with
 a unique non-default vault can learn alongside known activity in other profiles.
@@ -122,6 +124,14 @@ can take longer than the analysis allowance. Learning failure does not change a
 successful source prompt into a failed task.
 
 ## Saved Knowledge and skill candidates
+
+Closing a finished learning notice remembers that dismissal in this browser's
+local storage, scoped to the host profile and data directory. Navigation and
+reload do not reopen that same result. New jobs and newly saved skill revisions
+can still notify. Dismissal does not delete the underlying notes, candidates or
+job history. Clearing browser storage clears this preference; Web and Desktop
+do not share browser storage. If browser storage is unavailable, dismissal lasts
+for the current mounted view only.
 
 Notes are immutable Markdown at `Learning/<workspace-id>/<run-id>.md` inside the
 selected profile vault. Global Observe uses `global-observe` as that path's
@@ -183,6 +193,52 @@ once for these relation types. This does not edit vault notes. An older Extalia
 binary cannot open the newer derived index; return to a newer binary or follow
 the index rebuild workflow when downgrading.
 
+## Skill categories, usage and completeness
+
+New generated skills persist one to eight category slugs and one to sixteen task
+intent identifiers in their manifest and verified `SKILL.md` metadata. Grimoire
+shows the declared categories and intents, supports category filtering and shows
+the description. Native uses the metadata with the current task to select
+relevant active, workspace-approved skills. Intents are identifiers such as
+`validate_records`; natural-language usage guidance belongs in **When to Use**.
+
+Generated proposals must contain populated **When to Use**, **Procedure**,
+**Pitfalls** and **Verification** sections. Headings inside code fences and empty
+sections do not satisfy this check. Required metadata, bounded references and
+one to six declarative verification cases are checked independently by Rust.
+Legacy packages without these fields are shown as incomplete or unchecked;
+existing active authority is not silently changed.
+
+## Testing a candidate before replacement
+
+Open the candidate's testing panel in Grimoire, choose a saved Native workspace
+with Extalia Skills and a configured model, and run the evaluation. This explicit
+action uses that connection for bounded inference. It does not grant tools,
+execute scripts, read current project files or activate the candidate.
+
+Rust pins the candidate and current active baseline. The host asks Native to
+answer the same synthetic case inputs with each procedure separately, without
+tools, conversation history or the expected answers. Rust checks the resulting
+answers against hidden required/forbidden substrings and records the outcome
+against the exact trees and baseline. Missing, refused, truncated or malformed
+answers are insufficient evidence. Failed tests keep the old active version and
+leave the candidate available for correction.
+
+The panel shows completeness, case counts, candidate and baseline results, and
+stale evidence. A passing candidate still needs the existing scanner and user
+approval/activation flow. Changing the candidate or active baseline invalidates
+pending promotion evidence; tests must run again. Approval and activation check
+this independently in the backend. Rerunning a pending candidate's tests also
+invalidates its previous approvals, so a new passing run needs fresh approval.
+Previously activated versions retain the
+existing explicit rollback workflow.
+
+Passing means the stored synthetic declarative suite passed. It does not prove
+all real tasks succeed, that external tools were exercised, or that every change
+is an improvement. Candidate-authored tests remain review material. There is no
+automatic promotion or general-purpose executable sandbox. An older host without
+the evaluation capability must report it as unavailable.
+
 ## Improving an existing generated skill
 
 Curators have a separate read-only catalog of generated candidates, including
@@ -191,13 +247,20 @@ and workspace. These reads are review material; they do not load an executable
 skill. A draft from a different workspace or unknown provenance is not silently
 admitted to automatic refinement.
 
-Before proposing a revision, the curator reads the complete current `SKILL.md`
-and existing Markdown references through bounded pages. Extalia binds the proposal
+Before proposing a revision, the curator reads the complete current `SKILL.md`,
+manifest, `TESTS.json` and existing Markdown references through bounded pages. Extalia binds the proposal
 to the actual read receipt, base revision and hash. A concurrent newer revision
 requires another review. Identical procedure/reference content produces no new
 revision. A change creates an immutable candidate and preserves the previous
 active revision until the normal inspection and approval workflow selects a
 replacement.
+
+Stable names and identical logical content avoid empty revisions. Equivalent
+procedure/reference content under another generated name is refused, and
+conservative intent/procedure overlap checks require review of a possible
+duplicate instead of silently creating or merging a class. This is not universal
+semantic deduplication. Refinements retain prior reference paths and verification
+cases/assertions; new regression cases may be added within the suite bound.
 
 Generated candidates can include up to four Markdown references under
 `references/`, limited to 16 KiB each and 48 KiB together. Executable scripts are
@@ -291,3 +354,67 @@ See [ADR 0087](../adr/0087-bounded-self-learning-and-artifact-receipts.md),
 implementation, Hermes comparison, acceptance evidence and remaining work.
 The operational capture/recall and Native compaction extension is documented in
 [ADR 0089](../adr/0089-operational-work-memory-and-context-reuse.md).
+
+## Manual Knowledge updates
+
+Choose a workspace on Knowledge and click **Update knowledge**. Extalia uses a
+saved Native session with an enabled team and the workspace's selected Knowledge
+vault. The source build starts after ten quiet seconds; conflicting foreground
+work postpones that interval, and working team members are excluded. A manual
+request can run even when automatic learning or meeting-minute exports are
+disabled. Repeated requests coalesce into one pending update for the workspace.
+
+The build reads eligible Markdown from the registered primary project folder,
+including nested documentation and existing source vault folders. Hidden folders,
+credentials, dependencies, symlinks and the destination vault are excluded. Rust
+captures complete bounded UTF-8 source files and hashes; Native reviewers receive
+bounded excerpts from every captured source. Native selects topics and exact
+source evidence IDs; the host expands those IDs into unchanged source quotations
+instead of asking the model to transcribe text. Rust independently checks the quotations and source freshness
+before publishing. Source text remains untrusted evidence, including any embedded
+instructions. A source's declared canon, draft or legacy status remains attributed
+to that source; a build does not independently establish its factual truth.
+
+Native extraction uses at most nine primary batches and twelve model requests
+overall, reserving room for bounded quotation correction or one retry of a failed
+batch through the next approved idle route. Each request has a 120-second
+allowance and a compact topic/quotation limit. The build allows ten minutes, or
+fifteen minutes for inventories of at least 128 sources; retries do not reset that
+budget. Cancellation still waits for entered operations to physically settle.
+
+Generated Markdown lives under `Projects/<workspace-id>/Knowledge/`:
+
+- `Overview.md` links to folder maps and read coverage.
+- `Maps/` groups source notes and the topics supported by them.
+- `Topics/` contains neutral topic labels, exact checked quotations and source links.
+- `Sources/` contains hashed source snapshots, declared status, source relationships
+  and links back to relevant topics. Large sources use linked pages.
+- `Coverage.md` reports exclusions and unresolved or ambiguous original references.
+
+This is an ordinary Obsidian-compatible vault. Full vault-relative wikilinks with
+display labels avoid duplicate-basename ambiguity. Only unique, captured source
+targets become graph edges; missing original references stay in coverage rather
+than creating phantom notes. Exact byte duplicates share one source snapshot and
+retain their original paths as provenance. Different source versions remain
+separate. These conventions follow Obsidian's [internal links](https://obsidian.md/help/links),
+[properties](https://obsidian.md/help/properties) and [graph](https://obsidian.md/help/plugins/graph)
+documentation; `.obsidian` settings are not changed.
+
+An unchanged source fingerprint and matching generated-note hashes reuse the
+existing publication without another Native extraction request. Changed sources
+update stable managed paths; user-modified output is retained as a conflict.
+Removed source files and previously generated notes are not silently deleted.
+The receipt reports actual source coverage, unique contents, exact duplicates,
+created/updated/unchanged notes, topic count, conflicts and indexing. Bounded topic
+quotation omissions are counted separately from complete source snapshots.
+Full source reads, sources represented through bounded Native input, truncated
+model excerpts and sources ultimately cited are separate counts.
+
+Pending automatic decisions appear above the prompt. Once accepted or started,
+progress moves to a compact top-left notification. Project Knowledge builds,
+automatic reviews and independent skill learning have separate labels. Saved
+automatic reviews use a concise title; their source session and meeting identifiers
+link to the full recorded review.
+Completed team work has one Knowledge writer;
+if meeting-note consent is unavailable, ordinary permitted note curation remains
+available. A saved note and its indexing acknowledgement are reported separately.

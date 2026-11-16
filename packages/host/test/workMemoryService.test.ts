@@ -1,3 +1,4 @@
+import { completeSkillInstructions, generatedSkillMetadata } from './generatedSkillFixtures.js';
 import { existsSync } from 'node:fs';
 import { appendFile, chmod, lstat, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -350,8 +351,8 @@ describe.skipIf(!HAS_DAEMON || process.platform === 'win32')('operational work m
         expect(system(body)).toContain(marker);
         expect(toolNames(body)).toEqual(expect.arrayContaining(['work_memory_search', 'work_memory_read', 'submit_learning']));
         return response({ tool: 'submit_learning', args: { title: 'Cobalt parser validation', lesson: corrected, evidenceIds: submittedIds,
-          skill: { name: 'cobalt-parser-validation', description: 'Validate the cobalt parser before saving.',
-            instructions: 'Read the current parser rules. Validate the input before saving parsed data. Report validation failures and the verified checksum window.' } } }, call);
+          skill: { ...generatedSkillMetadata(), name: 'cobalt-parser-validation', description: 'Validate the cobalt parser before saving.',
+            instructions: completeSkillInstructions('Read the current parser rules. Validate the input before saving parsed data. Report validation failures and the verified checksum window.', 'Use when validating a parser before saving its output.') } } }, call);
       }
       if (prompt(body).startsWith('Inspect') && !body.messages.some(message => message.role === 'tool'))
         return response({ tool: 'read_file', args: { path: 'parser.txt' } }, call);

@@ -119,6 +119,17 @@ configuration backups and an undo command; it does not silently inject hooks at
 startup. Source-app restart or hook approval may still be required. See
 [connection safety and verification](docs/architecture/agent-app-connections.md).
 
+## Schedule recurring work
+
+Create a Schedule from a suggested task, the simple editor, or an ordinary
+Extalia Native prompt. Keep an existing conversation or choose **New session**;
+Advanced settings expose cron, intervals and team/model choices.
+
+When Desktop or the Bridge returns after downtime, eligible jobs catch up once.
+A verified connection outage keeps one pending occurrence across restart, with
+bounded retry frequency. Work that has already produced a response or used a
+tool is not automatically replayed. See [Schedules](docs/getting-started/schedules.md).
+
 ## Skills, Knowledge and memory
 
 ### Browse your Grimoire

@@ -8,9 +8,9 @@
  * Otherwise the report says `mode: 'legacy'` and W0 project-skill consent keeps deciding.
  */
 import {
-  DAEMON_SKILL_APPROVAL_DEFAULT_TTL_MS, DAEMON_SKILL_LIMITS, SKILL_LIST_CURSOR_PATTERN, SKILL_PACKAGE_ID_PATTERN, SKILL_REVIEW_DECISIONS, SKILL_REVISION_ID_PATTERN,
+  DAEMON_SKILL_APPROVAL_DEFAULT_TTL_MS, DAEMON_SKILL_LIMITS, SKILL_LIST_CURSOR_PATTERN, SKILL_PACKAGE_ID_PATTERN, SKILL_REVIEW_DECISIONS, SKILL_REVISION_ID_PATTERN, SKILL_WORKSPACE_ID_PATTERN,
   type SkillActivationResult, type SkillApprovalRecord, type SkillConsentInput as SkillConsentRecord, type SkillFileEntry, type SkillInspectionRecord,
-  type SkillImportOrigin, type SkillReviewDecision, type SkillRevisionState, type SkillRevisionSummary, type SkillScannerReport, type SkillScannerStatus, type SkillStateEvent,
+  type SkillImportOrigin, type SkillReviewDecision, type SkillRevisionState, type SkillRevisionSummary, type SkillScannerReport, type SkillScannerStatus, type SkillStateEvent, type SkillLearnedQuality,
 } from '@extalia/protocol';
 import { SKILL_NAME_PATTERN } from './skills.js';
 
@@ -39,6 +39,8 @@ export const MAX_SKILL_REVIEW_NOTE = DAEMON_SKILL_LIMITS.note;
 export type SkillRegistryMode = 'legacy' | 'registry';
 
 export interface SkillRegistryReport {
+  /** Revision-bound synthetic declarative evaluation, never approval or activation. */
+  evaluation?: boolean;
   mode: SkillRegistryMode;
   /**
    * `ready`: the daemon answered. `unavailable`: registry mode, but the daemon cannot answer (or
@@ -84,6 +86,7 @@ export interface SkillRegistryPage {
 }
 
 export interface SkillRevisionDetails {
+  learnedQuality?: SkillLearnedQuality;
   revision: SkillRevisionSummary;
   /** Canonical `extalia-skill.json` (or the inferred manifest) as JSON text. Package text: show it as plain text. */
   manifest: string;
@@ -113,6 +116,13 @@ export type SkillImportSource =
 
 /** The digests the UI showed; the daemon refuses a stale one (`digest_mismatch`). */
 export interface SkillApprovalInput { revisionId: string; treeSha256: string; permissionDigest: string }
+export interface SkillEvaluationInput { revisionId: string; workspaceId: string }
+export function normalizeSkillEvaluationInput(value: unknown): SkillEvaluationInput {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Choose a skill candidate and Native workspace to evaluate.');
+  const input = value as Record<string, unknown>;
+  if (Object.keys(input).some(key => key !== 'revisionId' && key !== 'workspaceId') || typeof input.workspaceId !== 'string' || !SKILL_WORKSPACE_ID_PATTERN.test(input.workspaceId)) throw new Error('Choose a valid Native workspace for skill evaluation.');
+  return { revisionId: normalizeSkillRevisionId(input.revisionId), workspaceId: input.workspaceId };
+}
 export interface SkillReviewInput { revisionId: string; treeSha256: string; decision: SkillReviewDecision; note?: string }
 
 /** The outcome of one Security Center action, with the fresh report. */

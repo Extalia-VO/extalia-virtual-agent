@@ -12,7 +12,7 @@ fn begin() -> Value {
     json!({"profileId":"default","revision":"r1","workspaceId":"workspace","sessionId":"session","runId":"run","promptSha256":"a".repeat(64),"policy":{"enabled":true,"skills":true,"notes":true},"evidence":[{"toolCallId":"source-1","name":"knowledge_read","content":"Verified page content","isError":false}],"tools":[]})
 }
 fn submitted() -> Value {
-    json!({"kind":"model","result":{"text":"","stop":"tool_use","toolCalls":[{"id":"submit-1","name":"submit_learning","input":{"title":"Finding","lesson":"Reusable grounded lesson","evidenceIds":["source-1"],"skill":{"name":"sample-skill","description":"Safe description","instructions":"Read the context first."}}}]}})
+    json!({"kind":"model","result":{"text":"","stop":"tool_use","toolCalls":[{"id":"submit-1","name":"submit_learning","input":{"title":"Finding","lesson":"Reusable grounded lesson","evidenceIds":["source-1"],"skill":{"name":"sample-skill","description":"Safe description","categories":["development.testing"],"intents":["verify_result"],"verificationCases":[{"id":"verify","input":"Verify a synthetic result.","expectedIncludes":["verified"]}],"instructions":"## When to Use\nVerify a synthetic result.\n## Procedure\nRead the context first.\n## Pitfalls\nDo not assume past outcomes.\n## Verification\nCheck the actual result."}}}]}})
 }
 fn temp() -> PathBuf {
     let p = std::env::temp_dir().join(format!("extalia-learning-{}", uid()));
@@ -68,13 +68,13 @@ fn correlated_job_owns_submission_and_legacy_hashes() {
     assert_eq!(
         ready["contentSha256"],
         hash(
-            "{\"lesson\":\"Reusable grounded lesson\",\"skill\":{\"name\":\"sample-skill\",\"description\":\"Safe description\",\"instructions\":\"Read the context first.\"}}"
+            "{\"lesson\":\"Reusable grounded lesson\",\"skill\":{\"name\":\"sample-skill\",\"description\":\"Safe description\",\"instructions\":\"## When to Use\\nVerify a synthetic result.\\n## Procedure\\nRead the context first.\\n## Pitfalls\\nDo not assume past outcomes.\\n## Verification\\nCheck the actual result.\",\"categories\":[\"development.testing\"],\"intents\":[\"verify_result\"],\"verificationCases\":[{\"expectedIncludes\":[\"verified\"],\"id\":\"verify\",\"input\":\"Verify a synthetic result.\"}]}}"
         )
     );
     assert_eq!(
         ready["skillSha256"],
         hash(
-            "skill:{\"name\":\"sample-skill\",\"description\":\"Safe description\",\"instructions\":\"Read the context first.\"}"
+            "skill:{\"name\":\"sample-skill\",\"description\":\"Safe description\",\"instructions\":\"## When to Use\\nVerify a synthetic result.\\n## Procedure\\nRead the context first.\\n## Pitfalls\\nDo not assume past outcomes.\\n## Verification\\nCheck the actual result.\",\"categories\":[\"development.testing\"],\"intents\":[\"verify_result\"],\"verificationCases\":[{\"expectedIncludes\":[\"verified\"],\"id\":\"verify\",\"input\":\"Verify a synthetic result.\"}]}"
         )
     );
     assert!(
@@ -349,7 +349,7 @@ fn generated_stage_is_in_fixed_inbox_and_cleanup_does_not_activate() {
     let stage = run(
         &mut owner,
         "skill.stage",
-        json!({"proposal":{"name":"sample-skill","description":"Safe description","instructions":" Read first. "},"provenance":{"sessionId":"session","workspaceId":"workspace","promptSha256":"a".repeat(64)}}),
+        json!({"proposal":{"name":"sample-skill","description":"Safe description","categories":["development.testing"],"intents":["verify_result"],"verificationCases":[{"id":"verify","input":"Verify a synthetic result.","expectedIncludes":["verified"]}],"instructions":" ## When to Use\nVerify a synthetic result.\n## Procedure\nRead first.\n## Pitfalls\nDo not assume past outcomes.\n## Verification\nCheck the actual result. "},"provenance":{"sessionId":"session","workspaceId":"workspace","promptSha256":"a".repeat(64)}}),
     );
     let folder = root
         .join(if cfg!(unix) {
@@ -360,7 +360,7 @@ fn generated_stage_is_in_fixed_inbox_and_cleanup_does_not_activate() {
         .join(s(&stage, "path"));
     assert_eq!(
         std::fs::read_to_string(folder.join("SKILL.md")).unwrap(),
-        "---\nname: sample-skill\ndescription: Safe description\n---\nRead first.\n"
+        "---\nname: sample-skill\ndescription: Safe description\ncategories: [\"development.testing\"]\nintents: [\"verify_result\"]\n---\n## When to Use\nVerify a synthetic result.\n## Procedure\nRead first.\n## Pitfalls\nDo not assume past outcomes.\n## Verification\nCheck the actual result.\n"
     );
     assert!(
         std::fs::read_to_string(folder.join("PROVENANCE.md"))

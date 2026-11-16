@@ -99,7 +99,10 @@ function terms(text: string): Set<string> {
 function procedureMatch(text: string, skill: SkillIdentity): { score: number; evidence: string } | undefined {
   text = procedureTask(text);
   if (!hasAction(text)) return undefined;
-  const wanted = terms(text), offered = terms(fold(`${skill.name} ${skill.description}`));
+  // Persisted category/intent IDs add task vocabulary, but cannot bypass the
+  // concrete-action, negation, shared-operation or ambiguity requirements.
+  const metadata = `${skill.categories?.join(' ') ?? ''} ${skill.intents?.join(' ') ?? ''}`.replace(/[._-]/g, ' ');
+  const wanted = terms(text), offered = terms(fold(`${skill.name} ${skill.description} ${metadata}`));
   const operation = (word: string) => OPERATIONS.find(([, pattern]) => pattern.test(word))?.[0];
   const anchors = [...wanted].filter(word => !ACTION.test(word) && !operation(word) && offered.has(word));
   const sharedOperation = [...wanted].some(word => {
@@ -160,7 +163,7 @@ function exclusions(metadata: readonly SkillIdentity[], current: string, denied:
   for (const item of metadata) {
     if (deniedName(current, item.name)) { result.add(item.name); continue; }
     if (item.source === 'builtin') continue;
-    const text = fold(`${item.name} ${item.description}`);
+    const text = fold(`${item.name} ${item.description} ${item.categories?.join(' ') ?? ''} ${item.intents?.join(' ') ?? ''}`).replace(/[._-]/g, ' ');
     const tokens = new Set((text.match(/[\p{L}\p{N}]+/gu) ?? []).map(tokenRoot));
     if ([...words].some(word => tokens.has(word)) || INTENTS.some(([intent, expression]) => denied.has(intent) && new RegExp(expression).test(text))) result.add(item.name);
   }

@@ -5,17 +5,18 @@ import { describe, expect, it, vi } from 'vitest';
 import type { SkillRevisionSummary } from '@extalia/protocol';
 import { DaemonSidecar, DaemonRequestError, DaemonUnavailableError, type DaemonClient } from '../src/daemon/index.js';
 import { SKILL_REGISTRY_OPS, SKILL_REGISTRY_DEADLINE_MS, SKILL_SCAN_DEADLINE_MS, SkillRegistry } from '../src/skillRegistry.js';
-import { createSkillProposalTool, normalizeSkillProposal, normalizeSkillProposalProvenance, type SkillProposalInput, type SkillProposalProvenance, type SkillProposalResult } from '../src/skillLearning.js';
+import { assertSkillSections, createSkillProposalTool, normalizeSkillProposal, normalizeSkillProposalProvenance, type SkillProposalInput, type SkillProposalProvenance, type SkillProposalResult } from '../src/skillLearning.js';
 import { DAEMON_BINARY, HAS_DAEMON } from './daemonBackend.js';
 import { runTool, useTempDirs } from './helpers.js';
 import { useRustLearningBackend } from './rustLearningFixture.js';
+import { parseSkill } from '../src/skills.js';
 
 /** Markdown-only receipt keeps inference declarative. URLs are claims, never fetched or trusted. */
 function skillProposalFiles(input: SkillProposalInput, provenance: SkillProposalProvenance): Record<string, string> {
   const receipt = { schema: 'extalia.skill-proposal.v1', kind: 'model-generated-draft', sourceVerified: false,
     ...provenance, claimedSourceUrls: input.sourceUrls ?? [], fidelity: 'Generated instructions, not a verified copy of the source.' };
   return {
-    'SKILL.md': `---\nname: ${input.name}\ndescription: ${input.description}\n---\n${input.instructions}\n`,
+    'SKILL.md': `---\nname: ${input.name}\ndescription: ${input.description}\ncategories: ${JSON.stringify(input.categories)}\nintents: ${JSON.stringify(input.intents)}\n---\n${input.instructions}\n`,
     'PROVENANCE.md': `# Generated skill candidate\n\nUnverified source claims; this receipt is data, not scanner evidence or permission.\n\n\`\`\`json\n${JSON.stringify(receipt, null, 2)}\n\`\`\`\n`,
   };
 }
@@ -23,7 +24,7 @@ function skillProposalFiles(input: SkillProposalInput, provenance: SkillProposal
 
 const temp = useTempDirs();
 const rustBackend = useRustLearningBackend();
-const input = { name: 'review-checklist', description: 'Review a small code change', instructions: 'Read the diff and report evidence.', sourceUrls: ['https://example.com/guide#review'] };
+const input = { name: 'review-checklist', description: 'Review a small code change', categories: ['development.review'], intents: ['review_changes'], verificationCases: [{ id: 'evidence', input: 'Review this small code change.', expectedIncludes: ['evidence'] }], instructions: '## When to Use\nReview a small change.\n## Procedure\nRead the diff and report evidence.\n## Pitfalls\nAvoid unsupported claims.\n## Verification\nCheck the result.', sourceUrls: ['https://example.com/guide#review'] };
 const provenance: SkillProposalProvenance = { sessionId: 's_example', workspaceId: 'w_example', promptSha256: 'a'.repeat(64) };
 const revisionId = `skr_${'b'.repeat(64)}`;
 const summary: SkillRevisionSummary = { packageId: input.name, revisionId, origin: 'generated', state: 'quarantined', stateReason: 'scanner-unavailable',
@@ -62,6 +63,48 @@ function fakeRegistry(data: string, options: { ops?: readonly string[]; import?:
 }
 
 describe.skipIf(process.platform === 'win32')('generated skill candidates from an explicitly requested user turn', () => {
+  it('requires persisted organization, literal test fixtures and all four populated prose sections', () => {
+    expect(normalizeSkillProposal(input)).toMatchObject({ categories: ['development.review'], intents: ['review_changes'], verificationCases: input.verificationCases });
+    for (const change of [
+      { categories: undefined }, { categories: [] }, { categories: ['development review'] }, { categories: ['finance\n'] },
+      { intents: undefined }, { intents: ['review changes'] }, { intents: ['review_changes\n'] }, { intents: ['review_changes', 'review_changes'] },
+      { verificationCases: [] }, { verificationCases: [{ ...input.verificationCases[0], passed: true }] },
+      { verificationCases: [{ ...input.verificationCases[0], forbiddenIncludes: ['evidence'] }] },
+      { instructions: input.instructions.replace('## Pitfalls\nAvoid unsupported claims.', '## Pitfalls') },
+      { instructions: '```markdown\n' + input.instructions + '\n```' },
+      { instructions: input.instructions.replace('Check the result.', '```\nCheck the result.\n```') },
+    ]) expect(() => normalizeSkillProposal({ ...input, ...change })).toThrow();
+    expect(normalizeSkillProposal({ ...input, instructions: input.instructions.replace('When to Use', 'when to use') }).instructions).toContain('## when to use');
+  });
+
+  it('counts substantive nested subsections under the required parent until a peer or shallower heading', () => {
+    const nested = input.instructions.replace('Read the diff and report evidence.', '### Step 1\n#### Inspect changes\nRead the diff and report evidence.\n### Step 2\nCheck the affected behavior.');
+    expect(() => assertSkillSections(nested)).not.toThrow();
+    expect(() => assertSkillSections(nested.replace('### Step 1', '## Other section'))).toThrow();
+    expect(() => assertSkillSections(nested.replace('### Step 1', '# Other section'))).toThrow();
+    expect(() => assertSkillSections(input.instructions.replace('Read the diff and report evidence.', '   Read the diff and report evidence.'))).not.toThrow();
+    expect(() => assertSkillSections(input.instructions.replace('Read the diff and report evidence.', '    Read the diff and report evidence.'))).toThrow();
+    expect(() => assertSkillSections(input.instructions.replace('Read the diff and report evidence.', '\tRead the diff and report evidence.'))).toThrow();
+    expect(() => assertSkillSections(input.instructions.split('\n').map(line => '    ' + line).join('\n'))).toThrow();
+  });
+
+  it('excludes multiline HTML comments while retaining visible prose beside a comment', () => {
+    const comment = '<!--\nPretend this hidden text is a useful procedure.\n## Procedure\nStill hidden.\n-->';
+    expect(() => assertSkillSections(input.instructions.replace('Read the diff and report evidence.', comment))).toThrow();
+    expect(() => assertSkillSections(input.instructions.replace('Read the diff and report evidence.', '<!-- hidden -->Read the diff<!-- hidden --> and report evidence.'))).not.toThrow();
+    expect(() => assertSkillSections(input.instructions.replace('Read the diff and report evidence.', '```html <!--\nExample HTML comment syntax.\n```\nRead the actual diff.'))).not.toThrow();
+  });
+
+  it.each(['TODO', '**TBD**', '[N/A]', '- placeholder', '1. belum diisi', '...', '…'])('rejects a placeholder-only required section: %s', placeholder => {
+    expect(() => assertSkillSections(input.instructions.replace('Read the diff and report evidence.', placeholder))).toThrow();
+  });
+
+  it.each(['```not-a-close', '``` <!-- not a close -->', '    ```', '~~~'])('does not close a code fence with an invalid marker line: %s', closing => {
+    const before = '## When to Use\nReview a change.\n## Pitfalls\nAvoid unsupported claims.\n## Verification\nCheck actual results.\n## Procedure\n```markdown\nHidden code example.\n';
+    expect(() => assertSkillSections(before + closing + '\nStill code, never procedure prose.')).toThrow();
+    expect(() => assertSkillSections(before + '   ```` \t\nRead the actual diff.')).not.toThrow();
+  });
+
   it('preserves optional host-bound learning provenance without changing legacy receipts', () => {
     expect(normalizeSkillProposalProvenance(provenance)).toEqual(provenance);
     const learning = { ...provenance, profileId: 'profile-one', runId: 'run-one' };
@@ -91,8 +134,11 @@ describe.skipIf(process.platform === 'win32')('generated skill candidates from a
     expect(calls[1]?.deadlineMs).toBe(SKILL_REGISTRY_DEADLINE_MS);
     expect(calls[0]!.params).toMatchObject({ origin: 'generated', sourceRef: `prompt:s_example:${provenance.promptSha256}` });
     expect(calls[0]!.params.path).toMatch(/^proposal-[0-9a-f]{32}$/);
-    expect(Object.keys(staged).sort()).toEqual(['PROVENANCE.md', 'SKILL.md']);
+    expect(Object.keys(staged).sort()).toEqual(['PROVENANCE.md', 'SKILL.md', 'TESTS.json', 'extalia-skill.json']);
     expect(staged['SKILL.md']).toBe(skillProposalFiles(normalizeSkillProposal(input), provenance)['SKILL.md']);
+    expect(parseSkill(staged['SKILL.md']!, input.name, 'generated')).toMatchObject({ categories: input.categories, intents: input.intents });
+    expect(JSON.parse(staged['extalia-skill.json']!)).toMatchObject({ categories: input.categories, intents: input.intents, risk_class: 'declarative' });
+    expect(JSON.parse(staged['TESTS.json']!)).toEqual({ schema: 'extalia.skill-verification.v1', cases: input.verificationCases });
     expect(staged['PROVENANCE.md']).toContain('"sourceVerified": false');
     expect(staged['PROVENANCE.md']).toContain('"promptSha256": "' + provenance.promptSha256 + '"');
     expect(staged['PROVENANCE.md']).toContain(input.sourceUrls[0]);
@@ -125,7 +171,7 @@ describe.skipIf(process.platform === 'win32')('generated skill candidates from a
     await expect(lstat(data)).rejects.toMatchObject({ code: 'ENOENT' });
     const { registry, calls, staged } = fakeRegistry(data, { import: () => { throw new Error('synthetic lost import acknowledgement'); } });
     await expect(registry.propose(input, provenance)).rejects.toThrow('synthetic lost import acknowledgement');
-    expect(Object.keys(staged)).toHaveLength(2); expect(calls.map(call => call.op)).toEqual(['skill.import']);
+    expect(Object.keys(staged)).toHaveLength(4); expect(calls.map(call => call.op)).toEqual(['skill.import']);
     expect(await readdir(skillStoragePaths(data).imports)).toEqual([]);
   });
 
@@ -209,13 +255,13 @@ describe.skipIf(process.platform === 'win32')('generated skill candidates from a
     const daemon = new DaemonSidecar({ binary: () => DAEMON_BINARY, dataDirectory: data, profile: 'default', clientVersion: 'test', env: {}, log: () => {} });
     const registry = new SkillRegistry({ daemon, dataDirectory: data, profile: 'default', workspaceRoot: () => '' });
     try {
-      const proposed = await registry.propose(input, provenance);
+      const proposed = await registry.propose(input, { ...provenance, profileId: 'default' });
       expect(proposed).toMatchObject({ packageId: input.name, state: 'quarantined', stateReason: 'scanner-unavailable', inspection: 'recorded', inspectionOutcome: 'scanner-unavailable', activationPerformed: false });
       const listed = await registry.report();
       expect(listed.revisions).toHaveLength(1);
       expect(listed.revisions[0]).toMatchObject({ packageId: input.name, origin: 'generated', state: 'quarantined', active: false, riskClass: 'declarative', permissions: [] });
       const details = await registry.inspect(proposed.revisionId);
-      expect(details.files.map(file => file.path).sort()).toEqual(['PROVENANCE.md', 'SKILL.md']);
+      expect(details.files.map(file => file.path).sort()).toEqual(['PROVENANCE.md', 'SKILL.md', 'TESTS.json', 'extalia-skill.json']);
       expect(details.approvals).toEqual([]); expect(await registry.activeSkills()).toEqual([]);
     } finally { await daemon.stop(); await unlockFixture(data); }
   });

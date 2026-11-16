@@ -1,3 +1,4 @@
+import { completeSkillInstructions, generatedSkillMetadata } from './generatedSkillFixtures.js';
 import { skillStoragePaths } from '../src/skillStorage.js';
 import { chmod, lstat, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -41,22 +42,25 @@ describe.skipIf(!HAS_DAEMON || process.platform === 'win32')('shared skills and 
             expect(listed.candidates).toHaveLength(1);
             return reply(requests.length, 'skill_candidate_read', { revisionId: listed.candidates[0]!.revisionId });
           }
-          const last = JSON.parse(results.at(-1)!.content!) as SkillCandidateReadPage;
-          if (last.path === 'SKILL.md') {
-            if (!last.readComplete) return reply(requests.length, 'skill_candidate_read', { revisionId: last.revisionId, offset: last.nextOffset });
-            expect(last.untrusted).toBe(true);
-            return reply(requests.length, 'skill_propose', { name: 'shared-input-validation', description: 'Validate input before publishing',
-              instructions: 'Validate every input before publishing. A dry run validates without writing.',
-              baseRevisionId: last.revisionId, baseSkillSha256: last.skillMdSha256, baseReadReceipt: last.reviewReceipt,
-              refinementReason: 'Document the verified dry-run behavior after reading the current candidate.' });
-          }
-          return reply(requests.length);
+          const pages = results.slice(1).map(result => JSON.parse(result.content!) as SkillCandidateReadPage);
+          const last = pages.at(-1)!;
+          if (!last.readComplete) return reply(requests.length, 'skill_candidate_read', { revisionId: last.revisionId, path: last.path, offset: last.nextOffset });
+          const base = [...pages].reverse().find(page => page.path === 'SKILL.md' && page.readComplete)!;
+          expect(base.untrusted).toBe(true);
+          const unread = base.referencePaths.find(file => !pages.some(page => page.path === file && page.readComplete));
+          if (unread) return reply(requests.length, 'skill_candidate_read', { revisionId: base.revisionId, path: unread });
+          return reply(requests.length, 'skill_propose', { ...generatedSkillMetadata(), name: 'shared-input-validation', description: 'Validate input before publishing',
+            instructions: completeSkillInstructions('Validate every input before publishing. A dry run validates without writing.'),
+            baseRevisionId: base.revisionId, baseSkillSha256: base.skillMdSha256, baseReadReceipt: base.reviewReceipt,
+            refinementReason: 'Document the verified dry-run behavior after reading the complete current candidate package.' });
         }
         if (prompt.startsWith('CREATE') || prompt.startsWith('UNREAD_UPDATE')) return results.length ? reply(requests.length)
-          : reply(requests.length, 'skill_propose', { name: prompt.startsWith('CREATE_BETA') ? 'shared-output-validation' : 'shared-input-validation',
+          : reply(requests.length, 'skill_propose', { ...generatedSkillMetadata(), name: prompt.startsWith('CREATE_BETA') ? 'shared-output-validation' : 'shared-input-validation',
+            ...(prompt.startsWith('CREATE_BETA') ? { categories: ['quality.output'], intents: ['validate_output_artifacts'],
+              verificationCases: [{ id: 'output-check', input: 'A generated artifact has an invalid checksum. What should happen before publishing?', expectedIncludes: ['checksum'] }] } : {}),
             description: prompt.startsWith('CREATE_BETA') ? 'Validate output before publishing' : 'Validate input before publishing',
-            instructions: prompt.startsWith('UNREAD_UPDATE') ? 'An unread replacement from another isolated workspace.'
-              : prompt.startsWith('CREATE_BETA') ? 'Check the generated output before publishing it.' : 'Validate every input before publishing.' });
+            instructions: prompt.startsWith('UNREAD_UPDATE') ? completeSkillInstructions('An unread replacement from another isolated workspace.')
+              : prompt.startsWith('CREATE_BETA') ? '## When to Use\nInspect generated artifacts before publication.\n## Procedure\nCheck the generated output before publishing it. Compare checksum metadata and output encoding with the artifact specification.\n## Pitfalls\nDo not publish corrupt or incomplete artifacts.\n## Verification\nRecompute the checksum and confirm the destination encoding.' : completeSkillInstructions('Validate every input before publishing.') });
         if (prompt.startsWith('CHECK')) {
           const actions = [
             ['knowledge_search', { query: 'Project' }], ['knowledge_read', { path: 'Project.md' }],

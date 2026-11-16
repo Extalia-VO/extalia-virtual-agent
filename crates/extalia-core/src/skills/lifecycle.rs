@@ -87,12 +87,15 @@ const EDGES: &[(RevisionState, &[RevisionState])] = &[
         S::Evaluated,
         &[S::AwaitingApproval, S::AutoEligible, S::Quarantined],
     ),
-    (S::AwaitingApproval, &[S::Approved, S::Quarantined]),
+    (
+        S::AwaitingApproval,
+        &[S::Approved, S::Validated, S::Quarantined],
+    ),
     (
         S::AutoEligible,
         &[S::Approved, S::AwaitingApproval, S::Quarantined],
     ),
-    (S::Approved, &[S::Active, S::Quarantined]),
+    (S::Approved, &[S::Active, S::Validated, S::Quarantined]),
     (
         S::Active,
         &[S::Superseded, S::Deprecated, S::Approved, S::Quarantined],

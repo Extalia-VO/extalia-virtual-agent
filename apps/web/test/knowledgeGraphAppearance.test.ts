@@ -7,7 +7,7 @@ import { GraphAppearanceControls } from '../src/knowledge/vault/GraphAppearanceC
 import { graphAppearance, GRAPH_PRESETS, type GraphAppearance } from '../src/knowledge/vault/graphAppearance';
 import { graphBackdrop } from '../src/knowledge/vault/graphTheme';
 import { GRAPH_GALAXY_BACKDROP } from '../src/knowledge/vault/graphReferenceStyle';
-import { graphEdgeColour } from '../src/knowledge/vault/graphVisualStyle';
+import { graphEdgeColour, graphEdgeOpacity } from '../src/knowledge/vault/graphVisualStyle';
 
 function elements(node: ReactNode): ReactElement<Record<string, unknown>>[] {
   if (Array.isArray(node)) return node.flatMap(elements);
@@ -25,17 +25,17 @@ describe('graph appearance controls', () => {
     expect(onChange).toHaveBeenCalledExactlyOnceWith(GRAPH_PRESETS.nebula);
     expect(onChange.mock.calls[0]![0]).not.toBe(GRAPH_PRESETS.nebula);
   });
-  it('keeps a dense web quieter than sparse paths while preserving focused and hidden links', () => {
-    const colour = [.25, .5, 1], background = [.003, .003, .006];
-    const edge = (count: number, emphasis: 'normal' | 'focus' | 'muted', opacity = .24) => graphEdgeColour(colour, colour, background, false, opacity, count, emphasis);
-    const sparse = edge(76, 'normal'), dense = edge(4000, 'normal');
-    for (let i = 0; i < 3; i++) {
-      expect(dense[i]!).toBeGreaterThan(background[i]!);
-      expect(dense[i]!).toBeLessThan(sparse[i]! * .4);
-      expect(edge(4000, 'focus')[i]!).toBeGreaterThan(dense[i]!);
-      expect(edge(4000, 'muted')[i]!).toBeLessThan(dense[i]!);
+  it('quiets dense paths with transparency without changing endpoint hues', () => {
+    const colour = [.25, .5, 1];
+    for (const light of [true, false]) {
+      const sparse = graphEdgeOpacity(light, .24, 76, 'normal');
+      const dense = graphEdgeOpacity(light, .24, 4000, 'normal');
+      expect(dense).toBeGreaterThan(0); expect(dense).toBeLessThan(sparse * .4);
+      expect(graphEdgeOpacity(light, .24, 4000, 'focus')).toBeGreaterThan(dense);
+      expect(graphEdgeOpacity(light, .24, 4000, 'muted')).toBeLessThan(dense);
+      for (const emphasis of ['normal', 'focus', 'muted'] as const) expect(graphEdgeOpacity(light, 0, 4000, emphasis)).toBe(0);
+      expect(graphEdgeColour(colour, light)[2]).toBeGreaterThan(graphEdgeColour(colour, light)[0]!);
     }
-    expect(edge(4000, 'normal', 0)).toEqual(background);
   });
   it('uses the reference dark backdrop across materials while preserving the light canvas tint', () => {
     const light = graphBackdrop('#eef2f7', true);
@@ -49,16 +49,29 @@ describe('graph appearance controls', () => {
     expect(graphBackdrop('#fff5e8', true)).not.toBe(light);
   });
   it('bounds every drawing value and rejects non-finite inputs', () => {
-    expect(graphAppearance({ nodeSize: Number.NaN, glow: Infinity, linkWidth: 900, linkOpacity: -4 })).toMatchObject({
-      nodeSize: GRAPH_PRESETS.nebula.nodeSize, glow: GRAPH_PRESETS.nebula.glow, linkWidth: 3, linkOpacity: .01,
+    expect(graphAppearance({ nodeSize: Number.NaN, labelSize: 2, glow: Infinity, linkWidth: 900, linkOpacity: -4 })).toMatchObject({
+      nodeSize: GRAPH_PRESETS.nebula.nodeSize, labelSize: 12, glow: GRAPH_PRESETS.nebula.glow, linkWidth: 3, linkOpacity: 0,
     });
+    expect(graphAppearance({ labelSize: Infinity }).labelSize).toBe(14);
+    expect(graphAppearance({ labelSize: 40 }).labelSize).toBe(24);
+    expect(graphAppearance()).toEqual(GRAPH_PRESETS.nebula);
+  });
+  it('keeps focused paths soft and obeys opacity tuning even in a dense graph', () => {
+    for (const light of [true, false]) {
+      const normal = graphEdgeOpacity(light, .19, 2000, 'normal');
+      const focus = graphEdgeOpacity(light, .19, 2000, 'focus');
+      expect(focus).toBeGreaterThan(normal * 1.8);
+      expect(focus).toBeLessThan(.75);
+      expect(graphEdgeOpacity(light, .19, 2000, 'muted')).toBeLessThan(normal / 2);
+      expect(graphEdgeOpacity(light, .05, 2000, 'focus')).toBeLessThan(focus);
+    }
   });
   for (const language of ['en', 'id'] as const) it(`labels all appearance controls in ${language}`, () => {
     const t = MESSAGES[language];
     const html = renderToStaticMarkup(createElement(GraphAppearanceControls, { t, value: GRAPH_PRESETS.nebula, onChange: () => undefined }));
-    for (const label of [t.knowledge.vaultGraph.nodeSize, t.knowledge.vaultGraph.glowStrength, t.knowledge.vaultGraph.linkWidth,
+    for (const label of [t.knowledge.vaultGraph.nodeSize, t.knowledge.vaultGraph.labelSize, t.knowledge.vaultGraph.glowStrength, t.knowledge.vaultGraph.linkWidth,
       t.knowledge.vaultGraph.linkOpacity, t.knowledge.vaultGraph.showLinks, t.knowledge.vaultGraph.presets.nebula]) expect(html).toContain(label);
-    expect(html.match(/type="range"/g)).toHaveLength(4);
+    expect(html.match(/type="range"/g)).toHaveLength(5);
     expect(html).toContain('type="checkbox"');
   });
 });

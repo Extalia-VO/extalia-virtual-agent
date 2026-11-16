@@ -1,7 +1,9 @@
 /* A graph workspace, with controls layered over a theme-aware canvas. */
 .vault-graph.vault-graph-explorer { gap: 10px; }
 .vault-graph-explorer .vault-graph-body, .vault-graph-explorer.has-selection .vault-graph-body { display: block; position: relative; }
-.vault-graph-explorer .vault-graph-stage { height: clamp(520px, calc(100dvh - 300px), 1000px); border-radius: 12px; border: 1px solid var(--line); background-color: var(--canvas); background-image: radial-gradient(ellipse at 58% 40%, var(--accent-soft), transparent 68%); }
+.vault-graph-explorer .vault-graph-stage { height: clamp(560px, 76dvh, 1080px); border-radius: 12px; border: 1px solid var(--line); background-color: var(--canvas); }
+.vault-graph-explorer .vault-graph-canvas { background-image: radial-gradient(ellipse at 12% 9%, rgb(117 101 224 / .045), transparent 52%), radial-gradient(ellipse at 88% 86%, rgb(48 187 198 / .035), transparent 48%); }
+[data-theme='dark'] .vault-graph-explorer .vault-graph-canvas { background-image: radial-gradient(ellipse at 12% 9%, rgb(117 101 224 / .12), transparent 52%), radial-gradient(ellipse at 88% 86%, rgb(48 187 198 / .075), transparent 48%); }
 .vault-graph-explorer .vault-graph-toolbar { position: absolute; inset: 12px 12px auto; z-index: 4; padding: 6px; gap: 6px; flex-wrap: nowrap; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); backdrop-filter: blur(16px); color: var(--text); }
 .vault-graph-explorer .vault-graph-search { flex: 1 1 auto; max-width: none; }
 .vault-graph-explorer input.search { height: 34px; padding: 6px 10px; background: var(--sunken); border: 1px solid var(--line); color: var(--text); }
@@ -48,8 +50,10 @@
 .graph-camera-tools .chip-button { min-width: 31px; font-size: .75rem; padding: 5px 8px; }
 .vault-graph-explorer .vault-graph-hint { left: 270px; right: 130px; bottom: 18px; max-width: none; text-align: center; color: var(--muted); font-size: .67rem; }
 .vault-graph-explorer .vault-graph-panel { position: absolute; z-index: 5; top: 72px; right: 12px; width: min(380px, 40%); max-height: calc(100% - 130px); border: 1px solid var(--line); box-shadow: 0 14px 40px color-mix(in srgb, var(--text) 20%, transparent); background: var(--surface-solid); color: var(--text); }
-.vault-graph-explorer .vault-graph-label { font-size: 10.5px; font-weight: 450; color: var(--text); text-shadow: 0 1px 3px color-mix(in srgb, var(--canvas) 78%, transparent), 0 0 7px color-mix(in srgb, var(--canvas) 88%, transparent); }
-.vault-graph-explorer .vault-graph-label[data-focus='true'] { color: var(--accent); font-size: 12px; font-weight: 600; }
+.vault-graph-explorer .vault-graph-label { max-width: 260px; padding: 2px 5px; border: 1px solid transparent; border-radius: 6px; font-size: 14px; line-height: 1.35; font-weight: 550; color: var(--text); background: color-mix(in srgb, var(--canvas) 68%, transparent); text-shadow: 0 1px 3px var(--canvas); }
+.vault-graph-explorer .vault-graph-label[data-neighbor='true'] { background: color-mix(in srgb, var(--canvas) 80%, transparent); font-weight: 600; }
+.vault-graph-explorer .vault-graph-label[data-focus='true'] { color: var(--text); background: var(--surface-solid); border-color: color-mix(in srgb, var(--accent) 45%, transparent); box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 12%, transparent); font-weight: 700; z-index: 2; }
+.vault-graph-explorer .vault-graph-labels[data-focused='true'] .vault-graph-label[data-priority='context'] { opacity: .25; }
 .vault-graph-explorer .vault-graph-results { background: var(--surface-solid); border-color: var(--line); color: var(--text); }
 .vault-graph-explorer .vault-graph-results .vault-graph-row { color: var(--text); }
 .vault-graph-explorer .vault-graph-results .muted { color: var(--muted); }

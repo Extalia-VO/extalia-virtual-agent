@@ -8,6 +8,8 @@ import { GraphExploreControls, type GraphExploreControlsProps } from '../src/kno
 import { GraphFilterControls, GraphSelectedNotePanel } from '../src/knowledge/vault/GraphFilterControls';
 import { VaultGraphView, type VaultGraphViewProps } from '../src/knowledge/vault/VaultGraphView';
 import { EMPTY_GRAPH_FILTERS } from '../src/knowledge/vault/graphFilters';
+import { GRAPH_PRESETS } from '../src/knowledge/vault/graphAppearance';
+import { GraphSelectionTools, GraphFocusTrail } from '../src/knowledge/vault/GraphSelectionTools';
 import type { VaultGraphCanvasProps } from '../src/knowledge/vault/VaultGraphCanvas';
 
 // Exercise the real view state and event handlers without requiring a WebGL DOM.
@@ -94,6 +96,28 @@ beforeEach(() => {
 afterEach(() => { for (const value of hooks.effects.values()) value.cleanup?.(); vi.unstubAllGlobals(); });
 
 describe('graph Explore view navigation', () => {
+  it('opens a readable two-dimensional overview with the canvas unobstructed', () => {
+    const h = harness('en', null), k = h.props.t.knowledge.vaultGraph;
+    expect(h.canvas()).toMatchObject({ dimensions: 2, appearance: GRAPH_PRESETS.nebula, showLabels: true, showHalos: true });
+    expect(h.button(k.controls)['aria-expanded']).toBe(false);
+    h.click(k.controls);
+    expect(h.button(k.controls)['aria-expanded']).toBe(true);
+    h.click('3D'); expect(h.canvas().dimensions).toBe(3);
+  });
+  it('keeps the neighbourhood anchor highlighted when its reader closes and releases it on clear', () => {
+    const h = harness();
+    const tools = elements(h.render()).find(node => node.type === GraphSelectionTools)!;
+    (tools.props.onFocus as () => void)();
+    h.props.selectedId = null;
+    expect(h.canvas().selected).toBe(h.canvas().graph.indexById.get('a'));
+    expect(Array.from(h.canvas().mask)).toEqual([1, 1, 0]);
+    expect(elements(h.render()).some(node => node.type === GraphSelectedNotePanel)).toBe(false);
+    const trail = elements(h.render()).find(node => node.type === GraphFocusTrail)!;
+    (trail.props.onClear as () => void)();
+    expect(h.canvas().selected).toBeNull();
+    expect(Array.from(h.canvas().mask)).toEqual([1, 1, 1]);
+    expect(h.props.onOpen).not.toHaveBeenCalled();
+  });
   it.each(['en', 'id'] as const)('travels without opening notes, opens only explicitly, and restores 2D in %s', language => {
     const h = harness(language), k = h.props.t.knowledge.vaultGraph;
     h.click('2D'); h.click(k.explore);
