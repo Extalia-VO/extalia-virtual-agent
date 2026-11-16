@@ -4,6 +4,15 @@ import { DEFAULT_WORKSPACE_CROSS_ACCESS, MAX_WORKSPACE_FOLDERS, WORKSPACE_CROSS_
 const T0 = '2026-01-31T10:00:00.000Z';
 
 describe('profiles and workspaces', () => {
+  it('keeps Observe project metadata without inventing a runtime or provider', () => {
+    const base = { id: 'w1', profileId: 'p1', name: 'Observed project', createdAt: T0, updatedAt: T0 };
+    expect(decodeWorkspace({ ...base, mode: 'observe' })).toEqual({ ok: true, value: { ...base, mode: 'observe' } });
+    expect(decodeWorkspace({ ...base, mode: 'observe', providerProfileId: 'curator' })).toMatchObject({ ok: true, value: { mode: 'observe', providerProfileId: 'curator' } });
+    expect(decodeWorkspace({ ...base, mode: 'managed' })).toMatchObject({ ok: true, value: { mode: 'managed' } });
+    for (const mode of [null, '', 'observer', 0, {}, ['observe']]) expect(decodeWorkspace({ ...base, mode }).ok).toBe(false);
+    expect(decodeWorkspace({ ...base, mode: 'observe', runtimeId: 'hermes' }).ok).toBe(false);
+  });
+
   it('defaults legacy Native cross-workspace access to read-only and rejects damaged policies', () => {
     const base = { id: 'w1', profileId: 'p1', name: 'Workspace', createdAt: T0, updatedAt: T0 };
     expect(DEFAULT_WORKSPACE_CROSS_ACCESS).toBe('read-only');

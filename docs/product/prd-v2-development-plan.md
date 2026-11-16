@@ -4,7 +4,37 @@ Tanggal: 2026-10-29. Baseline: v0.4.122 lokal. Status: **rencana rekomendasi unt
 adopsi bertahap**, belum persetujuan migrasi stack/repository atau pernyataan
 fitur sudah selesai. Dasar: [audit kode dan PRD v2](prd-v2-audit.md).
 
-Pembaruan implementasi 2026-11-08: [audit harness Native](native-harness-development-review.md) memisahkan kemampuan memory/cache/UI yang sudah berjalan dari gerbang executor, writer fencing, reconciliation dan acceptance yang masih terbuka. Status kontrak atau tampilan UI tidak menyelesaikan gerbang eksekusi T2/T3.
+Catatan implementasi historis 2026-11-08: [audit harness Native](native-harness-development-review.md) memisahkan kemampuan memory/cache/UI yang sudah berjalan dari gerbang executor, writer fencing, reconciliation dan acceptance yang masih terbuka. Status kontrak atau tampilan UI tidak menyelesaikan gerbang eksekusi T2/T3.
+
+## Status rencana saat ini (2026-11-12)
+
+Baseline rencana v0.4.122 di atas adalah historis. Rekonsiliasi sumber saat ini
+menggunakan **v0.4.288** dan [checkpoint semua FR](prd-v2-acceptance-map.md#current-implementation-checkpoint).
+Status berikut membedakan implementasi dari exit gate; bukan laporan tes live baru.
+
+| Paket / tahap | Sudah tersedia | Belum selesai |
+| --- | --- | --- |
+| V2-01 / T0 | ADR 0036, audit, crosswalk FR/NFR, issue/milestone map | Pertahankan traceability per increment; perubahan scope tetap perlu review |
+| V2-02 / T1 | Manifest, ID/state/delegation contracts dan fixtures additive | Wiring authority, seluruh translator dan AR-01–04 |
+| V2-03/04/05/06 / T2 | Leases/reaper, recovery review, original membership, preparation/planning lifetimes, pending action intents | Complete executor/child ownership, writer fencing, physical reconciliation, exact effect-time approval, accepted evidence/dependency release |
+| V2-07/08 / T3 | Profile-scoped records, stable workspace vaults, checkpoints dan provisional reservation ledger | Engine generation/switch, complete ACL, canonical queue/command receipts/inbox/outbox/replay |
+| V2-09/10 / T4 | Shared 2D/Office, Native API agent, source-safe import dan session interchange | Provider-free complete vertical slice, minimal consistent mission/evidence export dan applicable Bridge gates |
+| V2-11 / T5 | Rencana OpenCode worker dan common contract | Real permitted worker, version/account-mode/lifecycle/artifact acceptance |
+| V2-12/13 / T6 | Existing Hermes runtime/observer | Formal Hermes engine, OpenClaw, safe cross-engine switching/reconciliation |
+| V2-14/15 / T7 | Codex/Claude/Gemini/Antigravity observation serta capability-bound control/inbox slices | Managed v2 workers, Kiro dan per-surface real-app/policy certification |
+| V2-16 / T7 | Mandatory external ingress; real pinned scanner macOS 14+ ARM64; categorized catalog, managed automatic context and live marketplace | Other scanner platforms, authoritative dependency/resolver dispatch, general evaluation; new capabilities never inherit scan approval |
+| V2-17A / T7 | Rust Knowledge index/CAS/history, interactive 2D/3D graph, workspace vaults | Full retained v0.5 knowledge ACL/provenance/conflict acceptance |
+| V2-17 / T7 | Profile learning records, explicit/generated candidates, deferred curation, real team meetings and saved notes | General isolated evaluation, quality promotion/rollback and complete Evolve; Windows artifact staging unavailable |
+| V2-18 / T8 | Session interchange dan notifikasi platform | Full restore, public SDK/plugin isolation, general automation/channel scope |
+| V2-19 / T8 | v0.4.288 preview packages, CI and scoped release verification | Stable signing/notarization, full hardware/a11y/scale/provenance matrix |
+| V2-20 / T3–4 | Existing loopback authentication, Host/Origin/rate defenses | Full per-client pairing/scope/revocation and BRG acceptance |
+
+Urutan perluasan authority tetap **T2 ownership → reconciliation → effect-time
+approval → evidence**; jangan membangun ulang Skills/Knowledge yang sudah ada.
+ADR 0071 mengganti target migrasi berdasarkan bahasa dengan keputusan terukur:
+completion produksi tetap TypeScript; Rust control/index/scanner/learning dan
+Python scanner tersupervisi memiliki scope konkret. Worker Python umum masih
+direncanakan.
 
 ## 1. Arah pengembangan
 

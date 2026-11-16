@@ -15,7 +15,7 @@ export function NaturalWalkingClearance({ owner }: { owner: object }) {
       if (!pending) return;
       pending = false;
       const roots: Object3D[] = [];
-      scene.traverse(node => { if (/^furnished-floor-[123]$/.test(node.name) || node.name === 'extalia-expanded-pedestrian-campus') roots.push(node); });
+      scene.traverse(node => { if (/^furnished-floor-[123]$/.test(node.name) || node.name === 'extalia-expanded-pedestrian-campus' || node.name === 'campus-front-context') roots.push(node); });
       const current = new Set<Object3D>();
       for (const root of roots) root.traverse(node => {
         current.add(node);

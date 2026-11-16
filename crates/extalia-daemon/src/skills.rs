@@ -1,10 +1,11 @@
 //! Skill registry dispatch (W3; ADRs 0023, 0025, 0026; gap-map decision 10) on the daemon's
 //! one profile and core store. The profile is fixed at start; the wire carries no profile id.
 //!
-//! - `skill.import` stages `<data>/profiles/<profile>/skill-imports/<path>` (the only allowed
+//! - `skill.import` stages `<data>/skills/imports/<path>` for the Unix default library
+//!   (nondefault CLI namespaces and non-Unix retain their legacy inbox; the only allowed
 //!   staging root; the resolved directory must stay inside it) and runs the installed
-//!   inspector. The binary installs [`UnavailableInspector`], so every import stays
-//!   `quarantined` with `scanner-unavailable` until a verified scanner pin exists (ADR 0023).
+//!   inspector. The binary uses pinned bundled SkillSpector where its artifact and
+//!   confinement requirements hold; missing or unverified scanners fail closed.
 //! - Built-in skills enter only through [`Skills::register_builtin`], an API inside the
 //!   daemon: no request can register one or claim the `builtin` origin. Registrations are
 //!   recorded in the core store and [`Skills::restore_builtins`] re-verifies them against
@@ -20,6 +21,8 @@
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 use extalia_core::CoreStore;
 use extalia_core::skills::builtin::{BuiltinSkill, RestoreReport};
@@ -32,11 +35,12 @@ use extalia_core::skills::tree::TreeFile;
 use extalia_core::skills::views::{RevisionDetails, RevisionSummary};
 use extalia_core::skills::{
     BUILTIN_ORIGIN, BuiltinCatalog, ProfileId, Refusal, RevisionState, ScannerStatus, SkillError,
-    SkillInspector, SkillRegistry, UnavailableInspector, is_workspace_id,
+    SkillInspector, SkillRegistry, is_workspace_id,
 };
 use extalia_core::time::{format_utc, now_millis, parse_utc};
 use serde_json::{Value, json};
 
+use crate::missions::Missions;
 use crate::wire::{
     ErrorCode, Op, ResponseResult, ReviewDecision, SKILL_LIST_MAX_LIMIT, SKILL_READ_MAX_BYTES,
     SkillRequest,
@@ -46,10 +50,11 @@ mod preflight;
 mod routing;
 
 /// Skill operations served when a core store is open, advertised in the `hello` result.
-pub const CAPABILITIES: [Op; 13] = [
+pub const CAPABILITIES: [Op; 15] = [
     Op::SkillImport,
     Op::SkillList,
     Op::SkillInspect,
+    Op::SkillRescan,
     Op::SkillReview,
     Op::SkillApprove,
     Op::SkillActivate,
@@ -57,6 +62,7 @@ pub const CAPABILITIES: [Op; 13] = [
     Op::SkillRollback,
     Op::SkillRevoke,
     Op::SkillRead,
+    Op::SkillReviewRead,
     Op::SkillScanner,
     Op::SkillPreflight,
     Op::SkillRoutingPreview,
@@ -65,7 +71,7 @@ pub const CAPABILITIES: [Op; 13] = [
 pub const LIST_DEFAULT_LIMIT: u64 = 50;
 /// A `skill.list` page stops growing past this many JSON bytes (frames are at most 1 MiB).
 pub const LIST_BYTE_BUDGET: usize = 768 * 1024;
-/// Folder below the profile directory that `skill.import` reads packages from.
+/// Legacy inbox name for explicit nondefault/compatibility namespaces.
 pub const IMPORT_INBOX: &str = "skill-imports";
 const MAX_CONSENT_INPUTS: usize = 8;
 
@@ -73,10 +79,11 @@ const MAX_CONSENT_INPUTS: usize = 8;
 pub type SkillRefusal = (ErrorCode, Option<&'static str>);
 
 /// The skill registry of the daemon's profile.
+#[derive(Clone)]
 pub struct Skills {
     data_dir: PathBuf,
     profile: ProfileId,
-    inspector: Box<dyn SkillInspector + Send>,
+    inspector: Arc<dyn SkillInspector + Send + Sync>,
     builtins: BuiltinCatalog,
 }
 
@@ -91,33 +98,34 @@ impl std::fmt::Debug for Skills {
 }
 
 impl Skills {
-    /// The registry of `profile` under `data_dir`, with the fail-closed
-    /// [`UnavailableInspector`]. `profile` must be a valid profile id.
+    /// The registry of `profile` under `data_dir`, with the bundled version-pinned
+    /// scanner or its fail-closed unavailable state. `profile` must be valid.
     pub fn new(data_dir: &Path, profile: &str) -> Self {
-        Self::with_inspector(data_dir, profile, Box::new(UnavailableInspector))
+        Self::with_inspector(
+            data_dir,
+            profile,
+            Box::new(crate::skill_scanner::SkillSpector::bundled()),
+        )
     }
 
-    /// The same with another inspector (tests and, later, the pinned scanner adapter).
+    /// The same with an inspector supplied by trusted composition code or tests.
     pub fn with_inspector(
         data_dir: &Path,
         profile: &str,
-        inspector: Box<dyn SkillInspector + Send>,
+        inspector: Box<dyn SkillInspector + Send + Sync>,
     ) -> Self {
         let profile = ProfileId::parse(profile).expect("valid profile id");
         Self {
             builtins: BuiltinCatalog::new(data_dir, &profile),
             data_dir: data_dir.to_owned(),
             profile,
-            inspector,
+            inspector: Arc::from(inspector),
         }
     }
 
     /// The only directory `skill.import` reads from.
     pub fn import_inbox(&self) -> PathBuf {
-        self.data_dir
-            .join("profiles")
-            .join(self.profile.as_str())
-            .join(IMPORT_INBOX)
+        extalia_core::skills::storage::inbox(&self.data_dir, &self.profile)
     }
 
     /// Daemon-internal registration of a built-in skill shipped with the app (gap-map
@@ -161,7 +169,13 @@ impl Skills {
     /// build's policy version. `ready` is never reported without a pin.
     pub fn scanner(&self) -> Value {
         let identity = self.inspector.identity();
-        let status = match self.inspector.status() {
+        Self::scanner_snapshot(&identity, self.inspector.status())
+    }
+    fn scanner_snapshot(
+        identity: &extalia_core::skills::ScannerIdentity,
+        current_status: ScannerStatus,
+    ) -> Value {
+        let status = match current_status {
             ScannerStatus::Ready if identity.pin.is_none() => ScannerStatus::Unpinned,
             status => status,
         };
@@ -171,9 +185,13 @@ impl Skills {
             "policyVersion": POLICY_VERSION,
             "status": status.as_str(),
         });
-        put_opt(&mut value, "pin", identity.pin);
-        put_opt(&mut value, "version", identity.version);
-        put_opt(&mut value, "normalizerVersion", identity.normalizer_version);
+        put_opt(&mut value, "pin", identity.pin.clone());
+        put_opt(&mut value, "version", identity.version.clone());
+        put_opt(
+            &mut value,
+            "normalizerVersion",
+            identity.normalizer_version.clone(),
+        );
         value
     }
 
@@ -185,40 +203,228 @@ impl Skills {
         request: &SkillRequest,
     ) -> Result<ResponseResult, SkillRefusal> {
         let op = request.op();
-        let result = self.dispatch(store, request).map_err(|error| {
-            eprintln!("extalia-daemon: {} refused ({error})", op.as_str());
-            refusal(&error)
-        })?;
+        let context = self.context();
+        let scanner_ready =
+            matches!(request, SkillRequest::Scanner).then(|| self.inspector.status());
+        let result = self
+            .dispatch(store, request, &context, scanner_ready)
+            .map_err(|error| {
+                eprintln!("extalia-daemon: {} refused ({error})", op.as_str());
+                refusal(&error)
+            })?;
         Ok(ResponseResult::Skill { op, result })
+    }
+
+    /// The worker owner releases the control-store mutex around external scanning.
+    pub fn handle_shared(
+        &mut self,
+        missions: &Arc<Mutex<Missions>>,
+        request: &SkillRequest,
+        deadline: Option<Instant>,
+    ) -> Result<ResponseResult, SkillRefusal> {
+        if let SkillRequest::Rescan { revision_id } = request {
+            let identity = self.inspector.identity();
+            let prepared = {
+                let mut missions = missions
+                    .lock()
+                    .map_err(|_| (ErrorCode::StorageFailure, None))?;
+                if !missions.available() {
+                    return Err((ErrorCode::StorageFailure, None));
+                }
+                self.refuse_builtin(missions.store_mut(), revision_id)
+                    .map_err(|error| refusal(&error))?;
+                let mut registry = self.registry(missions.store_mut());
+                registry
+                    .prepare_rescan(revision_id, now_millis())
+                    .map_err(|error| refusal(&error))?;
+                registry
+                    .begin_inspection(revision_id, &identity, POLICY_VERSION, now_millis())
+                    .map_err(|error| refusal(&error))?
+            };
+            let current = self.finish_shared_scan(missions, prepared, revision_id, deadline)?;
+            let mut value = json!({"revisionId": revision_id, "packageId": current.package_id, "state": current.state.as_str()});
+            put_opt(&mut value, "stateReason", current.state_reason);
+            return Ok(ResponseResult::Skill {
+                op: request.op(),
+                result: value,
+            });
+        }
+        let SkillRequest::Import {
+            origin,
+            path,
+            source_ref,
+            expected_tree_sha256,
+            refinement,
+        } = request
+        else {
+            let context = self.context();
+            let scanner_ready =
+                matches!(request, SkillRequest::Scanner).then(|| self.inspector.status());
+            let mut missions = missions
+                .lock()
+                .map_err(|_| (ErrorCode::StorageFailure, None))?;
+            if !missions.available() {
+                return Err((ErrorCode::StorageFailure, None));
+            }
+            let result = self
+                .dispatch(missions.store_mut(), request, &context, scanner_ready)
+                .map_err(|error| refusal(&error))?;
+            return Ok(ResponseResult::Skill {
+                op: request.op(),
+                result,
+            });
+        };
+        let source = self.resolve_import(path).map_err(|error| refusal(&error))?;
+        let identity = self.inspector.identity();
+        let (mut receipt, prepared) = {
+            let mut missions = missions
+                .lock()
+                .map_err(|_| (ErrorCode::StorageFailure, None))?;
+            if !missions.available() {
+                return Err((ErrorCode::StorageFailure, None));
+            }
+            let mut registry = self.registry(missions.store_mut());
+            let receipt = registry
+                .import_with_base(
+                    &source,
+                    *origin,
+                    source_ref.as_deref().unwrap_or(path),
+                    now_millis(),
+                    expected_tree_sha256.as_deref(),
+                    refinement.as_ref().map(|base| base.as_core()),
+                )
+                .map_err(|error| refusal(&error))?;
+            let prepared = if receipt.state == RevisionState::Quarantined
+                && (refinement.is_none() || receipt.created)
+            {
+                Some(
+                    registry
+                        .begin_inspection(
+                            &receipt.revision_id,
+                            &identity,
+                            POLICY_VERSION,
+                            now_millis(),
+                        )
+                        .map_err(|error| refusal(&error))?,
+                )
+            } else {
+                None
+            };
+            (receipt, prepared)
+        };
+        if let Some(prepared) = prepared {
+            let current =
+                self.finish_shared_scan(missions, prepared, &receipt.revision_id, deadline)?;
+            receipt.state = current.state;
+            receipt.state_reason = current.state_reason;
+        }
+        let mut value = json!({
+            "packageId": receipt.package_id, "revisionId": receipt.revision_id,
+            "treeSha256": receipt.tree_sha256, "version": receipt.version,
+            "state": receipt.state.as_str(), "created": receipt.created,
+        });
+        put_opt(&mut value, "stateReason", receipt.state_reason);
+        Ok(ResponseResult::Skill {
+            op: request.op(),
+            result: value,
+        })
+    }
+
+    fn finish_shared_scan(
+        &self,
+        missions: &Arc<Mutex<Missions>>,
+        prepared: extalia_core::skills::registry::PreparedInspection,
+        revision_id: &str,
+        deadline: Option<Instant>,
+    ) -> Result<extalia_core::skills::registry::Revision, SkillRefusal> {
+        let identity = prepared.scanner_identity().clone();
+        let outcome = if identity.pin.is_some() {
+            let budget = deadline
+                .map(|at| at.saturating_duration_since(Instant::now()))
+                .unwrap_or(std::time::Duration::from_secs(60));
+            self.inspector
+                .inspect_with_timeout(&prepared.request(), budget)
+        } else {
+            extalia_core::skills::InspectionOutcome::Failed(
+                extalia_core::skills::inspect::Failure::ScannerUnavailable,
+            )
+        };
+        let current_identity = if matches!(
+            outcome,
+            extalia_core::skills::InspectionOutcome::Completed { .. }
+        ) {
+            self.inspector.identity()
+        } else {
+            identity
+        };
+        let ctx = PolicyContext {
+            scanner: current_identity.clone(),
+            policy_version: POLICY_VERSION.to_owned(),
+        };
+        let mut missions = missions
+            .lock()
+            .map_err(|_| (ErrorCode::StorageFailure, None))?;
+        if !missions.available() {
+            return Err((ErrorCode::StorageFailure, None));
+        }
+        let mut registry = self.registry(missions.store_mut());
+        let inspected = registry
+            .complete_inspection(
+                prepared,
+                outcome,
+                &current_identity,
+                POLICY_VERSION,
+                now_millis(),
+            )
+            .map_err(|error| refusal(&error))?;
+        if inspected.state == RevisionState::Inspected {
+            // Unsupported relations, tool/code packages and missing evaluation keep
+            // their honest non-activatable state; no successful evaluation is invented.
+            if registry.validate(revision_id, &ctx, now_millis()).is_ok() {
+                let _ = registry.request_instruction_approval(revision_id, &ctx, now_millis());
+            }
+        }
+        let current = registry
+            .revision(revision_id)
+            .map_err(|error| refusal(&error))?;
+        Ok(current)
     }
 
     fn dispatch(
         &mut self,
         store: &mut CoreStore,
         request: &SkillRequest,
+        ctx: &PolicyContext,
+        scanner_ready: Option<ScannerStatus>,
     ) -> Result<Value, SkillError> {
         let now = now_millis();
-        let ctx = self.context();
         match request {
-            SkillRequest::RoutingPreview { input } => routing::run(self, store, input, &ctx, now),
+            SkillRequest::Rescan { .. } => Err(SkillError::Denied("rescan_requires_owner")),
+            SkillRequest::RoutingPreview { input } => routing::run(self, store, input, ctx, now),
             SkillRequest::Preflight {
                 root_revision_id,
                 pins,
-            } => preflight::run(self, store, root_revision_id, pins, &ctx, now),
+            } => preflight::run(self, store, root_revision_id, pins, ctx, now),
             SkillRequest::Import {
                 origin,
                 path,
                 source_ref,
+                expected_tree_sha256,
+                refinement,
             } => {
                 let source = self.resolve_import(path)?;
                 let mut registry = self.registry(store);
-                let mut receipt = registry.import(
+                let mut receipt = registry.import_with_base(
                     &source,
                     *origin,
                     source_ref.as_deref().unwrap_or(path),
                     now,
+                    expected_tree_sha256.as_deref(),
+                    refinement.as_ref().map(|base| base.as_core()),
                 )?;
-                if receipt.state == RevisionState::Quarantined {
+                if receipt.state == RevisionState::Quarantined
+                    && (refinement.is_none() || receipt.created)
+                {
                     let inspected = registry.inspect(
                         &receipt.revision_id,
                         self.inspector.as_ref(),
@@ -260,7 +466,8 @@ impl Skills {
                     ReviewDecision::Accept => CoreDecision::Accept,
                     ReviewDecision::Reject => CoreDecision::Reject,
                 };
-                let receipt = self.registry(store).review(
+                let mut registry = self.registry(store);
+                let mut receipt = registry.review(
                     &ReviewRequest {
                         revision_id,
                         shown_tree_sha256: tree_sha256,
@@ -268,9 +475,15 @@ impl Skills {
                         decision,
                         note: note.as_deref(),
                     },
-                    &ctx,
+                    ctx,
                     now,
                 )?;
+                if receipt.state == RevisionState::Validated {
+                    let _ = registry.request_instruction_approval(revision_id, ctx, now);
+                    let current = registry.revision(revision_id)?;
+                    receipt.state = current.state;
+                    receipt.state_reason = current.state_reason;
+                }
                 let mut result = json!({
                     "revisionId": revision_id,
                     "decision": decision.as_str(),
@@ -303,7 +516,7 @@ impl Skills {
                         approver: principal,
                         expires_at_ms,
                     },
-                    &ctx,
+                    ctx,
                     now,
                 )?;
                 let state = registry.revision(revision_id)?.state;
@@ -321,7 +534,7 @@ impl Skills {
                 self.refuse_builtin(store, revision_id)?;
                 let approval_id = i64::try_from(*approval_id).map_err(|_| SkillError::NotFound)?;
                 let mut registry = self.registry(store);
-                let activation = registry.activate(revision_id, approval_id, &ctx, now)?;
+                let activation = registry.activate(revision_id, approval_id, ctx, now)?;
                 activation_value(&mut registry, activation)
             }
             SkillRequest::Deactivate { package_id } => {
@@ -341,7 +554,7 @@ impl Skills {
                 revision_id,
             } => {
                 let mut registry = self.registry(store);
-                let activation = registry.rollback(package_id, revision_id, &ctx, now)?;
+                let activation = registry.rollback(package_id, revision_id, ctx, now)?;
                 activation_value(&mut registry, activation)
             }
             SkillRequest::Revoke { revision_id } => {
@@ -355,7 +568,10 @@ impl Skills {
                     "indexGeneration": registry.index_generation()?,
                 }))
             }
-            SkillRequest::Scanner => Ok(self.scanner()),
+            SkillRequest::Scanner => Ok(Self::scanner_snapshot(
+                &ctx.scanner,
+                scanner_ready.unwrap_or(ScannerStatus::Unavailable),
+            )),
             SkillRequest::Read { revision_id, path } => {
                 // A built-in skill holds exactly these bytes; otherwise only the package's
                 // active revision is readable.
@@ -368,7 +584,7 @@ impl Skills {
                 } else {
                     let file =
                         self.registry(store)
-                            .read_revision_file(revision_id, path, &ctx, now)?;
+                            .read_revision_file(revision_id, path, ctx, now)?;
                     (file.package_id, file.entry, file.bytes)
                 };
                 if entry.size > SKILL_READ_MAX_BYTES {
@@ -390,6 +606,55 @@ impl Skills {
                     "size": entry.size,
                     "sha256": entry.sha256,
                     "content": content,
+                }))
+            }
+            SkillRequest::ReviewRead {
+                revision_id,
+                path,
+                profile_id,
+                workspace_id,
+            } => {
+                let review = self.registry(store).read_candidate_file(
+                    revision_id,
+                    path,
+                    profile_id,
+                    workspace_id,
+                )?;
+                let content = String::from_utf8(review.file.bytes)
+                    .ok()
+                    .filter(|text| {
+                        text.chars().all(|character| {
+                            matches!(character, '\t' | '\n' | '\r')
+                                || (character as u32 >= 32 && character as u32 != 127)
+                        })
+                    })
+                    .ok_or(SkillError::Denied("binary_content"))?;
+                // A receipt identifies this observed read; authorization additionally
+                // requires the host-held receipt and current job's actual tool output.
+                use sha2::{Digest, Sha256};
+                static READ_SEQUENCE: std::sync::atomic::AtomicU64 =
+                    std::sync::atomic::AtomicU64::new(0);
+                let nonce = format!(
+                    "{}:{:?}:{}:{}:{}:{}:{}",
+                    std::process::id(),
+                    std::time::SystemTime::now(),
+                    READ_SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+                    revision_id,
+                    path,
+                    profile_id,
+                    workspace_id
+                );
+                let receipt = Sha256::digest(nonce.as_bytes())
+                    .iter()
+                    .map(|byte| format!("{byte:02x}"))
+                    .collect::<String>();
+                Ok(json!({
+                    "revisionId": revision_id, "packageId": review.file.package_id, "path": path,
+                    "size": review.file.entry.size, "sha256": review.file.entry.sha256,
+                    "skillMdSha256": review.skill_md_sha256, "untrusted": true, "reviewReceipt": receipt,
+                    "provenance": { "profileId": review.provenance.profile_id, "workspaceId": review.provenance.workspace_id,
+                        "sessionId": review.provenance.session_id, "promptSha256": review.provenance.prompt_sha256 },
+                    "referencePaths": review.reference_paths, "content": content,
                 }))
             }
         }
@@ -518,6 +783,7 @@ impl Skills {
                     "approvals": [],
                     "history": [],
                     "consent": [],
+                    "sources": [], "sourcesTotal": 0, "sourcesOmitted": 0,
                 }));
             }
             other => other?,
@@ -533,6 +799,14 @@ impl Skills {
         let inputs = registry.review_inputs(revision_id)?;
         let skip = inputs.len().saturating_sub(MAX_CONSENT_INPUTS);
         let mut value = details_value(&details);
+        match registry.instruction_preview(revision_id, now)? {
+            Some(instructions) => {
+                value["instructions"] = Value::String(instructions);
+            }
+            None => {
+                value["instructionsUnavailable"] = Value::Bool(true);
+            }
+        }
         value["consent"] = inputs
             .into_iter()
             .skip(skip)
@@ -604,6 +878,7 @@ fn summary_value(summary: &RevisionSummary) -> Value {
         "packageId": revision.package_id,
         "revisionId": revision.revision_id,
         "origin": summary.origin,
+        "marketplaceSource": summary.marketplace_source,
         "version": revision.version,
         "treeSha256": revision.tree_sha256,
         "skillMdSha256": revision.skill_md_sha256,
@@ -617,6 +892,9 @@ fn summary_value(summary: &RevisionSummary) -> Value {
         "updatedAt": summary.updated_at,
     });
     put_opt(&mut value, "stateReason", revision.state_reason.clone());
+    if let Some(approval_id) = summary.activation_approval_id {
+        value["activationApprovalId"] = approval_id.into();
+    }
     value
 }
 
@@ -625,6 +903,7 @@ fn builtin_value(skill: &BuiltinSkill) -> Value {
         "packageId": skill.package_id,
         "revisionId": skill.revision_id,
         "origin": BUILTIN_ORIGIN,
+        "marketplaceSource": false,
         "version": skill.version,
         "treeSha256": skill.tree.sha256,
         "skillMdSha256": skill.skill_md_sha256,
@@ -713,6 +992,11 @@ fn details_value(details: &RevisionDetails) -> Value {
         "approvals": approvals,
         "history": history,
         "consent": [],
+        "sources": details.sources.iter().map(|source| json!({
+            "origin": source.origin, "sourceRef": source.source_ref, "recordedAt": source.recorded_at,
+        })).collect::<Vec<_>>(),
+        "sourcesTotal": details.sources_total,
+        "sourcesOmitted": details.sources_total.saturating_sub(details.sources.len() as u64),
     })
 }
 

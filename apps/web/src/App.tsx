@@ -1,6 +1,6 @@
 import './navigation.css';
 import type { Platform } from '@extalia/platform';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { loadLandingMemory, navigationGroups, resolveLandingPage, resolveLandingWorkspace, saveLandingMemory } from './appMode';
 import { rememberResolvedTheme } from './boot/appearance';
 import { Splash } from './boot/Splash';
@@ -8,39 +8,53 @@ import { useBoot } from './boot/useBoot';
 import { isDaytime } from './environment/solarTime';
 import { ChatPage } from './chat/ChatPage';
 import { useWorkspaceMemoryDraftWarning } from './chat/useWorkspaceMemoryDraftWarning';
+import { useComposerDraftWarning } from './chat/useComposerDraftWarning';
+import { ObservedInputProvider } from './observe/ObservedInputProvider';
+import { ObservedInputAlert } from './observe/ObservedInputCards';
+import { OfficeAutoAttention } from './office/OfficeAutoAttention';
+import type { OfficeInputFocus, OfficeAttentionOutcome } from './office/officeInputFocus';
+import type { OfficeAttentionRequest } from './office/officeAttentionQueue';
 import { ApprovalProvider } from './approvals/ApprovalProvider';
 import { ApprovalInboxButton } from './approvals/ApprovalInbox';
 import { resolveChat, type ChatSelection } from './chat/selection';
 import { useHostState } from './host/useHostState';
-import { HostConnectionBanner } from './host/HostConnectionBanner';
+import { HostConnectionDialog } from './host/HostConnectionDialog';
+import { FullscreenButton } from './ui/FullscreenButton';
 import { showsOfficeControls } from './office/officeControls';
 import { OfficeTopbarControls } from './office/OfficeTopbarControls';
 import { MESSAGES, type PageId } from './i18n';
-import { HistoryPage } from './library/HistoryPage';
-import { KnowledgePage } from './knowledge/KnowledgePage';
-import { ImportPage } from './library/ImportPage';
-import { DiagnosticsPage } from './pages/DiagnosticsPage';
-import { EventLogPage } from './pages/EventLogPage';
-import { FilesPage } from './pages/FilesPage';
-import { GitPage } from './pages/GitPage';
-import { SettingsPage } from './pages/SettingsPage';
+import { LearningCountdown } from './knowledge/LearningCountdown';
 import type { SettingsSection } from './pages/settings/settingsSections';
-import { SkillsPage } from './skills/SkillsPage';
 import { useSkillsWaiting } from './skills/skillsModel';
 import { StartPage } from './pages/StartPage';
-import { ObserverPage } from './pages/ObserverPage';
 import { OfficePage } from './pages/OfficePage';
-import { MissionsPage } from './missions/MissionsPage';
 import { NativeStatusButton } from './native/NativeStatusButton';
 import { loadPreferences, savePreferences, type Preferences } from './preferences';
 import { useProfileSync } from './profileSync';
+import { subscribeProfileClientState } from './profileClientState';
 import { SetupWizard } from './setup/SetupWizard';
 import { Brand } from './ui/Brand';
 import { Icon, type IconName } from './ui/Icon';
 import { MessagesContext } from './ui/messages';
 import { UpdateBanner, useUpdateStatus } from './updates/Updates';
+import { UpdateAvailableDialog } from './updates/UpdateAvailableDialog';
+import { PageLoadBoundary } from './pages/PageLoadBoundary';
 
-const ICONS: Record<PageId, IconName> = { office: 'monitor', chat: 'chat', missions: 'mission', observe: 'diagnostics', files: 'files', git: 'git', knowledge: 'bulb', history: 'book', import: 'download', logs: 'logs', start: 'start', diagnostics: 'diagnostics', skills: 'spark', settings: 'settings' };
+// Keep landing, conversation and global supervision controls available without loading every page.
+const HistoryPage = lazy(() => import('./library/HistoryPage').then(module => ({ default: module.HistoryPage })));
+const KnowledgePage = lazy(() => import('./knowledge/KnowledgePage').then(module => ({ default: module.KnowledgePage })));
+const ImportPage = lazy(() => import('./library/ImportPage').then(module => ({ default: module.ImportPage })));
+const DiagnosticsPage = lazy(() => import('./pages/DiagnosticsPage').then(module => ({ default: module.DiagnosticsPage })));
+const EventLogPage = lazy(() => import('./pages/EventLogPage').then(module => ({ default: module.EventLogPage })));
+const FilesPage = lazy(() => import('./pages/FilesPage').then(module => ({ default: module.FilesPage })));
+const GitPage = lazy(() => import('./pages/GitPage').then(module => ({ default: module.GitPage })));
+const SettingsPage = lazy(() => import('./pages/SettingsPage').then(module => ({ default: module.SettingsPage })));
+const SkillsPage = lazy(() => import('./skills/SkillsPage').then(module => ({ default: module.SkillsPage })));
+const ObserverPage = lazy(() => import('./pages/ObserverPage').then(module => ({ default: module.ObserverPage })));
+const MissionsPage = lazy(() => import('./missions/MissionsPage').then(module => ({ default: module.MissionsPage })));
+const SchedulesPage = lazy(() => import('./schedules/SchedulesPage').then(module => ({ default: module.SchedulesPage })));
+
+const ICONS: Record<PageId, IconName> = { office: 'monitor', chat: 'chat', missions: 'mission', schedules: 'clock', observe: 'diagnostics', files: 'files', git: 'git', knowledge: 'bulb', history: 'book', import: 'download', logs: 'logs', start: 'start', diagnostics: 'diagnostics', skills: 'spark', settings: 'settings' };
 
 type ViewTransition = { ready: Promise<void>; finished: Promise<void>; updateCallbackDone: Promise<void> };
 
@@ -97,25 +111,52 @@ function useColorScheme(theme: Preferences['theme']): void {
 export function App({ platform }: { platform: Platform }) {
   const { agents, updater } = platform.capabilities;
   useWorkspaceMemoryDraftWarning(agents);
+  useComposerDraftWarning(agents);
   const [preferences, setPreferences] = useState(loadPreferences);
   const host = useHostState(agents);
   const hostState = host.state;
   const sourceContext = hostState ? JSON.stringify([hostState.profile.id, hostState.dataDirectory ?? hostState.storage.dataDirectory]) : undefined;
   // Splash → setup gate → shell; see boot/bootState.ts.
   const { boot, splash, retry: retryBoot } = useBoot(Boolean(agents), host);
-  // The workspace last used on this device; the page itself is never remembered.
+  // The host owns remembered workspace selection; browser storage is only a mirror.
   const [stored, setStored] = useState(loadLandingMemory);
+  useEffect(() => {
+    const refresh = () => setStored(loadLandingMemory());
+    refresh();
+    return subscribeProfileClientState(refresh);
+  }, []);
   const workflow = hostState?.workflow ?? 'managed';
   // Every launch and the end of setup land in the 3D Office (Get started without an agent host).
   const defaultPage: PageId = resolveLandingPage({ agents: Boolean(agents) });
   const [chosenPage, setChosenPage] = useState<PageId | null>(null);
   const page: PageId = chosenPage ?? defaultPage;
   const [missionFocus, setMissionFocus] = useState<{ id?: string; token: number } | null>(null);
+  const [selection, setSelectionState] = useState<ChatSelection>({});
+  const [officeLearningTarget, setOfficeLearningTarget] = useState<HTMLDivElement | null>(null);
+  const [chatLearningTarget, setChatLearningTarget] = useState<HTMLDivElement | null>(null);
+  const [settingsLearningTarget, setSettingsLearningTarget] = useState<HTMLDivElement | null>(null);
+  const inputFocusSequence = useRef(0);
+  const [inputFocus, setInputFocus] = useState<OfficeInputFocus>();
+  const locateOfficeRequest = useCallback((target: Omit<OfficeInputFocus, 'token' | 'scope'>) => {
+    setSelectionState({ sessionId: target.sessionId });
+    setMissionFocus(null); setChosenPage('office');
+    setInputFocus({ ...target, ...(sourceContext ? { scope: sourceContext } : {}), token: ++inputFocusSequence.current });
+  }, [sourceContext]);
+  const locateInput = useCallback((sessionId: string, requestId?: string) => {
+    locateOfficeRequest({ sessionId, ...(requestId ? { requestId } : {}), kind: 'input' });
+  }, [locateOfficeRequest]);
+  const locateAttention = useCallback((request: OfficeAttentionRequest, onSettled: (outcome: OfficeAttentionOutcome) => void) => {
+    locateOfficeRequest({ ...request, attentionKey: request.key, automatic: true, onSettled });
+  }, [locateOfficeRequest]);
+  const currentInputFocus = inputFocus?.scope === sourceContext ? inputFocus : undefined;
+  if (inputFocus && inputFocus.scope !== sourceContext) setInputFocus(undefined);
+  const inputFocused = useCallback((token: number) => setInputFocus(current => current?.token === token ? undefined : current), []);
+
   const setPage = (next: PageId) => {
+    if (next !== 'office') setInputFocus(undefined);
     if (next !== 'missions') setMissionFocus(null);
     setChosenPage(next);
   };
-  const [selection, setSelectionState] = useState<ChatSelection>({});
   // ADR 0028: a mission's Changes panel opens Settings at a workspace's integration test gate.
   const [gateFocus, setGateFocus] = useState<string>();
   const [settingsSection, setSettingsSection] = useState<SettingsSection>('general');
@@ -139,10 +180,10 @@ export function App({ platform }: { platform: Platform }) {
   const rememberedWorkspace = hostState ? resolveLandingWorkspace(hostState.workspaces, stored.workspaceId) : undefined;
   const chatSelection: ChatSelection = selection.workspaceId || !rememberedWorkspace ? selection : { ...selection, workspaceId: rememberedWorkspace };
 
-  const groups = navigationGroups({ agents: Boolean(agents), workflow, canChat: Boolean(hostState?.workspaces.length) });
+  const groups = navigationGroups({ agents: Boolean(agents), workflow, canChat: Boolean(hostState?.workspaces.some(workspace => workspace.mode !== 'observe')) });
   const activePage = groups.some(group => group.pages.includes(page)) ? page : defaultPage;
   // Nav badge: skills waiting for review or approval; reloaded after Skills actions and when entering or leaving the page.
-  const skillsWaiting = useSkillsWaiting(agents, hostState?.workspaces, skillsRefresh, activePage === 'skills');
+  const skillsWaiting = useSkillsWaiting(workflow === 'managed' ? agents : undefined, hostState?.workspaces, skillsRefresh, activePage === 'skills');
   const openSkills = (workspaceId?: string) => { setSkillsFocus(workspaceId); setPage('skills'); };
   const clearSkillsFocus = useCallback(() => setSkillsFocus(undefined), []);
   const bumpSkills = useCallback(() => setSkillsRefresh(count => count + 1), []);
@@ -163,18 +204,20 @@ export function App({ platform }: { platform: Platform }) {
 
   const update = (next: Preferences) => { setPreferences(next); savePreferences(next); };
   // With an agent host, preferences follow the shared Extalia profile (Web and Desktop); localStorage mirrors it.
-  useProfileSync(agents, preferences, update);
-  // A conversation continued from another agent opens in Chat.
+  useProfileSync(hostState ? agents : undefined, preferences, update, hostState ? JSON.stringify([hostState.dataDirectory, hostState.host.instanceId]) : undefined);
+  // Open the destination in its actual managed or observed surface after refreshing ownership.
   const continued = {
     onContinued: (sessionId: string, workspaceId: string) => {
-      agents?.getState().then(host.apply, () => undefined);
-      setSelection({ workspaceId, sessionId });
-      setPage('chat');
+      void agents?.getState().then(next => {
+        host.apply(next);
+        const destination = next.sessions.find(session => session.id === sessionId);
+        setSelection({ workspaceId: destination?.workspaceId ?? workspaceId, sessionId });
+        setPage(destination?.control === 'observed' ? 'observe' : 'chat');
+      }, () => undefined);
     },
     onOpenSettings: () => openSettings(hostState?.connections.length ? 'workspaces' : 'connections'),
   };
-  const banner = <><UpdateBanner t={t} updater={updater} status={updateStatus} />
-    <HostConnectionBanner t={t} error={host.error} desktop={platform.info.kind === 'desktop'} onRetry={host.retry} /></>;
+  const banner = <UpdateBanner t={t} updater={updater} status={updateStatus} />;
 
   let body;
   if (splash) {
@@ -221,37 +264,49 @@ export function App({ platform }: { platform: Platform }) {
             <span className="topbar-title">{t.nav[activePage]}</span>
             {showsOfficeControls(activePage) && <OfficeTopbarControls t={t} />}
             <ApprovalInboxButton t={t} />
-            {agents && hostState && <NativeStatusButton t={t} agents={agents} state={hostState} onState={host.apply}
+            {workflow === 'managed' && agents && hostState && <NativeStatusButton t={t} agents={agents} state={hostState} onState={host.apply}
               onOpenSession={(sessionId, workspaceId) => { setSelection({ sessionId, workspaceId }); setPage('chat'); }}
               onOpenMissions={(sessionId, workspaceId, missionId) => {
                 setSelection({ sessionId, workspaceId });
                 setMissionFocus(current => ({ id: missionId, token: (current?.token ?? 0) + 1 }));
                 setPage('missions');
               }} />}
+            {platform.info.kind !== 'desktop' && <FullscreenButton t={t} />}
             <span className="topbar-meta">{hostLabel} · v{platform.info.appVersion}</span>
           </header>
+          <ObservedInputAlert t={t} />
           <main className={`content ${activePage === 'chat' ? 'content-chat' : activePage === 'office' ? 'content-office' : activePage === 'knowledge' ? 'content-knowledge' : ''}`} key={activePage}>
-            {activePage === 'office' && <OfficePage t={t} language={preferences.language} agents={agents} hostDisconnected={Boolean(host.error)} state={hostState} onState={host.apply} workspaceId={chatWorkspaceId}
-              onWorkspace={workspaceId => setSelection({ workspaceId })}
+            <PageLoadBoundary t={t}>
+            {activePage === 'office' && <OfficePage key={sourceContext} t={t} language={preferences.language} agents={agents} hostDisconnected={Boolean(host.error)} state={hostState} onState={host.apply} workspaceId={chatWorkspaceId} inputFocus={currentInputFocus} onInputFocused={inputFocused}
+              onWorkspace={(workspaceId, sessionId) => setSelection({ workspaceId, sessionId })} onLearningTarget={setOfficeLearningTarget}
               onOpenSession={session => { setSelection({ workspaceId: session.workspaceId, sessionId: session.id }); setPage(session.control === 'observed' ? 'observe' : 'chat'); }}
-              onOpenMissions={hostState?.workspaces.length ? session => { if (session) setSelection({ workspaceId: session.workspaceId, sessionId: session.id }); setPage('missions'); } : undefined}
-              onStartChat={() => setPage(!agents ? 'start' : 'chat')}
-              onOpenAgentSettings={() => openSettings('agent-apps')} onOpenSettings={() => openSettings(hostState?.connections.length ? 'workspaces' : 'connections')} />}
+              onOpenMissions={workflow === 'managed' && hostState?.workspaces.length ? session => { if (session) setSelection({ workspaceId: session.workspaceId, sessionId: session.id }); setPage('missions'); } : undefined}
+              onStartChat={() => setPage(!agents ? 'start' : workflow === 'observe' ? 'observe' : 'chat')}
+              onOpenAgentSettings={() => openSettings('agent-apps')} onOpenSettings={() => openSettings(workflow === 'observe' ? 'workspaces' : hostState?.connections.length ? 'workspaces' : 'connections')} />}
             {activePage === 'missions' && agents && hostState && (
               <MissionsPage key={missionFocus?.token ?? 0} t={t} language={preferences.language} agents={agents} state={hostState} onState={host.apply} workspaceId={chatWorkspaceId} sessionId={selection.sessionId ?? undefined} missionId={missionFocus?.id}
                 onSelectWorkspace={workspaceId => { setMissionFocus(null); setSelection({ workspaceId }); }}
                 onSelectSession={(sessionId, workspaceId) => { setMissionFocus(null); setSelection({ workspaceId, sessionId }); }} onOpenChat={() => setPage('chat')} onOpenSettings={() => openSettings(hostState?.connections.length ? 'workspaces' : 'connections')}
                 onEditGate={workspaceId => { setGateFocus(workspaceId); openSettings('workspaces'); }} />
             )}
+            {activePage === 'schedules' && agents && hostState && (
+              <SchedulesPage t={t} agents={agents} state={hostState} workspaceId={chatWorkspaceId}
+                onSelectWorkspace={workspaceId => setSelection({ workspaceId })}
+                onOpenSession={(sessionId, workspaceId) => { setSelection({ workspaceId, sessionId }); setPage('chat'); }}
+                onOpenSettings={() => openSettings(hostState?.connections.length ? 'workspaces' : 'connections')}
+                onState={host.apply} />
+            )}
             {activePage === 'chat' && agents && hostState && (
               <ChatPage t={t} language={preferences.language} agents={agents} picker={hostState.host.kind === 'desktop' ? platform.capabilities.filesystem : undefined} state={hostState} onState={host.apply}
+                onOpenSession={session => { setSelection({ workspaceId: session.workspaceId, sessionId: session.id }); setPage(session.control === 'observed' ? 'observe' : 'chat'); }}
+                onLearningTarget={setChatLearningTarget}
                 selection={chatSelection} onSelect={setSelection} onOpenSettings={() => openSettings(hostState?.connections.length ? 'workspaces' : 'connections')} onReviewSkills={() => openSkills()} onOpenKnowledge={() => setPage('knowledge')} />
             )}
             {activePage === 'history' && agents && hostState && (
               <HistoryPage t={t} language={preferences.language} agents={agents} state={hostState} onState={host.apply} onOpenImport={() => setPage('import')} {...continued} />
             )}
             {activePage === 'files' && agents && hostState && <FilesPage t={t} language={preferences.language} agents={agents} state={hostState} {...(chatWorkspaceId ? { workspaceId: chatWorkspaceId } : {})} />}
-            {activePage === 'knowledge' && agents && <KnowledgePage t={t} language={preferences.language} agents={agents} picker={hostState?.host.kind === 'desktop' ? platform.capabilities.filesystem : undefined} />}
+            {activePage === 'knowledge' && agents && <KnowledgePage t={t} language={preferences.language} agents={agents} workspaces={hostState?.workspaces} workspaceId={chatWorkspaceId} onWorkspace={workspaceId => setSelection({ workspaceId })} picker={hostState?.host.kind === 'desktop' ? platform.capabilities.filesystem : undefined} />}
             {activePage === 'git' && agents && hostState && <GitPage t={t} agents={agents} state={hostState} {...(chatWorkspaceId ? { workspaceId: chatWorkspaceId } : {})} />}
             {activePage === 'observe' && agents && hostState && <ObserverPage key={sourceContext} t={t} language={preferences.language} agents={agents} state={hostState} initialSessionId={selection.sessionId ?? undefined} onState={host.apply}
               onOpenAgentSettings={() => openSettings('agent-apps')} onOpenImport={() => setPage('import')} {...continued} />}
@@ -265,6 +320,7 @@ export function App({ platform }: { platform: Platform }) {
             {activePage === 'diagnostics' && <DiagnosticsPage t={t} platform={platform} hostState={hostState} updateStatus={updateStatus} onOpenWorkspaces={() => openSettings('workspaces')} />}
             {activePage === 'settings' && (
               <SettingsPage t={t} platform={platform} preferences={preferences} onChange={update} hostState={hostState} onHostState={host.apply} updateStatus={updateStatus}
+                onLearningTarget={setSettingsLearningTarget}
                 section={settingsSection} onSectionChange={setSettingsSection} onOpenObserve={() => setPage('observe')} onOpenImport={() => setPage('import')}
                 editGateFor={gateFocus} onEditGateHandled={() => setGateFocus(undefined)} onOpenSkills={openSkills} />
             )}
@@ -272,16 +328,25 @@ export function App({ platform }: { platform: Platform }) {
               <SkillsPage t={t} agents={agents} state={hostState} {...(hostState.host.kind === 'desktop' && platform.capabilities.filesystem ? { picker: platform.capabilities.filesystem } : {})}
                 {...(skillsFocus ? { focusWorkspaceId: skillsFocus } : {})} onFocusHandled={clearSkillsFocus} onChanged={bumpSkills} />
             )}
+            </PageLoadBoundary>
           </main>
         </div>
         <div className="toast-region" role="status" aria-live="polite">
           {toast && <p key={toast.id} className="toast"><Icon name="check" />{toast.text}</p>}
         </div>
+        {agents && hostState && <LearningCountdown key={sourceContext} agents={agents} t={t} target={activePage === 'office' ? officeLearningTarget : activePage === 'chat' ? chatLearningTarget : activePage === 'settings' ? settingsLearningTarget : null} embedded={activePage === 'chat' || activePage === 'settings' || undefined} />}
       </div>
     );
   }
 
   return <MessagesContext value={t}>
-    <ApprovalProvider t={t} hostKind={platform.info.kind} agents={agents} state={hostState} notifier={platform.capabilities.notifications}>{body}</ApprovalProvider>
+    <ApprovalProvider t={t} hostKind={platform.info.kind} agents={agents} state={hostState} notifier={platform.capabilities.notifications}>
+      <ObservedInputProvider t={t} hostKind={platform.info.kind} agents={agents} state={hostState} notifier={platform.capabilities.notifications} onLocate={locateInput}>
+        <OfficeAutoAttention active={!splash && !host.error && hostState?.setupComplete === true && activePage === 'office'} scope={sourceContext ?? 'unloaded'} busy={Boolean(currentInputFocus)} onLocate={locateAttention} />
+        {body}
+      </ObservedInputProvider>
+      <UpdateAvailableDialog t={t} updater={updater} status={updateStatus} enabled={!splash && platform.info.kind === 'desktop'} />
+      {hostState && <HostConnectionDialog t={t} error={host.error} desktop={platform.info.kind === 'desktop'} onRetry={host.retry} />}
+    </ApprovalProvider>
   </MessagesContext>;
 }

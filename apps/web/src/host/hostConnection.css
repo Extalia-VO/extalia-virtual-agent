@@ -1,0 +1,13 @@
+.host-connection-dialog {
+  box-sizing: border-box; width: min(440px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px); overflow: auto;
+  padding: 26px; border: 1px solid var(--line); border-radius: 18px;
+  background: var(--opaque); color: var(--text); box-shadow: var(--shadow);
+}
+.host-connection-dialog::backdrop { background: rgb(12 20 28 / 45%); }
+.host-connection-dialog h2 { margin: 14px 0 10px; font-size: 1.15rem; }
+.host-connection-dialog p { line-height: 1.6; overflow-wrap: anywhere; }
+.host-connection-symbol { display: inline-grid; place-items: center; padding: 10px; border-radius: 12px; color: var(--error); background: var(--error-soft); }
+.host-connection-retrying { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: .85rem; }
+.host-connection-dialog .actions { margin-top: 20px; justify-content: flex-end; }
+@media (max-width: 480px) { .host-connection-dialog { padding: 20px; } }

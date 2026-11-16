@@ -19,8 +19,10 @@ export type UpdaterEvent =
   | { type: 'error'; error: unknown };
 
 export interface UpdateDriver {
-  /** Ask the release feed. An available update downloads in the background. */
+  /** Ask the release feed without downloading or installing anything. */
   check(): Promise<void>;
+  /** Download only the exact candidate approved by the user. */
+  download(version: string): Promise<void>;
   /** Quit, install the downloaded update and start the new version. */
   quitAndInstall(): void;
 }
@@ -63,13 +65,15 @@ export function updateErrorDetail(error: unknown): string {
   return safeMessage(error, 'The update failed.').slice(0, 160);
 }
 
-const BUSY_STATES: readonly UpdateStatus['state'][] = ['available', 'downloading', 'ready', 'installing'];
+const BUSY_STATES: readonly UpdateStatus['state'][] = ['checking', 'available', 'downloading', 'ready', 'installing'];
 
 export class UpdatePolicy {
   private current: UpdateStatus;
   private countdown: ReturnType<typeof setInterval> | undefined;
   private stopWaiting: (() => void) | undefined;
   private postponed = false;
+  private approvedVersion: string | undefined;
+  private disposed = false;
 
   constructor(private readonly options: UpdatePolicyOptions) {
     const base = { current: options.current, channel: options.channel };
@@ -81,24 +85,36 @@ export class UpdatePolicy {
   }
 
   handle(event: UpdaterEvent): void {
+    if (this.disposed || !this.options.driver) return;
     const latest = this.current.latest;
     switch (event.type) {
-      case 'checking': return this.set({ state: 'checking', latest });
-      case 'available': return this.set({ state: 'available', latest: event.version });
-      case 'not-available': return this.set({ state: 'up-to-date', latest: event.version ?? latest });
-      case 'progress': return this.set({ state: 'downloading', latest, progress: Math.min(1, Math.max(0, event.percent / 100)) || 0 });
+      case 'checking':
+        if (this.approvedVersion || this.current.state === 'available') return;
+        return this.set({ state: 'checking', latest });
+      case 'available':
+        if (this.approvedVersion) return;
+        return this.set({ state: 'available', latest: event.version });
+      case 'not-available':
+        if (this.approvedVersion || this.current.state === 'available') return;
+        return this.set({ state: 'up-to-date', latest: event.version ?? latest });
+      case 'progress':
+        if (!this.approvedVersion || this.current.state !== 'downloading') return;
+        return this.set({ state: 'downloading', latest, progress: Math.min(1, Math.max(0, event.percent / 100)) || 0 });
       case 'downloaded':
+        if (event.version !== this.approvedVersion || this.current.state !== 'downloading') return;
         this.set({ state: 'ready', latest: event.version });
         return this.scheduleRestart();
       case 'error':
         this.stopTimers();
+        this.approvedVersion = undefined;
         return this.set({ state: 'error', latest, detail: updateErrorDetail(event.error) });
     }
   }
 
   async check(): Promise<UpdateStatus> {
     const { driver } = this.options;
-    if (!driver || BUSY_STATES.includes(this.current.state)) return this.status();
+    if (this.disposed || !driver || BUSY_STATES.includes(this.current.state)) return this.status();
+    this.set({ state: 'checking', latest: this.current.latest });
     try {
       await driver.check();
     } catch (error) {
@@ -108,18 +124,33 @@ export class UpdatePolicy {
     return this.status();
   }
 
-  /** Restart into the downloaded update now. */
-  install(): void {
+  /** Approve and download the available version, or restart into an approved download. */
+  async install(expectedVersion?: string): Promise<void> {
+    if (this.disposed) return;
     if (!this.options.driver) throw new Error(this.current.detail ?? 'Updates are not supported here.');
+    if (expectedVersion !== undefined && expectedVersion !== this.current.latest) throw new Error('The available update changed. Review the latest version before updating.');
     const { state } = this.current;
-    if (state === 'installing') return;
-    if (state === 'available' || state === 'downloading') throw new Error('The update is still downloading.');
+    if (state === 'installing' || state === 'downloading') return;
+    if (state === 'available' && this.current.latest) {
+      const version = this.current.latest;
+      this.approvedVersion = version;
+      this.postponed = false;
+      this.set({ state: 'downloading', latest: version, progress: 0 });
+      try {
+        await this.options.driver.download(version);
+      } catch (error) {
+        if (!this.disposed && this.approvedVersion === version && this.current.state === 'downloading') this.handle({ type: 'error', error });
+      }
+      return;
+    }
     if (state !== 'ready') throw new Error('No update is ready to install.');
-    if (this.options.work.isBusy()) throw new Error('An agent is still working. Restart when it has finished.');
+    if (!this.approvedVersion || this.approvedVersion !== this.current.latest) throw new Error('This update has not been approved.');
+    this.postponed = false;
+    if (this.options.work.isBusy()) return this.scheduleRestart();
     this.restartNow();
   }
 
-  /** Cancel the automatic restart; the update installs when the app quits. */
+  /** Keep the approved download, but require another explicit restart action. */
   postpone(): void {
     if (this.current.state !== 'ready') return;
     this.postponed = true;
@@ -128,12 +159,13 @@ export class UpdatePolicy {
   }
 
   dispose(): void {
+    this.disposed = true;
     this.stopTimers();
   }
 
   private scheduleRestart(): void {
     this.stopTimers();
-    if (this.postponed) return;
+    if (this.disposed || this.postponed || !this.approvedVersion || this.current.state !== 'ready') return;
     const latest = this.current.latest;
     const { work } = this.options;
     if (work.isBusy()) {

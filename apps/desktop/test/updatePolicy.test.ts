@@ -28,7 +28,7 @@ class FakeWork {
 
 function setup(options: { driver?: UpdateDriver | null } = {}) {
   const work = new FakeWork();
-  const driver = { check: vi.fn(async () => undefined), quitAndInstall: vi.fn() };
+  const driver = { check: vi.fn(async () => undefined), download: vi.fn(async (_version: string) => undefined), quitAndInstall: vi.fn() };
   const statuses: UpdateStatus[] = [];
   const policy = new UpdatePolicy({
     current: '0.1.0',
@@ -45,6 +45,7 @@ function setup(options: { driver?: UpdateDriver | null } = {}) {
 function download(policy: UpdatePolicy): void {
   policy.handle({ type: 'checking' });
   policy.handle({ type: 'available', version: '0.2.0' });
+  void policy.install();
   policy.handle({ type: 'progress', percent: 50 });
   policy.handle({ type: 'downloaded', version: '0.2.0' });
 }
@@ -65,6 +66,7 @@ describe('update policy', () => {
     policy.handle({ type: 'checking' });
     policy.handle({ type: 'not-available', version: '0.1.0' });
     policy.handle({ type: 'available', version: '0.2.0' });
+    void policy.install();
     policy.handle({ type: 'progress', percent: 42.5 });
     policy.handle({ type: 'progress', percent: 140 });
     policy.handle({ type: 'error', error: Object.assign(new Error('Cannot find latest.yml\nXML: <feed/>'), { code: 'ERR_UPDATER_CHANNEL_FILE_NOT_FOUND' }) });
@@ -72,6 +74,7 @@ describe('update policy', () => {
       { state: 'checking', latest: undefined, progress: undefined, detail: undefined },
       { state: 'up-to-date', latest: '0.1.0', progress: undefined, detail: undefined },
       { state: 'available', latest: '0.2.0', progress: undefined, detail: undefined },
+      { state: 'downloading', latest: '0.2.0', progress: 0, detail: undefined },
       { state: 'downloading', latest: '0.2.0', progress: 0.425, detail: undefined },
       { state: 'downloading', latest: '0.2.0', progress: 1, detail: undefined },
       { state: 'error', latest: '0.2.0', progress: undefined, detail: 'No release is published for this platform yet.' },
@@ -149,27 +152,30 @@ describe('update policy', () => {
     expect(waiting.driver.quitAndInstall).not.toHaveBeenCalled();
   });
 
-  it('install restarts immediately but refuses while an agent works', () => {
+  it('explicit approval downloads once and restart waits while an agent works', async () => {
     const { policy, work, driver } = setup();
-    expect(() => policy.install()).toThrow('No update is ready to install.');
+    await expect(policy.install()).rejects.toThrow('No update is ready to install.');
     policy.handle({ type: 'available', version: '0.2.0' });
-    expect(() => policy.install()).toThrow('The update is still downloading.');
+    await policy.install();
+    await policy.install();
+    expect(driver.download).toHaveBeenCalledExactlyOnceWith('0.2.0');
     policy.handle({ type: 'downloaded', version: '0.2.0' });
     policy.postpone();
     work.busy = true;
-    expect(() => policy.install()).toThrow('An agent is still working. Restart when it has finished.');
+    await policy.install();
+    expect(policy.status()).toMatchObject({ state: 'ready', detail: WAITING_FOR_AGENTS });
     expect(driver.quitAndInstall).not.toHaveBeenCalled();
-    work.busy = false;
-    policy.install();
+    work.finish();
+    await policy.install();
     expect(driver.quitAndInstall).toHaveBeenCalledTimes(1);
     expect(policy.status().state).toBe('installing');
   });
 
-  it('reports a failed install as an error', () => {
+  it('reports a failed install as an error', async () => {
     const { policy, driver } = setup();
     driver.quitAndInstall.mockImplementation(() => { throw new Error('Squirrel failed'); });
     download(policy);
-    policy.install();
+    await policy.install();
     expect(policy.status()).toMatchObject({ state: 'error', detail: 'Squirrel failed' });
     vi.advanceTimersByTime(60_000);
     expect(driver.quitAndInstall).toHaveBeenCalledTimes(1);
@@ -177,7 +183,8 @@ describe('update policy', () => {
 
   it('checks the feed unless an update is already on its way', async () => {
     const { policy, driver } = setup();
-    expect(await policy.check()).toMatchObject({ state: 'idle' });
+    expect(await policy.check()).toMatchObject({ state: 'checking' });
+    policy.handle({ type: 'not-available', version: '0.1.0' });
     expect(driver.check).toHaveBeenCalledTimes(1);
     driver.check.mockRejectedValueOnce(new Error('net::ERR_NAME_NOT_RESOLVED'));
     expect(await policy.check()).toMatchObject({ state: 'error', detail: 'The update server could not be reached.' });
@@ -186,12 +193,101 @@ describe('update policy', () => {
     expect(driver.check).toHaveBeenCalledTimes(2);
   });
 
+  it('finding an update never downloads or schedules installation without consent', () => {
+    const { policy, driver } = setup();
+    policy.handle({ type: 'available', version: '0.2.0' });
+    policy.handle({ type: 'progress', percent: 100 });
+    policy.handle({ type: 'downloaded', version: '0.2.0' });
+    vi.advanceTimersByTime(60_000);
+    expect(policy.status()).toMatchObject({ state: 'available', latest: '0.2.0' });
+    expect(driver.download).not.toHaveBeenCalled();
+    expect(driver.quitAndInstall).not.toHaveBeenCalled();
+  });
+
+  it('only the approved version may become ready and duplicate events cannot restart its timer', async () => {
+    const { policy, driver } = setup();
+    policy.handle({ type: 'available', version: '0.2.0' });
+    await policy.install();
+    policy.handle({ type: 'checking' });
+    policy.handle({ type: 'available', version: '0.3.0' });
+    policy.handle({ type: 'not-available', version: '0.1.0' });
+    policy.handle({ type: 'downloaded', version: '0.3.0' });
+    expect(policy.status()).toMatchObject({ state: 'downloading', latest: '0.2.0' });
+    policy.handle({ type: 'downloaded', version: '0.2.0' });
+    vi.advanceTimersByTime(3000);
+    policy.handle({ type: 'downloaded', version: '0.2.0' });
+    expect(policy.status().restartInSeconds).toBe(7);
+    policy.postpone();
+    policy.handle({ type: 'progress', percent: 100 });
+    policy.handle({ type: 'downloaded', version: '0.2.0' });
+    vi.advanceTimersByTime(60_000);
+    expect(driver.quitAndInstall).not.toHaveBeenCalled();
+  });
+
+  it('a stale dialog cannot approve a newer candidate or restart a different version', async () => {
+    const { policy, driver } = setup();
+    policy.handle({ type: 'available', version: '0.2.0' });
+    policy.handle({ type: 'available', version: '0.3.0' });
+    await expect(policy.install('0.2.0')).rejects.toThrow('The available update changed.');
+    expect(driver.download).not.toHaveBeenCalled();
+    await policy.install('0.3.0');
+    policy.handle({ type: 'downloaded', version: '0.3.0' });
+    policy.postpone();
+    await expect(policy.install('0.2.0')).rejects.toThrow('The available update changed.');
+    expect(driver.quitAndInstall).not.toHaveBeenCalled();
+    policy.dispose();
+  });
+
+  it('coalesces checks before the driver emits checking', async () => {
+    let finish!: () => void;
+    const driver = { check: vi.fn(() => new Promise<void>(resolve => { finish = resolve; })), download: vi.fn(async () => undefined), quitAndInstall: vi.fn() };
+    const { policy } = setup({ driver });
+    const pending = policy.check();
+    await policy.check();
+    expect(driver.check).toHaveBeenCalledTimes(1);
+    finish();
+    await pending;
+  });
+
+  it('a download failure drops consent and can be checked and approved again', async () => {
+    const { policy, driver } = setup();
+    driver.download.mockRejectedValueOnce(new Error('net::ERR_CONNECTION_RESET'));
+    policy.handle({ type: 'available', version: '0.2.0' });
+    await policy.install();
+    expect(policy.status()).toMatchObject({ state: 'error', detail: 'The update server could not be reached.' });
+    policy.handle({ type: 'downloaded', version: '0.2.0' });
+    vi.advanceTimersByTime(60_000);
+    expect(driver.quitAndInstall).not.toHaveBeenCalled();
+    await policy.check();
+    policy.handle({ type: 'available', version: '0.3.0' });
+    expect(driver.download).toHaveBeenCalledTimes(1);
+    await policy.install();
+    expect(driver.download).toHaveBeenLastCalledWith('0.3.0');
+    policy.handle({ type: 'downloaded', version: '0.3.0' });
+    expect(policy.status()).toMatchObject({ state: 'ready', latest: '0.3.0' });
+    policy.dispose();
+  });
+
+  it('disposal prevents pending work from scheduling a restart', async () => {
+    const { policy, driver } = setup();
+    policy.handle({ type: 'available', version: '0.2.0' });
+    await policy.install();
+    policy.dispose();
+    policy.handle({ type: 'downloaded', version: '0.2.0' });
+    await policy.check();
+    await policy.install();
+    vi.advanceTimersByTime(60_000);
+    expect(driver.quitAndInstall).not.toHaveBeenCalled();
+    expect(driver.download).toHaveBeenCalledTimes(1);
+    expect(driver.check).not.toHaveBeenCalled();
+  });
+
   it('reports unpackaged builds as unsupported', async () => {
     const { policy, statuses } = setup({ driver: null });
     const unsupported = { current: '0.1.0', channel: 'stable', state: 'unsupported', detail: 'Updates are installed by packaged builds.' };
     expect(policy.status()).toEqual(unsupported);
     expect(await policy.check()).toEqual(unsupported);
-    expect(() => policy.install()).toThrow('Updates are installed by packaged builds.');
+    await expect(policy.install()).rejects.toThrow('Updates are installed by packaged builds.');
     policy.postpone();
     expect(statuses).toEqual([]);
   });

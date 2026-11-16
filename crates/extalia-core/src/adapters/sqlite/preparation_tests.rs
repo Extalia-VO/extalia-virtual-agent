@@ -643,7 +643,7 @@ fn preparation_migration_13_preserves_existing_planning_receipts() {
     }
     store.close().unwrap();
     let mut store = CoreStore::open(&dir.store()).unwrap();
-    assert_eq!(store.schema_version().unwrap(), 13);
+    assert_eq!(store.schema_version().unwrap(), CoreStore::LATEST);
     assert_eq!(
         store
             .inspect_planning("default", &begin.invocation_id)

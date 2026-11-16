@@ -4,19 +4,53 @@ The Office camera offers an automatic tour and a manual mode. The idle tour
 starts after a variable 60–120 seconds without interaction, redrawn after each
 user interaction. It visits all characters currently admitted to the Office,
 including idle agents and facility staff. Working characters receive variable
-dwell times of 9–17 seconds; idle characters receive 4–7 seconds. A camera
+dwell times of 30–120 seconds; stationary idle characters receive 20–30 seconds. A camera
 gesture or explicit selection gives control back to the user. The camera toggle
 sits beside the light controls in the Office top bar; its choice is shared with
 the scene and lasts for the current app session, including page navigation.
 
-Newly admitted working agents and agents that become active, including delegated
-workers, receive immediate attention once the 2-second manual-interaction
+Newly admitted working agents, including delegated workers, receive immediate attention once the 2-second manual-interaction
 cooldown has elapsed. Initial event/presence hydration establishes a baseline;
 it does not announce every existing worker as newly active. Announcements expire
 after 30 seconds and disappear when the agent is no longer working. Outstanding
 input or approval requests take priority over those announcements and the idle
 tour. After a character's final request resolves, a 1.5-second grace period
 precedes moving to the next character.
+
+Automatic focus changes on the same visible floor go directly to the next
+character, preserving the focus zoom and easing the pan in and out over two
+seconds. Only different or unknown floors use overview → travel → focus.
+Manual Locate keeps its existing timing. Live follow continues as a character
+walks or changes floors; it does not repeatedly restart the focus animation.
+
+Each visit samples its duration once from real renderer metadata:
+
+- Subagent working: 30–60 seconds.
+- Main agent working: 60–90 seconds.
+- Explicit meeting membership: 90–120 seconds; a meeting starting during an
+  existing shot extends its total visit to at least 90 seconds.
+- Working while moving: 60–120 seconds. A journey that continues beyond the
+  sampled dwell is followed until arrival plus five seconds, capped at 120
+  seconds of total focus time. The same bounded journey grace applies to idle
+  walkers and staff.
+- Stationary idle: 20–30 seconds.
+
+Ordinary work restarts of existing characters do not interrupt another shot.
+An idle character already in focus can start working and receive one full
+working dwell; later work restarts do not reset that visit's clock. Genuine
+new spawns and pending input/approval retain priority over minimum dwell and
+journey grace. Manual activity, suspension and reduced-motion rules still apply.
+
+The comfort policy was implemented in v0.4.232. Validation includes 74 focused camera
+and attention tests, an independent read-only review, and actual CameraView /
+director browser runs at 1440×900 light and 390×844 dark. Each run sampled 133
+frames through a 16 m same-floor pan at stable focus zoom, then verified a
+cross-floor overview/focus sequence and continued live follow. Temporary preview
+files and their browser/server were removed. The final full project check passed
+7,415 TypeScript tests (26 optional skipped), 474 Rust tests, all builds and
+version/asset checks. Initial shared-checkout failures during concurrent chat
+queue work passed after those sources and fixtures settled; this camera update
+does not change queue behavior or external application configuration.
 
 Live camera focus follows the selected character while walking and crossing
 floors. Contextual focus uses zoom 48 (about 80 pixels for a standing character),

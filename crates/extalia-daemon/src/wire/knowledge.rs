@@ -45,6 +45,8 @@ pub mod limits {
     pub const OVERVIEW_TAG: usize = 64;
     pub const REPORT_ITEMS: usize = 100;
     pub const BODY_BYTES: usize = 256 * 1024;
+    pub const RELATED_UPDATES: usize = 8;
+    pub const RELATED_UPDATE_EXCERPT: usize = 600;
     pub const READ_BYTES: usize = 256 * 1024;
     pub const CONTENT_BYTES: usize = 1024 * 1024;
     pub const HISTORY_LIMIT: u64 = 50;
@@ -64,6 +66,8 @@ const EDGE_TYPES: &[&str] = &[
     "learned_from",
     "depends_on",
     "supersedes",
+    "updates",
+    "contradicts",
     "used_by",
 ];
 const LINK_STATUSES: &[&str] = &["resolved", "missing", "ambiguous"];
@@ -138,6 +142,11 @@ pub enum NodeTarget {
 /// Parameters of one knowledge operation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum KnowledgeRequest {
+    Scoped {
+        profile_id: String,
+        vault_root: Option<String>,
+        request: Box<KnowledgeRequest>,
+    },
     Status,
     Sync {
         mode: SyncMode,
@@ -197,6 +206,7 @@ pub enum KnowledgeRequest {
 impl KnowledgeRequest {
     pub fn op(&self) -> Op {
         match self {
+            Self::Scoped { .. } => Op::KnowledgeScoped,
             Self::Status => Op::KnowledgeStatus,
             Self::Sync { .. } => Op::KnowledgeSync,
             Self::Node { .. } => Op::KnowledgeNode,
@@ -221,6 +231,19 @@ impl KnowledgeRequest {
             }
         };
         match self {
+            Self::Scoped {
+                profile_id,
+                vault_root,
+                request,
+            } => {
+                put("profileId", Some(profile_id.as_str().into()));
+                put(
+                    "vaultRoot",
+                    Some(vault_root.as_deref().map_or(Value::Null, Value::from)),
+                );
+                put("op", Some(request.op().as_str().into()));
+                put("params", Some(request.to_value()));
+            }
             Self::Status => {}
             Self::Sync { mode } => put("mode", Some(mode.as_str().into())),
             Self::Node { target } => match target {
@@ -603,6 +626,42 @@ fn all(results: &[bool]) -> Option<()> {
 // ---- requests ----
 
 pub(super) fn request(check: &mut Check, op: Op, params: &Value) -> Option<RequestParams> {
+    if op == Op::KnowledgeScoped {
+        let fields = check.object(
+            params,
+            PARAMS,
+            &["profileId", "vaultRoot", "op", "params"],
+            &[],
+        )?;
+        let profile = fields.get("profileId")?.as_str()?;
+        if !is_scoped_profile(profile) {
+            check.fail(PARAMS, "expected a vault profile id");
+            return None;
+        }
+        let root = match fields.get("vaultRoot")? {
+            Value::Null => None,
+            value => {
+                if !text(check, Some(value), PARAMS, 4096) {
+                    return None;
+                }
+                Some(value.as_str()?.to_owned())
+            }
+        };
+        let inner = fields.get("op")?.as_str().and_then(Op::parse)?;
+        if !ordinary(inner) {
+            check.fail(PARAMS, "expected an ordinary knowledge operation");
+            return None;
+        }
+        let RequestParams::Knowledge(request) = request(check, inner, fields.get("params")?)?
+        else {
+            return None;
+        };
+        return Some(RequestParams::Knowledge(KnowledgeRequest::Scoped {
+            profile_id: profile.to_owned(),
+            vault_root: root,
+            request: Box::new(request),
+        }));
+    }
     let at = |key: &str| format!("{PARAMS}.{key}");
     let limit_opt =
         |check: &mut Check, fields: &Fields, key: &str, min: u64, max: u64| match fields.get(key) {
@@ -919,6 +978,59 @@ fn node(check: &mut Check, value: Option<&Value>, path: &str) -> bool {
             check,
             fields.get("declaredSourceTaskIds"),
             &at("declaredSourceTaskIds"),
+        ),
+    ])
+    .is_some()
+}
+
+fn related_update(check: &mut Check, value: &Value, path: &str) -> bool {
+    let at = |key: &str| format!("{path}.{key}");
+    let Some(fields) = check.object(
+        value,
+        path,
+        &[
+            "nodeId",
+            "path",
+            "title",
+            "relation",
+            "line",
+            "sourceSha256",
+            "excerpt",
+            "trustStatus",
+        ],
+        &[],
+    ) else {
+        return false;
+    };
+    all(&[
+        node_id(check, fields.get("nodeId"), &at("nodeId")),
+        vault_path(check, fields.get("path"), &at("path")),
+        text(check, fields.get("title"), &at("title"), TITLE),
+        one_of(
+            check,
+            fields.get("relation"),
+            &at("relation"),
+            &["updates", "contradicts", "supersedes"],
+        ),
+        count(check, fields.get("line"), &at("line"), 1, MAX_SAFE_INTEGER),
+        pattern(
+            check,
+            fields.get("sourceSha256"),
+            &at("sourceSha256"),
+            is_digest,
+            "expected a lowercase SHA-256 digest",
+        ),
+        text(
+            check,
+            fields.get("excerpt"),
+            &at("excerpt"),
+            RELATED_UPDATE_EXCERPT,
+        ),
+        one_of(
+            check,
+            fields.get("trustStatus"),
+            &at("trustStatus"),
+            &["untrusted"],
         ),
     ])
     .is_some()
@@ -1262,6 +1374,19 @@ fn import_counts(check: &mut Check, value: Option<&Value>, path: &str) -> bool {
 }
 
 pub(super) fn result(check: &mut Check, op: Op, result: &Value) -> Option<ResponseResult> {
+    if op == Op::KnowledgeScoped {
+        let fields = check.object(result, RESULT, &["op", "result"], &[])?;
+        let inner = fields.get("op")?.as_str().and_then(Op::parse)?;
+        if !ordinary(inner) {
+            check.fail(RESULT, "expected an ordinary knowledge operation");
+            return None;
+        }
+        self::result(check, inner, fields.get("result")?)?;
+        return Some(ResponseResult::Knowledge {
+            op,
+            result: result.clone(),
+        });
+    }
     let at = |key: &str| format!("{RESULT}.{key}");
     let valid = match op {
         Op::KnowledgeStatus => {
@@ -1366,7 +1491,7 @@ pub(super) fn result(check: &mut Check, op: Op, result: &Value) -> Option<Respon
                 result,
                 RESULT,
                 &["generation", "node", "bodyStatus", "bodyTruncated"],
-                &["body"],
+                &["body", "relatedUpdates", "relatedUpdatesTruncated"],
             )?;
             all(&[
                 count(
@@ -1393,6 +1518,22 @@ pub(super) fn result(check: &mut Check, op: Op, result: &Value) -> Option<Respon
                     BODY_STATUSES,
                 ),
                 boolean(check, fields.get("bodyTruncated"), &at("bodyTruncated")),
+                optional(
+                    check,
+                    fields,
+                    "relatedUpdates",
+                    RESULT,
+                    |check, value, path| {
+                        items(
+                            check,
+                            value,
+                            path,
+                            (0, RELATED_UPDATES, false),
+                            &related_update,
+                        )
+                    },
+                ),
+                optional(check, fields, "relatedUpdatesTruncated", RESULT, boolean),
             ])
         }
         Op::KnowledgeLinks | Op::KnowledgeBacklinks => link_page(check, result),
@@ -1599,4 +1740,21 @@ pub fn validate_result(op: Op, result: &Value) -> Result<(), Vec<String>> {
         Some(_) if check.errors.is_empty() => Ok(()),
         _ => Err(check.errors),
     }
+}
+
+fn ordinary(op: Op) -> bool {
+    op.as_str().starts_with("knowledge.") && op != Op::KnowledgeScoped
+}
+pub(crate) fn is_scoped_profile(profile: &str) -> bool {
+    let Some(uuid) = profile.strip_prefix("vp-") else {
+        return false;
+    };
+    uuid.len() == 36
+        && uuid.bytes().enumerate().all(|(index, byte)| {
+            if [8, 13, 18, 23].contains(&index) {
+                byte == b'-'
+            } else {
+                byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)
+            }
+        })
 }

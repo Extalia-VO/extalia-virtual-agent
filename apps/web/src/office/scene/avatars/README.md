@@ -69,6 +69,14 @@ activity. Canonical local heads receive narrowly gated cached runtime shapes;
 procedural heads use the same controls. Reduced motion freezes expressions.
 Model failures use the procedural body; graphics failures retain an illustration.
 
+Portrait framing uses the rendered head skin and eye midpoint, rather than the
+nominal standing height. Eyes sit 42% from the top and the head occupies 48% of
+the canvas height, leaving room for hair and upper shoulders. Calibration is
+cached per mounted head; animation follows its eye anchor without repeatedly
+fitting bounds or changing zoom. Replaced heads recalibrate before copying a
+frame. Hair, clothing and props do not change face size. The fixed portrait
+buffer is contained within differently shaped tiles to preserve proportions.
+
 ## Local-only source models
 
 Unreviewed source packs and authoring inputs remain local and are never

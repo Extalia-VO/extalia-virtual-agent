@@ -8,6 +8,24 @@ import { installerBrand, installerCopy, installerPhotos } from './installer-copy
 
 const desktop = fileURLToPath(new URL('..', import.meta.url));
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
+const DMG_SUPPORT_ITEMS = ['.background.tiff', '.background.png', '.VolumeIcon.icns', '.DS_Store'];
+
+/**
+ * dmgbuild puts support files at the volume root. Finder can expose dotfiles;
+ * keep their saved icon positions outside the artwork even in that mode.
+ * The pinned dmg-builder accepts position-only entries, although electron-builder's
+ * JSON schema omits that type. Add them after configuration validation in beforePack,
+ * before the target computes its settings/signature/blockmap. No files are copied.
+ */
+export function configureDmgSupportLayout(dmg) {
+  if (!dmg || !Array.isArray(dmg.contents)) throw new Error('The branded DMG requires an explicit content layout.');
+  const reserved = new Set(DMG_SUPPORT_ITEMS);
+  const contents = dmg.contents.filter(item => !(item.type === 'position' && reserved.has(item.name ?? item.path)));
+  if (contents.some(item => reserved.has(item.name ?? item.path))) throw new Error('DMG support names are reserved for generated resources.');
+  const x = Math.max(1600, (dmg.window?.width ?? 900) + 300);
+  dmg.contents = [...contents, ...DMG_SUPPORT_ITEMS.map((name, index) => ({ path: name, name, type: 'position', x, y: 100 + index * 140 }))];
+}
+
 export async function verifyInstallerArtwork(directory = path.join(desktop, 'build/installer')) {
   const copy = await installerCopy(), brand = await installerBrand(), photos = await installerPhotos();
   const manifest = JSON.parse(await readFile(path.join(directory, 'manifest.json'), 'utf8'));
@@ -43,4 +61,5 @@ export async function prepareInstallerFiles(projectDirectory = desktop, mode = '
 }
 export default async function beforePack(context) {
   await prepareInstallerFiles(context.packager.projectDir, context.packager.config.extraMetadata?.extaliaMacReleaseMode ?? 'preview');
+  if (context.electronPlatformName === 'darwin') configureDmgSupportLayout(context.packager.config.dmg);
 }

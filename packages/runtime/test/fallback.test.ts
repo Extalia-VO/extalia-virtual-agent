@@ -1,10 +1,8 @@
+import { createOpenAIChatProvider } from '../src/index.js';
 import type { TeamMember } from '@extalia/core';
 import type { EventBody } from '@extalia/protocol';
 import { describe, expect, it } from 'vitest';
-import {
-  ProviderError, buildSystemPrompt, createDelegationTool, createFallbackProvider, createOpenAIChatProvider, isQuotaMessage, modelChain,
-  type AnyTool, type ModelProvider, type ModelResult,
-} from '../src/index.js';
+import { ProviderError, buildSystemPrompt, createDelegationTool, createFallbackProvider, isQuotaMessage, modelChain, type AnyTool, type ModelProvider, type ModelResult } from '../src/index.js';
 
 /** A provider that fails with `failure` (when given) and records which model answered. */
 function fake(model: string, calls: string[], failure?: ProviderError | Error, reply?: (last: string) => ModelResult): ModelProvider {

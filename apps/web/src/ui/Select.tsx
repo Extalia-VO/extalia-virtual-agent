@@ -21,6 +21,7 @@ export interface SelectProps<T extends string = string> {
   readonly onChange: (value: T) => void;
   readonly placeholder?: string;
   readonly disabled?: boolean;
+  readonly title?: string;
   readonly className?: string;
   readonly 'aria-label'?: string;
   readonly 'aria-describedby'?: string;
@@ -40,6 +41,7 @@ export function Select<T extends string = string>({
   onChange,
   placeholder = 'Select…',
   disabled = false,
+  title,
   className = '',
   'aria-label': ariaLabel,
   'aria-describedby': describedBy,
@@ -69,6 +71,7 @@ export function Select<T extends string = string>({
           ref={trigger}
           id={triggerId}
           className="glass-select-trigger"
+          title={title}
           aria-label={ariaLabel ?? label}
           aria-describedby={describedBy}
           aria-invalid={invalid || undefined}

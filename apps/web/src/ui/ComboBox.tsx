@@ -25,7 +25,7 @@ export function comboMatches(options: readonly ComboOption[], query: string, lim
  * A text field with a glass list of suggestions, styled like `Select`. Any typed value is allowed;
  * the list only helps. ARIA combobox pattern: arrows move, Enter picks, Escape closes.
  */
-export function ComboBox({ id, label, value, options, onChange, onBlur, placeholder, customLabel, emptyLabel, action, invalid, describedBy, maxLength = 200 }: {
+export function ComboBox({ id, label, value, options, onChange, onBlur, placeholder, customLabel, emptyLabel, action, invalid, describedBy, maxLength = 200, disabled = false }: {
   id: string;
   label: string;
   value: string;
@@ -41,6 +41,7 @@ export function ComboBox({ id, label, value, options, onChange, onBlur, placehol
   invalid?: boolean;
   describedBy?: string;
   maxLength?: number;
+  disabled?: boolean;
 }) {
   const [query, setQuery] = useState<string>();
 
@@ -64,6 +65,7 @@ export function ComboBox({ id, label, value, options, onChange, onBlur, placehol
     itemToKey: item => item?.value,
     defaultHighlightedIndex: entries.length ? Math.max(0, entries.findIndex(entry => entry.value === value)) : -1,
     stateReducer(state, { type, changes }) {
+      if (disabled) return { ...state, isOpen: false };
       switch (type) {
         // Free text is already saved while typing. Blur must never pick the highlighted suggestion,
         // and a second Escape must not clear an arbitrary model ID.
@@ -82,7 +84,7 @@ export function ComboBox({ id, label, value, options, onChange, onBlur, placehol
       if (!isOpen || type !== useCombobox.stateChangeTypes.InputChange) setQuery(undefined);
     },
     onSelectedItemChange({ selectedItem: item }) {
-      if (item) onChange(item.value);
+      if (item && !disabled) onChange(item.value);
     },
   });
   // Async catalog refreshes can remove the active option without a keyboard action.
@@ -90,8 +92,9 @@ export function ComboBox({ id, label, value, options, onChange, onBlur, placehol
   useEffect(() => {
     if (highlightedIndex >= entries.length) setHighlightedIndex(entries.length - 1);
   }, [entries.length, highlightedIndex, setHighlightedIndex]);
+  useEffect(() => { if (disabled) closeMenu(); }, [disabled, closeMenu]);
   const { refs: { setReference, setFloating }, floatingStyles } = useFloating({
-    open: isOpen,
+    open: isOpen && !disabled,
     placement: 'bottom-start',
     strategy: 'fixed',
     whileElementsMounted: autoUpdate,
@@ -114,7 +117,7 @@ export function ComboBox({ id, label, value, options, onChange, onBlur, placehol
   const menuProps = getMenuProps({ ref: setFloating, 'aria-label': label }, { suppressRefError: true });
 
   let lastGroup: string | undefined;
-  const menu = isOpen && <FloatingPortal preserveTabOrder={false}>
+  const menu = isOpen && !disabled && <FloatingPortal preserveTabOrder={false}>
     <div {...menuProps} className="glass-select-menu combo-menu" style={floatingStyles}>
       {entries.length === 0 && <div className="combo-empty">{emptyLabel}</div>}
       {entries.map((entry, index) => {
@@ -147,20 +150,22 @@ export function ComboBox({ id, label, value, options, onChange, onBlur, placehol
     <div className="radix-select-wrapper combo">
       <label {...getLabelProps()} className="glass-select-label">{label}</label>
       <div className="combo-row">
-        <div ref={setReference} className="glass-select-trigger combo-trigger" data-state={isOpen ? 'open' : 'closed'}>
+        <div ref={setReference} className="glass-select-trigger combo-trigger" data-state={isOpen && !disabled ? 'open' : 'closed'}>
           <input {...getInputProps({
             // Avoid a dangling ARIA reference in the render before reconciliation runs.
-            ...(!entries[highlightedIndex] ? { 'aria-activedescendant': undefined } : {}),
-            onChange: event => { setQuery(event.target.value); onChange(event.target.value); },
-            onFocus: () => { setQuery(undefined); openMenu(); },
+            ...(disabled || !entries[highlightedIndex] ? { 'aria-activedescendant': undefined } : {}),
+            ...(disabled ? { 'aria-controls': undefined } : {}),
+            disabled,
+            onChange: event => { if (!disabled) { setQuery(event.target.value); onChange(event.target.value); } },
+            onFocus: () => { if (!disabled) { setQuery(undefined); openMenu(); } },
             onBlur: () => onBlur?.(),
             onKeyDown: event => {
               if (event.key === 'Tab') closeMenu();
               if (event.key === 'Escape' && isOpen) event.stopPropagation();
             },
-          })} type="text" aria-invalid={invalid || undefined} aria-describedby={describedBy}
+          })} type="text" aria-invalid={invalid || undefined} aria-describedby={describedBy} aria-expanded={isOpen && !disabled}
             placeholder={placeholder} maxLength={maxLength} spellCheck={false} />
-          <button {...getToggleButtonProps({ onPointerDown: event => event.preventDefault() })}
+          <button {...getToggleButtonProps({ disabled, onPointerDown: event => event.preventDefault() })}
             type="button" className="combo-toggle" aria-hidden="true">
             <Icon name="chevron" className="glass-select-chevron" />
           </button>

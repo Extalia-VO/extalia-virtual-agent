@@ -14,12 +14,12 @@ import {
   DAEMON_KNOWLEDGE_LIMITS, KNOWLEDGE_NODE_ID_PATTERN, KNOWLEDGE_PATH_PATTERN, KNOWLEDGE_SYNC_MODES,
   type DaemonKnowledgeOperations, type KnowledgeBodyStatus, type KnowledgeCounts, type KnowledgeEdgeType, type KnowledgeGraphEdge, type KnowledgeIndexState,
   type KnowledgeLink, type KnowledgeLinkPage, type KnowledgeLinkStatus, type KnowledgeNode, type KnowledgeNodeRef, type KnowledgeOverviewEdge, type KnowledgeOverviewNode, type KnowledgeRename, type KnowledgeResolution,
-  type KnowledgeSearchHit, type KnowledgeSkippedFile, type KnowledgeSkipReason, type KnowledgeSyncMode, type KnowledgeSyncSummary, type KnowledgeTrustStatus,
+  type KnowledgeRelatedUpdate, type KnowledgeSearchHit, type KnowledgeSkippedFile, type KnowledgeSkipReason, type KnowledgeSyncMode, type KnowledgeSyncSummary, type KnowledgeTrustStatus,
 } from '@extalia/protocol';
 
 export type {
   KnowledgeBodyStatus, KnowledgeCounts, KnowledgeEdgeType, KnowledgeGraphEdge, KnowledgeIndexState, KnowledgeLink, KnowledgeLinkPage, KnowledgeLinkStatus, KnowledgeNode,
-  KnowledgeNodeRef, KnowledgeOverviewEdge, KnowledgeOverviewNode, KnowledgeRename, KnowledgeResolution, KnowledgeSearchHit, KnowledgeSkippedFile, KnowledgeSkipReason, KnowledgeSyncMode, KnowledgeSyncSummary,
+  KnowledgeNodeRef, KnowledgeOverviewEdge, KnowledgeOverviewNode, KnowledgeRelatedUpdate, KnowledgeRename, KnowledgeResolution, KnowledgeSearchHit, KnowledgeSkippedFile, KnowledgeSkipReason, KnowledgeSyncMode, KnowledgeSyncSummary,
   KnowledgeTrustStatus,
 };
 

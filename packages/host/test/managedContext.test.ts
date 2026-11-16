@@ -1,8 +1,9 @@
+import { createAgentHost } from '../src/service.js';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createAgentHost, type AgentHostRuntime } from '../src/service.js';
+import { type AgentHostRuntime } from '../src/service.js';
 
 // A scripted OpenAI-compatible endpoint that answers in one step, optionally reporting usage.
 function answering(usage: Record<string, number> | undefined) {

@@ -56,7 +56,8 @@ use crate::wire::{
 };
 
 /// Knowledge operations served with a data directory, advertised in the `hello` result.
-pub const CAPABILITIES: [Op; 13] = [
+pub const CAPABILITIES: [Op; 14] = [
+    Op::KnowledgeScoped,
     Op::KnowledgeStatus,
     Op::KnowledgeSync,
     Op::KnowledgeNode,
@@ -98,8 +99,11 @@ pub type KnowledgeRefusal = (ErrorCode, Option<&'static str>);
 
 /// The knowledge index of the daemon's profile.
 pub struct Knowledge {
+    scopes: Vec<(String, Option<String>, Box<Knowledge>)>,
     data_dir: PathBuf,
     profile: ProfileId,
+    /// Trusted startup-only alias for the canonical default index. Never inherited by scopes.
+    profile_alias: Option<ProfileId>,
     limits: VaultLimits,
     store: Option<KnowledgeStore>,
     last_sync: Option<Value>,
@@ -159,8 +163,10 @@ impl Knowledge {
     /// The same with other vault limits (tests).
     pub fn with_limits(data_dir: &Path, profile: &str, limits: VaultLimits) -> Self {
         Self {
+            scopes: Vec::new(),
             data_dir: data_dir.to_owned(),
             profile: ProfileId::parse(profile).expect("valid profile id"),
+            profile_alias: None,
             limits,
             store: None,
             last_sync: None,
@@ -172,6 +178,14 @@ impl Knowledge {
                 .filter(|home| home.is_absolute()),
             sync_hook: None,
         }
+    }
+
+    /// Preserve a host's semantic default profile without changing the physical default store.
+    /// Startup validates the alias; RPC requests cannot supply or change it.
+    pub fn with_default_profile_alias(mut self, alias: &str) -> Self {
+        assert_eq!(self.profile.as_str(), "default");
+        self.profile_alias = Some(ProfileId::parse(alias).expect("valid default profile alias"));
+        self
     }
 
     /// Test hook: `hook` runs on the thread serving knowledge requests at the start of every
@@ -307,7 +321,29 @@ impl Knowledge {
     /// The open index, opening it on first use.
     fn store(&mut self) -> Result<&mut KnowledgeStore, KnowledgeError> {
         if self.store.is_none() {
-            self.store = Some(KnowledgeStore::open(&self.data_dir, &self.profile)?);
+            let mut store = KnowledgeStore::open(&self.data_dir, &self.profile)?;
+            let parser_refresh = !store.parser_is_current()?
+                && (store.generation()? > 0
+                    || store.stats()?.notes > 0
+                    || store.stats()?.skipped_documents > 0);
+            if !store.profile_alias_matches(self.profile_alias.as_ref())? || parser_refresh {
+                // Never expose an old ACL cache. Do not recreate a vanished vault or
+                // fall back to another folder when the startup alias changed.
+                let empty_initial = self.custom_root.is_none()
+                    && !self.vault_present()
+                    && store.generation()? == 0
+                    && store.stats()?.notes == 0
+                    && store.stats()?.skipped_documents == 0;
+                if !empty_initial {
+                    let vault = self.vault(false)?;
+                    store.sync_with_profile_alias(
+                        &vault,
+                        SyncMode::Rebuild,
+                        self.profile_alias.as_ref(),
+                    )?;
+                }
+            }
+            self.store = Some(store);
         }
         Ok(self.store.as_mut().expect("opened above"))
     }
@@ -354,6 +390,51 @@ impl Knowledge {
 
     fn dispatch(&mut self, request: &KnowledgeRequest) -> Result<Value, KnowledgeRefusal> {
         match request {
+            KnowledgeRequest::Scoped {
+                profile_id,
+                vault_root,
+                request,
+            } => {
+                if !crate::wire::is_scoped_knowledge_profile(profile_id)
+                    || profile_id == self.profile.as_str()
+                    || matches!(request.as_ref(), KnowledgeRequest::Scoped { .. })
+                {
+                    return Err((ErrorCode::InvalidRequest, Some("invalid_scope")));
+                }
+                // One worker owns every index; drop a replaced/evicted scope before opening
+                // another handle. New cache entries rebuild derived data before exposing it.
+                let mut existing = self
+                    .scopes
+                    .iter()
+                    .position(|(id, _, _)| id == profile_id)
+                    .map(|index| self.scopes.remove(index));
+                if existing
+                    .as_ref()
+                    .is_some_and(|(_, root, _)| root != vault_root)
+                {
+                    existing = None;
+                }
+                let mut scope = if let Some((_, _, scope)) = existing {
+                    scope
+                } else {
+                    if self.scopes.len() >= 8 {
+                        self.scopes.remove(0);
+                    }
+                    let mut scope = Box::new(
+                        Knowledge::with_limits(&self.data_dir, profile_id, self.limits)
+                            .with_home_dir(self.home.clone()),
+                    );
+                    if let Some(root) = vault_root {
+                        scope = Box::new(scope.with_vault_root(PathBuf::from(root)));
+                    }
+                    scope.sync(KnowledgeSyncMode::Rebuild).map_err(refuse)?;
+                    scope
+                };
+                let result = scope.dispatch(request);
+                self.scopes
+                    .push((profile_id.clone(), vault_root.clone(), scope));
+                result.map(|result| json!({ "op": request.op().as_str(), "result": result }))
+            }
             KnowledgeRequest::Status => Ok(self.status()),
             KnowledgeRequest::Sync { mode } => {
                 if let Some(hook) = &self.sync_hook {
@@ -468,7 +549,8 @@ impl Knowledge {
             KnowledgeSyncMode::Rebuild => SyncMode::Rebuild,
             KnowledgeSyncMode::Incremental => SyncMode::Incremental,
         };
-        let report = store.sync(&vault, core_mode)?;
+        let report =
+            store.sync_with_profile_alias(&vault, core_mode, self.profile_alias.as_ref())?;
         let at = format_utc(now_millis());
         let mut omitted = 0usize;
         let renamed: Vec<Value> = report
@@ -573,8 +655,60 @@ impl Knowledge {
             value["body"] = body.into();
             value["bodyStatus"] = if current { "current" } else { "changed" }.into();
             value["bodyTruncated"] = truncated.into();
+            if current {
+                let (updates, truncated) = self.related_updates(&scope, &node.node_id)?;
+                value["relatedUpdates"] = updates.into();
+                value["relatedUpdatesTruncated"] = truncated.into();
+            }
         }
         Ok(value)
+    }
+
+    /// Recall amendments beside the original body, never splice them into its hash or
+    /// turn authored labels/front matter into authority. Changed, deleted or excluded
+    /// sources do not contribute excerpts from an obsolete index snapshot.
+    fn related_updates(
+        &self,
+        scope: &ProfileScope,
+        node_id: &str,
+    ) -> Result<(Vec<Value>, bool), KnowledgeRefusal> {
+        use extalia_core::knowledge::query::MAX_REVISION_BACKLINKS;
+        let store = self.open_store();
+        let edges = store.revision_backlinks(scope, node_id).map_err(refuse)?;
+        let mut truncated = edges.len() > MAX_REVISION_BACKLINKS;
+        let mut updates = Vec::new();
+        for edge in edges.iter().take(MAX_REVISION_BACKLINKS) {
+            let Some(source) = store.node(scope, &edge.source_node_id).map_err(refuse)? else {
+                continue;
+            };
+            let Some(reference) = node_ref(&source) else {
+                continue;
+            };
+            let Some((text, sha256)) = self.read_note(&source.path) else {
+                continue;
+            };
+            if sha256 != source.source_sha256 {
+                continue;
+            }
+            let Some(line) = text.lines().nth(edge.line.saturating_sub(1) as usize) else {
+                continue;
+            };
+            if updates.len() == limits::RELATED_UPDATES {
+                truncated = true;
+                break;
+            }
+            updates.push(json!({
+                "nodeId": reference["nodeId"],
+                "path": reference["path"],
+                "title": reference["title"],
+                "relation": edge.edge_type.as_str(),
+                "line": edge.line,
+                "sourceSha256": sha256,
+                "excerpt": clean_text(line, limits::RELATED_UPDATE_EXCERPT),
+                "trustStatus": "untrusted",
+            }));
+        }
+        Ok((updates, truncated))
     }
 
     /// The note body after its front matter, sanitized and bounded: `(body, unchanged since

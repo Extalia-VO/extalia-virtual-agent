@@ -50,7 +50,7 @@ export function ScreenIllumination() {
     return {
       group, lights, slots: Array.from({ length: SCREEN_LIGHT_BUDGET }, () => null as string | null),
       position: new Vector3(), forward: new Vector3(), scale: new Vector3(), at: new Vector3(), to: new Vector3(), tint: new Vector3(), temp: new Vector3(),
-      normal: new Vector3(), ids: new WeakMap<ScreenEmitter, string>(), nextId: 1, nextUpdate: 0, spill: 0, ticks: 0, lastCandidates: 0,
+      normal: new Vector3(), ids: new WeakMap<ScreenEmitter, string>(), nextId: 1, nextUpdate: 0, suspended: false, spill: 0, ticks: 0, lastCandidates: 0,
     };
   }, []);
   useEffect(() => () => pool.lights.forEach(light => light.dispose()), [pool]);
@@ -87,17 +87,23 @@ export function ScreenIllumination() {
   useFrame(({ camera, clock, size }) => {
     setScreenView(camera, size.height);
     screenTextures.tick();
-    // The campus view sees desks through glass only: the spill pool leaves the light set there.
-    pool.group.visible = !isCampusOverview();
-    if (clock.elapsedTime < pool.nextUpdate) return;
-    pool.nextUpdate = clock.elapsedTime + LIGHT_INTERVAL;
-    if (pool.spill <= 0.001) {
-      // Daylight or lamps on: panels are emissive only, the pool throws no light.
-      if (pool.lights.some(light => light.intensity !== 0)) pool.lights.forEach(light => { light.intensity = 0; });
-      pool.slots.fill(null);
-      pool.lastCandidates = 0;
+    // An inactive pool must leave the shader's light list as well as skip allocation.
+    const suspended = isCampusOverview() || pool.spill <= 0.001;
+    pool.group.visible = !suspended;
+    if (suspended) {
+      if (!pool.suspended) {
+        pool.lights.forEach(light => { light.intensity = 0; });
+        pool.slots.fill(null);
+        pool.lastCandidates = 0;
+      }
+      pool.suspended = true;
       return;
     }
+    // Revealing the pool must allocate fresh positions before its first draw,
+    // even when the normal update interval has not elapsed yet.
+    if (pool.suspended) { pool.suspended = false; pool.nextUpdate = 0; }
+    if (clock.elapsedTime < pool.nextUpdate) return;
+    pool.nextUpdate = clock.elapsedTime + LIGHT_INTERVAL;
 
     const candidates: (LightCandidate & { emitter: ScreenEmitter; cluster?: string })[] = [];
     for (const emitter of getScreenEmitters()) {

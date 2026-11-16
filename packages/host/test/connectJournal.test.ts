@@ -24,7 +24,7 @@ const relative: Record<AgentAppId, string> = {
 };
 const original = (app: AgentAppId) => app === 'hermes' ? 'model: example\n' : app === 'codex' ? 'model = "example"\n' : '{"theme":"example"}\n';
 const service = (extra: Partial<ConnectContext> = {}) => createConnectService({
-  platform: 'linux', env: { EXTALIA_HOME: data }, extaliaHome: data, homeDirectory: home,
+  platform: process.platform, env: { EXTALIA_HOME: data, HERMES_HOME: path.join(home, '.hermes') }, extaliaHome: data, homeDirectory: home,
   nodePath: process.execPath, findBinary: async () => undefined, managedClaudeSettings: [],
   now: () => new Date('2026-10-29T12:00:00Z'), fetch: async () => new Response(null, { status: 204 }), ...extra,
 });

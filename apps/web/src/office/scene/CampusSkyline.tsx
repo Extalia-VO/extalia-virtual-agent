@@ -893,11 +893,23 @@ export function CampusSkyline() {
   const beaconRef = useRef<InstancedMesh>(null);
   const shadowRef = useRef<InstancedMesh>(null);
   const lastSun = useRef<[number, number, number]>([Number.NaN, 0, 0]);
+  const nextBeaconUpdate = useRef(0);
+  const lastBeaconNight = useRef(-1);
   useEffect(() => {
     lastSun.current = [Number.NaN, 0, 0];
+    nextBeaconUpdate.current = 0;
+    lastBeaconNight.current = -1;
   }, [city]);
 
   useFrame((root, delta) => {
+    const beacons = beaconRef.current;
+    const shadows = shadowRef.current;
+    const anchor = beacons ?? shadows;
+    if (anchor) {
+      for (let node: { visible: boolean; parent: typeof node } | null = anchor; node; node = node.parent) {
+        if (!node.visible) return;
+      }
+    }
     const { factors, position } = solar.current;
     const k = 1 - Math.exp(-Math.min(delta, 0.1) * 2.5);
     uniforms.uNight.value += (windowGlow(factors) - uniforms.uNight.value) * k;
@@ -914,18 +926,22 @@ export function CampusSkyline() {
     materials.pools.opacity = 0.55 * night;
     materials.pools.visible = night > 0.02;
 
-    const beacons = beaconRef.current;
-    if (beacons) {
+    if (beacons && city.beacons.length > 0) {
       const time = reducedMotion ? 0 : root.clock.elapsedTime;
-      city.beacons.forEach((b, index) => {
-        const pulse = Math.pow(0.5 + 0.5 * Math.sin(time * 2.2 + b.phase), 8);
-        beacons.setColorAt(index, tempColor.copy(BEACON_RED).multiplyScalar(MathUtils.lerp(0.5, 0.35 + 2.6 * pulse, night)));
-      });
-      if (beacons.instanceColor) beacons.instanceColor.needsUpdate = true;
+      const isDay = night < 0.01;
+      const wasDay = lastBeaconNight.current >= 0 && lastBeaconNight.current < 0.01;
+      if (!isDay ? (time >= nextBeaconUpdate.current || lastBeaconNight.current < 0) : !wasDay) {
+        nextBeaconUpdate.current = time + 1 / 15;
+        lastBeaconNight.current = night;
+        city.beacons.forEach((b, index) => {
+          const pulse = isDay ? 0 : Math.pow(0.5 + 0.5 * Math.sin(time * 2.2 + b.phase), 8);
+          beacons.setColorAt(index, tempColor.copy(BEACON_RED).multiplyScalar(MathUtils.lerp(0.5, 0.35 + 2.6 * pulse, night)));
+        });
+        if (beacons.instanceColor) beacons.instanceColor.needsUpdate = true;
+      }
     }
 
     // Projected ground shadows follow the live sun; rebuilt only when it moves.
-    const shadows = shadowRef.current;
     const sun = position.sunDirection;
     const elevation = position.elevation;
     materials.shadow.opacity = 0.2 * factors.daylightFactor * MathUtils.clamp((elevation - 2) / 10, 0, 1);
@@ -950,14 +966,14 @@ export function CampusSkyline() {
   return (
     <group name="campus-skyline" userData={{ officeCollision: false }}>
       <mesh name="city-ground" geometry={geometries.ground} material={materials.ground} position={[0, GROUND_Y, 0]} />
-      {districtModels && (
-        <group name="blender-district-buildings">
-          <mesh name="district-facades" geometry={districtModels.facade} material={materials.districtFacade} />
-          <mesh name="district-solids" geometry={districtModels.solid} material={materials.districtSolid} />
-          <mesh name="district-crowns" geometry={districtModels.crown} material={materials.districtCrown} />
-          <mesh name="district-foliage" geometry={districtModels.foliage} material={materials.districtFoliage} />
-        </group>
-      )}
+      {districtModels && <group name="blender-district-buildings">
+        {districtModels.map((chunk, index) => <group key={index} dispose={null}>
+          <mesh name="district-facades" geometry={chunk.facade} material={materials.districtFacade} />
+          <mesh name="district-solids" geometry={chunk.solid} material={materials.districtSolid} />
+          {chunk.crown && <mesh name="district-crowns" geometry={chunk.crown} material={materials.districtCrown} />}
+          {chunk.foliage && <mesh name="district-foliage" geometry={chunk.foliage} material={materials.districtFoliage} />}
+        </group>)}
+      </group>}
       <SkylineInstances name="skyline-facades" geometry={geometries.facade} material={materials.facade} set={sets.facade} />
       <SkylineInstances name="skyline-solids" geometry={geometries.box} material={materials.solid} set={sets.solid} />
       <SkylineInstances name="skyline-spires" geometry={geometries.spire} material={materials.metal} set={sets.spires} />

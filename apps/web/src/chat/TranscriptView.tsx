@@ -1,24 +1,52 @@
 import { sourceLabel } from '@extalia/core';
 import type { ApprovalDecisionInput } from '@extalia/platform';
 import type { ActivityKind } from '@extalia/protocol';
-import { useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import type { Messages } from '../i18n';
 import { CopyButton } from '../ui/CopyButton';
 import { Icon, type IconName } from '../ui/Icon';
 import type { AttachmentPreviewLoader } from './attachments';
 import { Markdown } from './Markdown';
 import { UserMessage } from './UserMessage';
+import { MessageAttachments } from './MessageAttachments';
+import { SkillLoadCard } from './SkillLoadCard';
+import { HistoricalMessageFileScope } from './MessageFilePreview';
 import type { ApprovalItem, ToolItem, TranscriptItem, UsageItem, WorkerItem } from './transcript';
+import './workerPreview.css';
 
 const KIND_ICON: Record<ActivityKind, IconName> = {
   edit: 'edit', command: 'terminal', test: 'beaker', search: 'search', read: 'file', web: 'globe', delegate: 'users', knowledge: 'book', think: 'spark', tool: 'tool',
 };
 
+function itemOpenKey(item: Pick<ToolItem, 'id' | 'callId'>): string {
+  return item.callId || item.id;
+}
+
+export function resolveToolGroupOpen(
+  items: readonly Pick<ToolItem, 'id' | 'callId'>[],
+  openStates: ReadonlyMap<string, boolean>,
+  fallback: boolean,
+): boolean {
+  for (const item of items) {
+    const saved = openStates.get(itemOpenKey(item));
+    if (saved !== undefined) return saved;
+  }
+  return fallback;
+}
+
+type SetToolOpenKeys = (keys: readonly string[], open: boolean) => void;
+
 /** One tool call as a row of a run: icon, label, status; its output and changed files open below it. */
-function ToolRow({ t, item }: { t: Messages; item: ToolItem }) {
-  const [expanded, setExpanded] = useState<boolean | null>(null);
-  const live = item.status === 'running' && Boolean(item.command);
-  const open = expanded ?? live;
+function ToolRow({ t, item, previewAttachment, openStates, onSetOpenKeys }: {
+  t: Messages;
+  item: ToolItem;
+  previewAttachment?: AttachmentPreviewLoader;
+  openStates?: ReadonlyMap<string, boolean>;
+  onSetOpenKeys?: SetToolOpenKeys;
+}) {
+  const rowKey = `row:${itemOpenKey(item)}`;
+  const [expanded, setExpanded] = useState<boolean>(() => openStates?.get(rowKey) ?? false);
+  const open = openStates?.get(rowKey) ?? expanded;
   const commandText = item.command?.output.map(chunk => chunk.text).join('') ?? '';
   const hasOutput = Boolean(item.command || item.output?.trim());
   const outputId = `output-${item.id}`;
@@ -36,7 +64,11 @@ function ToolRow({ t, item }: { t: Messages; item: ToolItem }) {
       <div className="tool-head">
         {hasOutput
           ? <button type="button" className="tool-row-toggle" aria-expanded={open} aria-controls={outputId}
-              title={open ? t.tool.hideOutput : t.tool.showOutput} onClick={() => setExpanded(!open)}>{label}</button>
+              title={open ? t.tool.hideOutput : t.tool.showOutput} onClick={() => {
+                const next = !open;
+                onSetOpenKeys?.([rowKey], next);
+                setExpanded(next);
+              }}>{label}</button>
           : <span className="tool-row-toggle static">{label}</span>}
         {item.command?.exitCode !== undefined && (
           <span className="tool-meta">
@@ -50,6 +82,7 @@ function ToolRow({ t, item }: { t: Messages; item: ToolItem }) {
           <span className={item.status === 'ok' ? 'visually-hidden' : undefined}>{t.tool.status[item.status]}</span>
         </span>
       </div>
+      <MessageAttachments t={t} files={item.attachments ?? []} load={previewAttachment} label={t.tool.resultAttachments} className="tool-attachments" />
       {item.files.length > 0 && <FileList t={t} files={item.files} />}
       {hasOutput && open && (
         <pre className="tool-output" id={outputId} tabIndex={0}>
@@ -83,52 +116,95 @@ export function toolRunSummary(t: Messages, items: readonly ToolItem[]): string 
 
 /**
  * Consecutive tool calls as one compact block: a summary line that folds the list, and one card with a
- * row per call. A run stays open while a call in it is running; a single call shows as its row alone.
+ * row per call. Multi-tool runs stay collapsed by default until the user expands them, and preserve their
+ * expand/collapse state across updates; a single call shows as its row alone.
  */
-function ToolRun({ t, items }: { t: Messages; items: ToolItem[] }) {
-  const [expanded, setExpanded] = useState<boolean | null>(null);
+function ToolRun({ t, items, previewAttachment, openStates, onSetOpenKeys }: {
+  t: Messages;
+  items: ToolItem[];
+  previewAttachment?: AttachmentPreviewLoader;
+  openStates?: ReadonlyMap<string, boolean>;
+  onSetOpenKeys?: SetToolOpenKeys;
+}) {
   const running = items.some(item => item.status === 'running');
   const failed = items.filter(item => item.status === 'failed').length;
-  const open = items.length === 1 || (expanded ?? running);
+  const images = items.reduce((sum, item) => sum + (item.attachments?.filter(file => file.kind === 'image').length ?? 0), 0);
+  const hasPreview = Boolean(previewAttachment && items.some(item => item.attachments?.some(file => file.kind === 'image' && file.ref)));
+  const [expanded, setExpanded] = useState<boolean>(() =>
+    openStates ? resolveToolGroupOpen(items, openStates, hasPreview) : hasPreview);
+  const resolvedExpanded = openStates ? resolveToolGroupOpen(items, openStates, expanded) : expanded;
+  const open = items.length === 1 || resolvedExpanded;
   const listId = `run-${items[0]!.id}`;
   return (
     <div className={`tool-run ${failed ? 'has-failed' : ''}`}>
       {items.length > 1 && (
-        <button type="button" className="tool-run-head" aria-expanded={open} aria-controls={listId} onClick={() => setExpanded(!open)}>
+        <button type="button" className="tool-run-head" aria-expanded={open} aria-controls={listId} onClick={() => {
+          const next = !open;
+          onSetOpenKeys?.(items.map(itemOpenKey), next);
+          setExpanded(next);
+        }}>
           <span>{toolRunSummary(t, items)}</span>
+          {images > 0 && <span className="tool-media-badge"><Icon name="files" />{t.tool.images(images)}</span>}
           {running && <span className="pulse" aria-hidden="true" />}
           {failed > 0 && <span className="tool-run-failed"><Icon name="alert" />{t.tool.run.failed(failed)}</span>}
           <Icon name="chevron" className="tool-run-chevron" />
         </button>
       )}
-      {open && <ul className="tool-run-list" id={listId}>{items.map(item => <ToolRow key={item.id} t={t} item={item} />)}</ul>}
+      {open && <ul className="tool-run-list" id={listId}>{items.map(item => <ToolRow key={item.id} t={t} item={item} previewAttachment={previewAttachment} openStates={openStates} onSetOpenKeys={onSetOpenKeys} />)}</ul>}
     </div>
   );
 }
 
 /** Consecutive workers (subagents) as one card with a row each. */
-function WorkerRun({ t, items }: { t: Messages; items: WorkerItem[] }) {
-  return <ul className="tool-run-list worker-run">{items.map(item => <li key={item.id} className="tool-row"><WorkerCard t={t} item={item} /></li>)}</ul>;
+function WorkerRun({ t, items, language, previewAttachment, openStates, onSetOpenKeys, onOpenWorker, selectedWorkerId }: {
+  t: Messages; items: Extract<TranscriptItem, { kind: 'worker' }>[]; language: string; previewAttachment?: AttachmentPreviewLoader;
+  openStates: ReadonlyMap<string, boolean>; onSetOpenKeys: SetToolOpenKeys;
+  onOpenWorker?: (worker: WorkerItem) => void; selectedWorkerId?: string;
+}) {
+  return <ul className="tool-run-list worker-run">{items.map(item => <li key={item.id} data-transcript-id={item.id} className="tool-row"><HistoricalMessageFileScope scope={item.fileScope}><WorkerCard t={t} item={item} language={language} previewAttachment={previewAttachment} openStates={openStates} onSetOpenKeys={onSetOpenKeys} onOpenWorker={onOpenWorker} selectedWorkerId={selectedWorkerId} /></HistoricalMessageFileScope></li>)}</ul>;
 }
 
-function WorkerCard({ t, item }: { t: Messages; item: WorkerItem }) {
+const ignorePreviewDecision = async () => undefined;
+
+function WorkerCard({ t, item, language, previewAttachment, openStates, onSetOpenKeys, onOpenWorker, selectedWorkerId }: {
+  t: Messages; item: WorkerItem; language: string; previewAttachment?: AttachmentPreviewLoader;
+  openStates: ReadonlyMap<string, boolean>; onSetOpenKeys: SetToolOpenKeys;
+  onOpenWorker?: (worker: WorkerItem) => void; selectedWorkerId?: string;
+}) {
+  const previewId = useId();
+  const openKey = `worker:${item.id}`;
+  const open = !onOpenWorker && (openStates.get(openKey) ?? false);
   const tier = item.tier && item.tier in t.connection.tiers ? t.connection.tiers[item.tier as keyof Messages['connection']['tiers']] : item.tier;
   const detail = item.status === 'running' ? item.activity ?? item.summary : item.summary ?? item.activity;
+  const label = item.label ?? t.tool.worker;
   return (
-    <div className={`worker status-${item.status}`}>
-      <div className="tool-head">
+    <div className={`worker status-${item.status}${open ? ' worker-expanded' : ''}`}>
+      <button type="button" className="worker-preview-toggle" aria-expanded={onOpenWorker ? undefined : open} aria-controls={onOpenWorker ? undefined : previewId} aria-pressed={onOpenWorker ? selectedWorkerId === item.id : undefined}
+        title={open ? t.tool.hideWorkerPreview : t.tool.showWorkerPreview} onClick={() => onOpenWorker ? onOpenWorker(item) : onSetOpenKeys([openKey], !open)}>
         <span className="tool-icon" aria-hidden="true"><Icon name="users" /></span>
-        <span className="tool-label">
+        <span className="tool-label worker-label">
           {tier && <span className="tier-badge">{tier}</span>}
-          {item.label ?? t.tool.worker}
+          <span className="worker-name">{label}</span>
         </span>
         {item.toolCalls > 0 && <span className="tool-meta">{t.tool.workerCalls(item.toolCalls)}</span>}
         <span className={`tool-status ${item.status}`}>
           {item.status === 'running' ? <span className="pulse" aria-hidden="true" /> : <Icon name={item.status === 'ok' ? 'check' : item.status === 'failed' ? 'alert' : 'stop'} />}
           {t.tool.status[item.status]}
         </span>
-      </div>
-      {detail && <p className="worker-detail">{detail}</p>}
+        <Icon name="chevron" className="worker-preview-chevron" />
+        <span className="visually-hidden">{open ? t.tool.hideWorkerPreview : t.tool.showWorkerPreview}</span>
+      </button>
+      {item.task && <p className="worker-task" title={item.task}><span>{t.tool.workerAssignment} </span>{item.task}</p>}
+      {detail && detail !== item.task && <p className="worker-detail">{detail}</p>}
+      {!onOpenWorker && <MessageAttachments t={t} files={item.attachments ?? []} load={previewAttachment} label={t.tool.resultAttachments} className="tool-attachments" />}
+      {open && <section className="worker-preview" id={previewId} aria-label={t.tool.workerPreview(label)}>
+        <p className="worker-preview-caption">{t.tool.workerReadOnly}</p>
+        <div className="worker-preview-scroll" role="region" aria-label={t.tool.workerPreview(label)} tabIndex={0}>
+          {item.preview?.length
+            ? <TranscriptView t={t} items={item.preview} language={language} onDecide={ignorePreviewDecision} approvalsEnabled={false} previewAttachment={previewAttachment} />
+            : <p className="worker-preview-empty">{t.tool.workerPreviewEmpty}</p>}
+        </div>
+      </section>}
     </div>
   );
 }
@@ -234,49 +310,61 @@ export function groupToolRuns(items: readonly TranscriptItem[]): (Exclude<Transc
   return out;
 }
 
-export function TranscriptView({ t, items, language, onDecide, previewAttachment, approvalsEnabled = false }: {
+export function TranscriptView({ t, items, language, onDecide, previewAttachment, approvalsEnabled = false, onOpenWorker, selectedWorkerId }: {
   t: Messages;
   items: TranscriptItem[];
   language: string;
   onDecide: (approvalId: string, decision: ApprovalDecisionInput) => Promise<void | boolean>;
+  /** An observing view can open a worker in its own read-only inspector instead of inline. */
+  onOpenWorker?: (worker: WorkerItem) => void;
+  selectedWorkerId?: string;
   /** Explicitly enabled only for a managed session that can actually accept decisions. */
   approvalsEnabled?: boolean;
   /** Loads images the host kept a copy of (observed transcripts); without it every file is listed. */
   previewAttachment?: AttachmentPreviewLoader | undefined;
 }) {
+  const [openStates, setOpenStates] = useState<ReadonlyMap<string, boolean>>(() => new Map());
+  const setToolOpenKeys: SetToolOpenKeys = (keys, open) => {
+    setOpenStates(prev => {
+      const next = new Map(prev);
+      for (const key of keys) next.set(key, open);
+      return next;
+    });
+  };
   return (
     <ol className="transcript">
       {groupToolRuns(items).map(item => {
         if (Array.isArray(item)) {
           const run = item as Run;
           return run[0]!.kind === 'tool'
-            ? <li key={run[0]!.id} className="msg"><ToolRun t={t} items={run as ToolItem[]} /></li>
-            : <li key={run[0]!.id} className="msg worker-row"><WorkerRun t={t} items={run as WorkerItem[]} /></li>;
+            ? <li key={run[0]!.id} data-transcript-id={run[0]!.id} className="msg"><ToolRun t={t} items={run as ToolItem[]} previewAttachment={previewAttachment} openStates={openStates} onSetOpenKeys={setToolOpenKeys} /></li>
+            : <li key={run[0]!.id} data-transcript-id={run[0]!.id} className="msg worker-row"><WorkerRun t={t} items={run as Extract<TranscriptItem, { kind: 'worker' }>[]} language={language} previewAttachment={previewAttachment} openStates={openStates} onSetOpenKeys={setToolOpenKeys} onOpenWorker={onOpenWorker} selectedWorkerId={selectedWorkerId} /></li>;
         }
         switch (item.kind) {
           case 'user':
-            return <UserMessage key={item.id} t={t} item={item} previewAttachment={previewAttachment} language={language} />;
+            return <HistoricalMessageFileScope key={item.id} scope={item.fileScope}><UserMessage t={t} item={item} previewAttachment={previewAttachment} language={language} /></HistoricalMessageFileScope>;
           case 'assistant':
             return (
-              <li key={item.id} className={`msg assistant ${item.streaming ? 'streaming' : ''}`} aria-busy={item.streaming || undefined}>
+              <li key={item.id} data-transcript-id={item.id} className={`msg assistant ${item.streaming ? 'streaming' : ''}`} aria-busy={item.streaming || undefined}>
                 <span className="visually-hidden">{t.chat.agent}: </span>
-                <Markdown text={item.text} />
+                <HistoricalMessageFileScope scope={item.fileScope}><Markdown text={item.text} /></HistoricalMessageFileScope>
                 {!item.streaming && item.text.trim() && <div className="message-actions"><CopyButton text={item.text} label={t.chat.copyMessage} /></div>}
               </li>
             );
-          case 'approval': return <li key={item.id} className="msg"><ApprovalCard t={t} item={item} onDecide={onDecide} actionable={approvalsEnabled} /></li>;
-          case 'files': return <li key={item.id} className="msg"><div className="tool-card status-ok"><FileList t={t} files={item.files} /></div></li>;
+          case 'approval': return <li key={item.id} data-transcript-id={item.id} className="msg"><HistoricalMessageFileScope scope={item.fileScope}><ApprovalCard t={t} item={item} onDecide={onDecide} actionable={approvalsEnabled} /></HistoricalMessageFileScope></li>;
+          case 'files': return <li key={item.id} data-transcript-id={item.id} className="msg"><div className="tool-card status-ok"><FileList t={t} files={item.files} /></div></li>;
           case 'notice':
             return (
-              <li key={item.id} className={`msg notice ${item.reason === 'cancelled' ? 'info' : 'error'}`}>
+              <li key={item.id} data-transcript-id={item.id} className={`msg notice ${item.reason === 'cancelled' ? 'info' : 'error'}`}>
                 <Icon name={item.reason === 'cancelled' ? 'stop' : 'alert'} />
                 <span>{item.reason === 'cancelled' ? t.chat.stopped : `${item.reason === 'failed' ? t.chat.failed : t.chat.agentError} ${item.text === 'native_context_limit' ? t.context.requestHeld : item.text ?? ''}`}</span>
               </li>
             );
-          case 'usage': return <li key={item.id} className="msg"><UsageLine t={t} item={item} language={language} /></li>;
+          case 'usage': return <li key={item.id} data-transcript-id={item.id} className="msg"><UsageLine t={t} item={item} language={language} /></li>;
+          case 'skills': return <li key={item.id} data-transcript-id={item.id} className="msg"><SkillLoadCard t={t} item={item} language={language} /></li>;
           case 'handoff':
             return (
-              <li key={item.id} className={`msg handoff ${item.edge}`}>
+              <li key={item.id} data-transcript-id={item.id} className={`msg handoff ${item.edge}`}>
                 <span>{item.edge === 'start' ? t.handoff.carried(sourceLabel(item.runtime)) : t.handoff.here}</span>
               </li>
             );

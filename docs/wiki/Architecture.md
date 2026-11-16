@@ -1,103 +1,51 @@
-# System Architecture
+# System architecture
 
-## 1. Core Architectural Principle
+Current source baseline: **v0.4.288**. The architecture reference is
+[overview](../architecture/overview.md); the [contract directory](../architecture/README.md)
+and [ADRs](../adr/README.md) hold detailed boundaries and amendments.
 
-The 3D virtual office must never directly couple to any specific agent runtime (Hermes, Codex, Claude Code, Gemini, etc.) or AI provider API.
-
-```text
-Runtime / Provider
-       ↓
-Runtime Adapter
-       ↓
-Extalia Protocol (Normalized Events)
-       ↓
-Session / Task / Agent State Store
-       ↓
-UI Layers (Office 3D | Chat | Console | Tasks | Terminal)
-```
-
-The rendering engine and UI only ingest normalized, versioned Extalia events.
-
----
-
-## 2. Platform Abstraction
-
-Extalia targets Desktop (macOS arm64/x64, Windows x64, Linux x64) and modern Web browsers (Chromium, Firefox, WebKit).
-
-Platform features are accessed via unified capability interfaces rather than platform checks (`if (isElectron)`):
-
-```typescript
-interface PlatformCapabilities {
-  filesystem?: FileSystemCapability;
-  terminal?: TerminalCapability;
-  git?: GitCapability;
-  secureStorage?: SecureStorageCapability;
-  notifications?: NotificationCapability;
-  updater?: UpdateCapability;
-}
-```
-
-- **Desktop:** Directly accesses local capabilities natively via safe platform bridges.
-- **Web:** Connects via authenticated localhost loopback to the **Extalia Bridge** for native terminal, filesystem, and local runtime support.
-
----
-
-## 3. Monorepo Organization
+## Event and dependency direction
 
 ```text
-extalia/
-├── apps/
-│   ├── desktop/            # Electron / Tauri Desktop application
-│   ├── web/                # Standalone Web application
-│   └── cli/                # Terminal interface and bridge launcher
-│
-├── packages/
-│   ├── core/               # Domain logic, entity models
-│   ├── protocol/           # Event definitions, schemas, serialization
-│   ├── runtime/            # Runtime adapter contracts & lifecycle
-│   ├── event-bus/          # Typed pub/sub event routing
-│   ├── platform/           # Cross-platform capability interfaces
-│   ├── workspace/          # Project folders and workspace states
-│   ├── sessions/           # Multi-session store, persistence, history
-│   ├── renderer/           # Three.js / R3F spatial rendering engine
-│   ├── office/             # Room semantics, lighting, spatial allocation
-│   ├── avatars/            # Avatar models, kinematics, animations
-│   ├── ui/                 # Shared UI components, Design tokens
-│   ├── console/            # Agent console, inspection, steering
-│   ├── importer-core/      # Session import normalization & deduplication
-│   └── sdk/                # Public extension SDK
-│
-├── plugins/                # Official and community plugins
-├── docs/                   # Architectural specs & ADRs
-└── .github/                # CI/CD, issue templates, workflows
+Managed runtime adapter / observed transcript, hook or MCP
+    ↓
+Extalia Protocol → session/task/agent state
+    ↓
+Shared Web/Desktop views and 3D Office
 ```
 
----
+The dependency direction is `protocol ← core ← platform ← apps`. Renderer and UI
+never import providers, runtimes or privileged host adapters. A hook event does
+not grant control; observed actions require the exact capability of their route.
 
-## 4. Normalized Extalia Protocol
+## Actual repository layout
 
-All agent lifecycle events adhere to a typed, versioned protocol schema:
+| Location | Responsibility |
+| --- | --- |
+| `apps/web` | React UI and the shared Three.js/React Three Fiber Office |
+| `apps/desktop` | Electron shell, preload and secure IPC |
+| `apps/cli` | `extalia` command, authenticated local Bridge and MCP |
+| `packages/protocol`, `core`, `platform` | Wire contracts, domain model and capability interfaces |
+| `packages/runtime`, `host` | Managed loops/delegation and privileged host composition |
+| `packages/importers`, `office` | Pure history parsers and spatial contracts |
+| `crates/extalia-core`, `extalia-daemon` | Selected Rust stores, policy, indexes and supervised services |
 
-```typescript
-type ExtaliaEvent =
-  | AgentCreated
-  | AgentStarted
-  | AgentStopped
-  | AgentStateChanged
-  | PromptSubmitted
-  | ModelStreaming
-  | ToolStarted
-  | ToolOutput
-  | ToolCompleted
-  | CommandStarted
-  | CommandCompleted
-  | SubagentSpawned
-  | TaskCreated
-  | TaskAssigned
-  | TaskProgress
-  | TaskCompleted
-  | ApprovalRequested
-  | ApprovalGranted
-  | GitStatus
-  | GitCommit;
-```
+The earlier proposed separate event-bus/workspace/sessions/renderer/avatar/UI/SDK
+packages are not the current layout. An executable plugin host and public SDK
+remain planned. Desktop uses Electron, not a parallel Tauri implementation.
+
+## Process placement and capabilities
+
+[ADR 0071](../adr/0071-rust-openai-completion-and-resource-evidence.md) keeps
+production provider completion and ordinary orchestration in TypeScript after
+measurement. Rust owns selected control/index/scanner/learning services; Python
+is the pinned scanner worker on supported macOS ARM64 packages, not a generic
+mission executor. UI remains presentation-only.
+
+Desktop reaches native features through trusted preload/IPC; Web reaches them
+through the local authenticated Bridge. A static Web bundle has no agent host.
+Native command execution remains unavailable until a verified isolated executor
+exists. Platform publication is not proof of every capability on every target.
+
+Use [module documentation](../modules/README.md) for source/test navigation and
+[PRD status](../product/README.md) for implemented and unfinished requirements.

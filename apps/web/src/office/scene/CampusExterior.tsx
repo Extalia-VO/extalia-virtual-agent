@@ -529,11 +529,14 @@ function SquareParasol({ position, canopy = "#e7e2d4" }: { position: [number, nu
 /** Pickup stays at the physical counter; only settled guests can start preparation. */
 function KioskPickupDisplay() {
   const cup = useRef<Mesh>(null), indicator = useRef<MeshStandardMaterial>(null);
+  const lastStatus = useRef<string | undefined>("__unset__");
   useFrame(() => {
-    const state = outdoorKioskState.snapshot();
-    if (cup.current) cup.current.visible = state?.status === "pickup";
+    const status = outdoorKioskState.snapshot()?.status;
+    if (status === lastStatus.current) return;
+    lastStatus.current = status;
+    if (cup.current) cup.current.visible = status === "pickup";
     if (indicator.current) {
-      indicator.current.color.set(state?.status === "pickup" ? "#90e6b5" : state?.status === "preparing" ? "#e6ba72" : "#43685e");
+      indicator.current.color.set(status === "pickup" ? "#90e6b5" : status === "preparing" ? "#e6ba72" : "#43685e");
       indicator.current.emissive.copy(indicator.current.color);
     }
   });
@@ -987,7 +990,25 @@ function CampusPlinth() {
   </mesh>;
 }
 
-export function CampusExterior() {
+/** Front paving, arrival route and seats shared by Building and the F1 cutaway. */
+export function CampusFrontContext() {
+  const b = OFFICE_BUILDING;
+  return <>
+    <group name="campus-front-paving" userData={{ officePassable: true }}>
+      <PaverField center={[3.5, b.north - 2]} size={[55, 2.8]} tile={1.4} />
+      <PaverField center={[0, b.north - 7]} size={[46, 7.2]} tile={1.8} />
+    </group>
+    <group name="entrance-threshold-apron" userData={{ officePassable: true }}>
+      <PaverField center={[FRONT_APPROACH.x, b.north - 0.325]} size={[10.4, 0.55]} tile={1.2} />
+    </group>
+    <FrontEntranceWalkway />
+    {outdoor.forecourtLamps.map(lamp => <WalkLamp key={`${lamp.x}:${lamp.z}`} x={lamp.x} z={lamp.z} />)}
+    {outdoor.plinthBenches.filter(bench => bench.roomId === "outdoor-forecourt").map(bench =>
+      <PlinthBench key={bench.id} position={[...bench.position]} rotationY={bench.rotationY} />)}
+  </>;
+}
+
+export function CampusExterior({ frontContext = true }: { frontContext?: boolean } = {}) {
   const b = OFFICE_BUILDING;
   // Paving ends at the shaft/landing structure, never under its coplanar floors.
   // Reserve both lift bases together, including their projecting frame collars.
@@ -1008,12 +1029,10 @@ export function CampusExterior() {
       <ElevatorGarden />
       {/* Local carriageways are removed; only the outer city avenues remain. */}
       <group name="campus-tiled-walkway-ring" userData={{ officePassable: true }}>
-        <PaverField center={[3.5, b.north - 2]} size={[55, 2.8]} tile={1.4} />
         <PaverField center={[3.5, b.south + 2]} size={[55, 2.8]} tile={1.4} />
         <PaverField center={[b.west - 2, 0]} size={[2.8, 39.2]} tile={1.4} />
         {/* Wrap outside both lift shafts, leaving a generous east-side service promenade. */}
         <PaverField center={[b.east + 5, 0]} size={[2.8, 39.2]} tile={1.4} />
-        <PaverField center={[0, b.north - 7]} size={[46, 7.2]} tile={1.8} />
         <group name="lift-promenade-paving">
           <PaverField center={[(promenadeWest + b.east) / 2, promenadeCenterZ]}
             size={[b.east - promenadeWest, promenadeDepth]} tile={1.4} />
@@ -1026,14 +1045,8 @@ export function CampusExterior() {
         </group>
       </group>
       {/* The facade already supplies the entrance canopy; keep the plaza uncluttered. */}
-      <group name="entrance-threshold-apron" userData={{ officePassable: true }}>
-        <PaverField center={[FRONT_APPROACH.x, b.north - 0.325]} size={[10.4, 0.55]} tile={1.2} />
-      </group>
-      <FrontEntranceWalkway />
-      {outdoor.forecourtLamps.map(lamp => <WalkLamp key={`${lamp.x}:${lamp.z}`} x={lamp.x} z={lamp.z} />)}
+      {frontContext && <CampusFrontContext />}
       {outdoor.arrivalGardens.map(garden => <ArrivalGarden key={garden.id} position={garden.position} />)}
-      {outdoor.plinthBenches.filter(bench => bench.roomId === "outdoor-forecourt").map(bench =>
-        <PlinthBench key={bench.id} position={[...bench.position]} rotationY={bench.rotationY} />)}
       {/* The front board (ExtaliaSignage.tsx) stands beside the walkway and is mounted by OfficeCanvas. */}
       <WayfindingPylon position={[6, -0.24, -30.5]} rotationY={-0.18} />
       <BikeRack position={[20, -0.24, -25]} spaces={4} />

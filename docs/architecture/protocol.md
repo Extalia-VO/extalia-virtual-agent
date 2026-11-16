@@ -39,7 +39,7 @@ protocol change. `source.channel` records how the event arrived: `stream`
 | Tasks | `task.created`, `task.assigned`, `task.progress`, `task.completed` |
 | Approvals | `approval.requested`, `approval.resolved` |
 | Git | `git.status`, `git.commit`, `git.push` |
-| Meetings | `meeting.started`, `meeting.completed` |
+| Meetings | `meeting.started`, `meeting.contribution`, `meeting.completed` |
 
 Agent states: `idle`, `thinking`, `working`, `waiting`, `delegating`,
 `blocked`, `offline`. Activity kinds: `edit`, `command`, `test`, `search`,

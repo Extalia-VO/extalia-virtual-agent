@@ -11,6 +11,7 @@ import { installerBrand, installerCopy, installerPhotos } from './installer-copy
 const destination = fileURLToPath(new URL('../build/installer/', import.meta.url));
 const temporary = await mkdtemp(path.join(os.tmpdir(), 'extalia-installer-art-'));
 app.setPath('userData', temporary);
+app.setPath('sessionData', temporary);
 app.commandLine.appendSwitch('force-device-scale-factor', '1');
 app.commandLine.appendSwitch('disable-background-networking');
 app.on('window-all-closed', () => { /* Render all media before quitting. */ });

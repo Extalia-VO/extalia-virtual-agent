@@ -155,6 +155,9 @@ it('rotates the occupied stool upper seat and its avatar around the same station
   for (let frame = 0; frame < 30 * 800; frame++) {
     now += 1000 / 30; director.tick(1 / 30);
     if (mover.phase === 'seated' && mover.seat?.seatId.startsWith('lounge.barstool-')) break;
+    // Complete earlier dining visits normally; an expected service wait no
+    // longer expires merely to make this guest eventually choose a stool.
+    if (mover.phase === 'seated' && state.serviceFor(id)?.status === 'waiting') state.deliver(id, now);
   }
   const seat = mover.seat!;
   expect(seat.seatId).toMatch(/^lounge.barstool-/);

@@ -25,7 +25,7 @@ import {
   type KnowledgeSyncOutcome, type KnowledgeSyncReport, type KnowledgeEditing,
 } from '@extalia/platform';
 import { DAEMON_KNOWLEDGE_LIMITS, DAEMON_KNOWLEDGE_OPS, type DaemonOperations } from '@extalia/protocol';
-import { DaemonRequestError, DaemonUnavailableError, type DaemonClient, type DaemonSidecar } from './daemon/index.js';
+import { DaemonRequestError, DaemonUnavailableError, type DaemonClient } from './daemon/index.js';
 import { editingOf } from './knowledgeEdit.js';
 
 /** The knowledge methods on `AgentHostApi`. */
@@ -33,7 +33,7 @@ export type KnowledgeHostMethod =
   'knowledgeStatus' | 'syncKnowledge' | 'knowledgeNode' | 'knowledgeLinks' | 'knowledgeBacklinks' | 'searchKnowledge' | 'knowledgeGraph' | 'knowledgeOverview';
 /** Operations every knowledge method needs. Optional ones (an older daemon does not advertise them): the overview and note editing (`knowledgeEdit.ts`, `editing` in the status). */
 const OPTIONAL_KNOWLEDGE_OPS: readonly string[] = ['knowledge.overview', 'knowledge.read', 'knowledge.write', 'knowledge.history', 'knowledge.rollback', 'knowledge.importMemory'];
-const REQUIRED_KNOWLEDGE_OPS = DAEMON_KNOWLEDGE_OPS.filter(op => !OPTIONAL_KNOWLEDGE_OPS.includes(op));
+const REQUIRED_KNOWLEDGE_OPS = DAEMON_KNOWLEDGE_OPS.filter(op => op !== 'knowledge.scoped' && !OPTIONAL_KNOWLEDGE_OPS.includes(op));
 /** Default: refresh the index when the page asks for status and this host has not synced for 5 minutes. */
 export const KNOWLEDGE_AUTO_SYNC_AFTER_MS = 5 * 60_000;
 /** How long a status request waits for that refresh before answering with the current state. */
@@ -84,12 +84,13 @@ function validated<T>(read: () => T): T {
   try { return read(); } catch (error) { throw new KnowledgeError(error instanceof Error ? error.message : 'Invalid request.'); }
 }
 
-type KnowledgeOp = (typeof DAEMON_KNOWLEDGE_OPS)[number];
+type KnowledgeOp = Exclude<(typeof DAEMON_KNOWLEDGE_OPS)[number], 'knowledge.scoped'>;
+export type KnowledgeClient = Pick<DaemonClient, 'capabilities' | 'request'>;
 type Params<O extends KnowledgeOp> = DaemonOperations[O]['params'];
 type Result<O extends KnowledgeOp> = DaemonOperations[O]['result'];
 
 export interface KnowledgeServiceOptions {
-  daemon: DaemonSidecar;
+  daemon: { connect(): Promise<KnowledgeClient> };
   /** Refresh a stale index on status (ms since this host's latest sync); `Infinity` turns it off. */
   autoSyncAfterMs?: number;
   /** How long a status request waits for that refresh. */
@@ -118,7 +119,7 @@ export class KnowledgeService {
 
   private now(): number { return this.options.now?.() ?? Date.now(); }
 
-  private async client(): Promise<DaemonClient> {
+  private async client(): Promise<KnowledgeClient> {
     this.options.vault?.check();
     const client = await this.options.daemon.connect();
     if (!REQUIRED_KNOWLEDGE_OPS.every(op => client.capabilities.includes(op))) throw new NotServedError();
@@ -174,7 +175,7 @@ export class KnowledgeService {
   async drain(): Promise<void> { await this.syncing?.catch(() => undefined); }
 
   /** Note editing (`knowledgeEdit.ts`): a client for a read, after the queued syncs and writes. */
-  async ready(): Promise<DaemonClient> {
+  async ready(): Promise<KnowledgeClient> {
     await this.syncing?.catch(() => undefined);
     return this.client();
   }
@@ -183,7 +184,7 @@ export class KnowledgeService {
    * Note editing (`knowledgeEdit.ts`): run a write in the sync queue, after the sync or vault switch before it;
    * a sync requested later waits for it (and reads the vault after the write). Failures reject as they are.
    */
-  exclusive<T>(task: (client: DaemonClient) => Promise<T>): Promise<T> {
+  exclusive<T>(task: (client: KnowledgeClient) => Promise<T>): Promise<T> {
     this.options.vault?.admit?.();
     const previous = this.syncing;
     const run = (async () => {

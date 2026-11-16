@@ -14,7 +14,7 @@ const session = {
 const agent = { id: 'example-session:primary', sessionId: session.id, agentId: 'primary', displayName: 'Example agent', control: 'observed', status: 'observing', running: false } as OfficeAgent;
 const state = { sessions: [session], connections: [], profile: { id: 'example' }, workspaces: [{ id: 'workspace', name: 'Example', runtimeId: 'extalia-native', projectLocation: '/projects/example' }] } as unknown as HostState;
 const host = {
-  createSession: vi.fn(), sendPrompt: vi.fn(), queueObservedCodexMessage: vi.fn(), setObservedCodexQueue: vi.fn(), changePromptQueue: vi.fn(),
+  createSession: vi.fn(), sendPrompt: vi.fn(), queueObservedCodexMessage: vi.fn(), setObservedCodexQueue: vi.fn(), promptQueueStatus: vi.fn(), changePromptQueue: vi.fn(),
   applyObservedCodexPermissionHook: vi.fn(), answerObservedCodexPermission: vi.fn(),
 } as unknown as AgentHostApi;
 const render = (patch: Partial<Parameters<typeof CharacterConversation>[0]> = {}) => renderToStaticMarkup(createElement(CharacterConversation, {
@@ -27,18 +27,22 @@ it.each(['en', 'id'] as const)('keeps the normal observed composer in the footer
   const t = MESSAGES[language], html = render({ t, language }), tools = aside(html), mainFooter = footer(html);
   expect(mainFooter).toContain('composer observed-codex-prompt');
   expect(mainFooter).not.toContain('<details'); expect(mainFooter).not.toContain('prompt-queue');
-  for (const label of [t.observedCodexPrompt.settings, t.observedCodexPermission.title, t.observedCodex.title, t.observedReply.title, t.promptQueue.title]) expect(tools).toContain(label);
+  expect(tools).toContain(t.observedCodexNativeQueue.title);
+  expect(mainFooter).not.toContain('observed-codex-native-queue');
+  for (const label of [t.characterConsole.toolTabs.connection, t.characterConsole.toolTabs.permissions, t.characterConsole.toolTabs.session, t.characterConsole.toolTabs.pairing, t.observedCodexPermission.title, t.observedCodex.title, t.observedReply.title]) expect(tools).toContain(label);
+  expect(tools).not.toContain('prompt-queue'); expect(mainFooter.match(/<textarea/g)).toHaveLength(1);
   expect(tools).not.toContain('composer observed-codex-prompt');
   expect(html).toContain('aria-expanded="true"'); expect(html).toContain(t.characterConsole.tools);
   const target = html.match(/class="button small character-tools-toggle"[^>]*aria-controls="([^"]+)"/)![1]!;
   expect(html).toContain(`<aside id="${target}"`);
 });
 
-it('keeps the managed composer in the main footer and its queue in the aside', () => {
-  const managed = { ...session, control: 'managed' as const, observation: undefined };
+it('keeps the busy managed composer in the main footer without an empty queue panel', () => {
+  const managed = { ...session, control: 'managed' as const, observation: undefined, running: true };
   const html = render({ session: managed, agent: { ...agent, control: 'managed', status: 'idle' } });
   expect(footer(html)).toContain('id="composer-input"'); expect(footer(html)).not.toContain('prompt-queue');
-  expect(aside(html)).toContain('prompt-queue'); expect(aside(html)).not.toContain('observed-codex-office');
+  expect(footer(html).match(/<textarea/g)).toHaveLength(1);
+  expect(aside(html)).not.toContain('prompt-queue'); expect(aside(html)).not.toContain('observed-codex-office');
 });
 
 it.each(['managed', 'observed'] as const)('does not expose a queue, tools drawer or sender for workers and ended sessions (%s)', control => {
@@ -54,9 +58,22 @@ it.each(['managed', 'observed'] as const)('does not expose a queue, tools drawer
 it('keeps all transcript tabs mounted and renders no mutating host calls', () => {
   for (const tab of ['messages', 'activity', 'files'] as const) {
     const html = render({ tab });
-    expect(html.match(/role="tabpanel"/g)).toHaveLength(3);
-    expect(html.match(/role="tabpanel"[^>]*hidden=""/g)).toHaveLength(2);
-    expect(footer(html)).toContain('composer observed-codex-prompt'); expect(aside(html)).toContain('prompt-queue');
+    expect(html.split('<aside')[0]!.match(/role="tabpanel"/g)).toHaveLength(3);
+    expect(html.split('<aside')[0]!.match(/role="tabpanel"[^>]*hidden=""/g)).toHaveLength(2);
+    expect(footer(html)).toContain('composer observed-codex-prompt'); expect(aside(html)).not.toContain('prompt-queue');
+    expect(footer(html).match(/<textarea/g)).toHaveLength(1);
   }
   for (const operation of Object.values(host)) expect(operation).not.toHaveBeenCalled();
+});
+
+it.each(['en', 'id'] as const)('keeps fallback observed connection settings in Conversation tools (%s)', language => {
+  const t = MESSAGES[language], fallback = { ...session, observation: { ...session.observation!, sourceId: 'hermes' } };
+  const api = { ...host, observedControlStatus: vi.fn(), dispatchObservedControl: vi.fn() } as AgentHostApi;
+  const html = render({ t, language, session: fallback, agents: api });
+  const mainFooter = footer(html), tools = aside(html);
+  expect(mainFooter.match(/<textarea/g)).toHaveLength(1); expect(mainFooter).toContain('composer observed-session-control');
+  for (const text of [t.observedControl.helper, t.observedControl.action, t.observedControl.pairingDetails]) expect(mainFooter).not.toContain(text);
+  expect(html).toContain('aria-expanded="false"'); expect(html).toContain(t.characterConsole.showTools);
+  expect(tools).not.toContain(t.observedControl.action); expect(tools).not.toContain(t.observedControl.pairingDetails);
+  expect(tools).not.toContain('composer observed-session-control');
 });

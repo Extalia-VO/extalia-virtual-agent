@@ -10,7 +10,7 @@
 import {
   DAEMON_SKILL_APPROVAL_DEFAULT_TTL_MS, DAEMON_SKILL_LIMITS, SKILL_LIST_CURSOR_PATTERN, SKILL_PACKAGE_ID_PATTERN, SKILL_REVIEW_DECISIONS, SKILL_REVISION_ID_PATTERN,
   type SkillActivationResult, type SkillApprovalRecord, type SkillConsentInput as SkillConsentRecord, type SkillFileEntry, type SkillInspectionRecord,
-  type SkillReviewDecision, type SkillRevisionState, type SkillRevisionSummary, type SkillScannerReport, type SkillScannerStatus, type SkillStateEvent,
+  type SkillImportOrigin, type SkillReviewDecision, type SkillRevisionState, type SkillRevisionSummary, type SkillScannerReport, type SkillScannerStatus, type SkillStateEvent,
 } from '@extalia/protocol';
 import { SKILL_NAME_PATTERN } from './skills.js';
 
@@ -58,6 +58,8 @@ export interface SkillRegistryReport {
   inspector?: SkillScannerReport;
   /** The daemon serves `skill.review` (recording a human review needs core migration 0004). */
   review: boolean;
+  /** Explicit mutation capability; ordinary details reads never trigger a scanner. */
+  rescan?: boolean;
   /** Optional additive capability; older hosts/daemons omit it. */
   preflight?: boolean;
   /** Optional read-only routing diagnostics; true only when advertised by the daemon. */
@@ -85,6 +87,14 @@ export interface SkillRevisionDetails {
   revision: SkillRevisionSummary;
   /** Canonical `extalia-skill.json` (or the inferred manifest) as JSON text. Package text: show it as plain text. */
   manifest: string;
+  /** Literal user preview of the verified SKILL.md; never inserted into agent metadata. */
+  instructions?: string;
+  /** A full preview was unavailable; no silently truncated body is returned. */
+  instructionsUnavailable?: boolean;
+  /** Exact-revision import records. Absence means an older peer or an unrecorded legacy source. */
+  sources?: { origin: SkillImportOrigin; sourceRef: string; recordedAt: string }[];
+  sourcesTotal?: number;
+  sourcesOmitted?: number;
   files: SkillFileEntry[];
   inspections: SkillInspectionRecord[];
   approvals: SkillApprovalRecord[];

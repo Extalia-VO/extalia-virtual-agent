@@ -1,6 +1,7 @@
 import type { AgentHostApi, ProfilePreferences } from '@extalia/platform';
 import { useEffect, useRef } from 'react';
-import { decodePreferences, type Preferences } from './preferences';
+import { DEFAULT_PREFERENCES, decodePreferences, type Preferences } from './preferences';
+import { attachProfileClientState } from './profileClientState';
 
 /**
  * Interface preferences follow the Extalia profile (`<data>/config/profile.json`)
@@ -22,24 +23,23 @@ function known(field: Field, value: unknown): boolean {
 }
 
 export interface ProfileMerge {
-  /** What this client shows: the profile's value where it knows it, its own value otherwise. */
+  /** Host values where known, defaults for absent fields; newer unknown values keep this client's display fallback. */
   preferences: Preferences;
   /**
-   * What to treat as already saved in the profile. Fields the profile lacks are
-   * left out, so they are saved back; fields with values this client does not
-   * know count as saved, so a newer client's choice is never overwritten.
+   * Effective host values, including defaults for absent fields. Loading an
+   * empty profile must never seed it from an old browser mirror. Unknown values
+   * count as saved so this client cannot overwrite a newer client's choice.
    */
   synced: ProfilePreferences;
 }
 
 export function mergeProfilePreferences(local: Preferences, profile: ProfilePreferences): ProfileMerge {
-  const preferences = { ...local };
+  const preferences = { ...DEFAULT_PREFERENCES };
   const synced: Record<string, string> = {};
   for (const field of PROFILE_FIELDS) {
     const value = profile[field];
-    if (value === undefined) continue;
-    if (known(field, value)) (preferences as Record<Field, string>)[field] = value;
-    synced[field] = (preferences as Record<Field, string>)[field];
+    if (value !== undefined) (preferences as Record<Field, string>)[field] = known(field, value) ? value : local[field];
+    synced[field] = preferences[field];
   }
   return { preferences, synced: synced as ProfilePreferences };
 }
@@ -58,9 +58,12 @@ export interface ProfileSaver {
   schedule(next: Preferences): void;
   /** Save a pending change now. */
   flush(): Promise<void>;
+  /** Cancel queued writes when this host/profile is detached. Entered saves may still settle. */
+  dispose(): void;
 }
 
 export function createProfileSaver(save: AgentHostApi['saveProfile'], delayMs = 400): ProfileSaver {
+  let disposed = false;
   let synced: ProfilePreferences = {};
   let pending: Preferences | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -70,7 +73,7 @@ export function createProfileSaver(save: AgentHostApi['saveProfile'], delayMs = 
     timer = undefined;
     const next = pending;
     pending = undefined;
-    if (!next) return;
+    if (disposed || !next) return;
     const changes = profileChanges(synced, next);
     if (!Object.keys(changes).length) return;
     // Optimistic: a second change made while saving only sends what differs from this one.
@@ -85,14 +88,16 @@ export function createProfileSaver(save: AgentHostApi['saveProfile'], delayMs = 
   }
 
   return {
-    markSynced(next) { synced = { ...next }; },
+    markSynced(next) { if (!disposed) synced = { ...next }; },
     schedule(next) {
+      if (disposed) return;
       if (!Object.keys(profileChanges(synced, next)).length) { pending = undefined; clearTimeout(timer); return; }
       pending = next;
       clearTimeout(timer);
       timer = setTimeout(() => { void flush(); }, delayMs);
     },
     flush,
+    dispose() { disposed = true; pending = undefined; clearTimeout(timer); timer = undefined; },
   };
 }
 
@@ -100,7 +105,7 @@ export function createProfileSaver(save: AgentHostApi['saveProfile'], delayMs = 
  * Load the profile once a host is available, show its preferences (updating the
  * localStorage mirror through `apply`), then save later changes back, debounced.
  */
-export function useProfileSync(agents: AgentHostApi | undefined, preferences: Preferences, apply: (next: Preferences) => void): void {
+export function useProfileSync(agents: AgentHostApi | undefined, preferences: Preferences, apply: (next: Preferences) => void, profileIdentity?: string): void {
   const saver = useRef<ProfileSaver | undefined>(undefined);
   const latest = useRef(preferences);
   const applyRef = useRef(apply);
@@ -111,21 +116,37 @@ export function useProfileSync(agents: AgentHostApi | undefined, preferences: Pr
     if (!agents) return;
     let active = true;
     const current = createProfileSaver(patch => agents.saveProfile(patch));
-    agents.getProfile().then(profile => {
-      if (!active) return;
-      const merged = mergeProfilePreferences(latest.current, profile.preferences ?? {});
-      current.markSynced(merged.synced);
-      saver.current = current;
-      if (PROFILE_FIELDS.some(field => merged.preferences[field] !== latest.current[field])) applyRef.current(merged.preferences);
-      // Fields the profile does not have yet (a first start after upgrading) are saved from this device.
-      current.schedule(merged.preferences);
-    }, () => { /* An older host without profiles: preferences stay on this device. */ });
+    // Bind before loading: an old browser cache cannot become a host setting
+    // while this profile's authoritative state is still arriving.
+    const clientState = attachProfileClientState(patch => agents.saveProfile(patch));
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    let retryMs = 1_000;
+    const load = () => {
+      agents.getProfile().then(profile => {
+        if (!active) return;
+        clientState.hydrate(profile.clientState);
+        const merged = mergeProfilePreferences(latest.current, profile.preferences ?? {});
+        current.markSynced(merged.synced);
+        saver.current = current;
+        if (PROFILE_FIELDS.some(field => merged.preferences[field] !== latest.current[field])) applyRef.current(merged.preferences);
+        // Missing fields use defaults; an old mirror never seeds a fresh host.
+      }, () => {
+        // A temporary reconnect failure is not an empty profile. Keep writes
+        // fenced until the current host supplies authoritative settings.
+        if (!active) return;
+        retry = setTimeout(load, retryMs);
+        retryMs = Math.min(retryMs * 2, 10_000);
+      });
+    };
+    load();
     return () => {
       active = false;
+      clearTimeout(retry);
       if (saver.current === current) saver.current = undefined;
-      void current.flush();
+      current.dispose();
+      clientState.dispose();
     };
-  }, [agents]);
+  }, [agents, profileIdentity]);
 
   useEffect(() => { saver.current?.schedule(preferences); }, [preferences]);
 }

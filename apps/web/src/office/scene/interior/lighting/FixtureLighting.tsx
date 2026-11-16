@@ -84,7 +84,7 @@ export function FixtureLighting() {
       fixtureMin: { value: new Vector3(...IRRADIANCE_GRID_MIN) },
       fixtureSize: { value: new Vector3(...IRRADIANCE_GRID_MAX).sub(new Vector3(...IRRADIANCE_GRID_MIN)) }
     }, patched: new Map<MeshStandardMaterial, { compile: MeshStandardMaterial["onBeforeCompile"]; key: MeshStandardMaterial["customProgramCacheKey"]; cleanup: () => void }>(),
-      seenRevision: -1, seenScreens: -1, seenUrgentScreens: -1, nextScreens: 0, nextScan: 0, nextBake: 0, nextPool: 0, nextShadow: 0,
+      seenRevision: -1, seenScreens: -1, seenUrgentScreens: -1, nextScreens: 0, nextScan: 0, nextBake: 0, nextPool: 0, liveBudget: -1, nextShadow: 0,
       lastInterior: -1, lastExterior: -1, composedDevicePower: -1,
       architecture: undefined as IrradianceField | undefined, devices: undefined as IrradianceField | undefined,
       composedPower: -1, compositionDirty: false, deviceCount: 0, devicesByFloor: [0, 0, 0],
@@ -255,11 +255,15 @@ export function FixtureLighting() {
       cache.radiance.needsUpdate = true; cache.direction.needsUpdate = true;
       cache.compositionDirty = false; cache.composedPower = power; cache.composedDevicePower = devicePower;
     }
+    // No candidate projection/sort is needed while the live pool cannot render.
+    // A changed budget bypasses the interval so the first revealed frame has fresh targets.
+    const budget = isCampusOverview() ? 0 : Math.min(LIVE_BEAM_BUDGET, getRenderBudget().liveBeams);
+    if (budget !== cache.liveBudget) { cache.liveBudget = budget; cache.nextPool = 0; }
     if (elapsed >= cache.nextPool) {
       cache.nextPool = elapsed + 0.25;
       const candidates: { fixture: RegisteredFixture; score: number }[] = [];
       const liveLocations = new Set<string>();
-      for (const fixture of fixtures) {
+      for (const fixture of budget > 0 ? fixtures : []) {
         if (fixture.bakedOnly) continue;
         let visible = fixture.intensity > 0.001;
         for (let ancestor: Object3D | null = fixture.anchor; visible && ancestor; ancestor = ancestor.parent) visible = ancestor.visible;
@@ -279,7 +283,6 @@ export function FixtureLighting() {
       candidates.sort((a, b) => b.score - a.score); cache.selected.clear();
       // The adaptive render budget may drop the live pool; hidden lights leave the shaders entirely.
       // The campus view sees the interior through glass: baked pools only (see `isCampusOverview`).
-      const budget = isCampusOverview() ? 0 : Math.min(LIVE_BEAM_BUDGET, getRenderBudget().liveBeams);
       cache.lights.forEach((light, i) => {
         light.visible = i < budget;
         const fixture = i < budget ? candidates[i]?.fixture : undefined;
@@ -289,7 +292,7 @@ export function FixtureLighting() {
         light.intensity = fixture.intensity * (fixture.distance <= 1.6 ? 1 : 0.18); light.color.copy(fixture.color);
         light.distance = fixture.distance; light.angle = fixture.angle; light.penumbra = fixture.penumbra;
       });
-      cache.group.updateMatrixWorld(true);
+      if (budget > 0) cache.group.updateMatrixWorld(true);
       if (import.meta.env.DEV) (window as Window & { __EXTALIA_FIXTURE_LIGHTING__?: unknown; __EXTALIA_LIGHTING_AUDIT__?: unknown }).__EXTALIA_FIXTURE_LIGHTING__ = {
         registeredFixtures: fixtures.size, uniqueBakedFixtures: cache.bakedCount, liveBeamBudget: budget,
         screenEmitters: cache.deviceCount, screensByFloor: cache.devicesByFloor, devicePower,

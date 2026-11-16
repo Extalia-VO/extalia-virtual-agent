@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { BoxGeometry, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, OrthographicCamera, PerspectiveCamera } from 'three';
 import {
-  campusOverviewZoom, cullableMaterial, isCampusOverview, OVERVIEW_CULL_RADIUS_PX, overviewCandidate, overviewFlags, pixelsPerMetre, setCampusOverview, shownInHierarchy,
+  campusOverviewZoom, cullableMaterial, deskCloseupZoom, isCampusOverview, isSmallDecorGroup,
+  OVERVIEW_CULL_RADIUS_PX, overviewCandidate, overviewFlags, pixelsPerMetre, setCampusOverview,
+  shouldCullSmallDecor, shownInHierarchy,
 } from '../src/office/scene/environment/overviewLod';
 import { RENDER_BUDGET_LEVELS } from '../src/office/scene/environment/renderBudget';
 
@@ -59,5 +61,30 @@ describe('campus overview level of detail', () => {
     expect(isCampusOverview()).toBe(true);
     overviewFlags.interiorLiveLights = true;
     expect(isCampusOverview()).toBe(false);
+  });
+
+  it('culls small desk props and secondary monitors unless zoomed in close and inside the frustum', () => {
+    expect(deskCloseupZoom(16, false)).toBe(false);
+    expect(deskCloseupZoom(28, false)).toBe(true);
+    expect(deskCloseupZoom(25, true)).toBe(true);
+    expect(deskCloseupZoom(22, true)).toBe(false);
+
+    const primaryMonitor = new Group();
+    primaryMonitor.userData = { officeDeskDevice: 'monitor', slot: 1 };
+    const secondaryMonitor = new Group();
+    secondaryMonitor.userData = { officeDeskDevice: 'monitor', slot: 2 };
+    const bookProp = new Group();
+    bookProp.userData = { workstationAsset: 'books' };
+    const deskTop = new Group();
+    deskTop.userData = { workstationAsset: 'single-desk' };
+
+    expect(isSmallDecorGroup(primaryMonitor)).toBe(false);
+    expect(isSmallDecorGroup(secondaryMonitor)).toBe(true);
+    expect(isSmallDecorGroup(bookProp)).toBe(true);
+    expect(isSmallDecorGroup(deskTop)).toBe(false);
+
+    expect(shouldCullSmallDecor(false, true)).toBe(true);
+    expect(shouldCullSmallDecor(true, false)).toBe(true);
+    expect(shouldCullSmallDecor(true, true)).toBe(false);
   });
 });

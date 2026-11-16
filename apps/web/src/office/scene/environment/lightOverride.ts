@@ -1,3 +1,5 @@
+import { profileClientStateStorage } from '../../../profileClientState';
+
 /**
  * Interior lights: `auto` follows the time of day, `on` forces evening lamps,
  * and `off` suppresses evening lamps while preserving daylight fill. Site lighting stays on its
@@ -36,10 +38,10 @@ export function isLightOverride(value: unknown): value is LightOverride {
   return value === 'auto' || value === 'on' || value === 'off';
 }
 
-/** Per-device choice; storage may be unavailable (private mode, blocked site data). */
+/** Profile-backed choice (device-only without a host); storage may be unavailable (private mode, blocked site data). */
 export function loadLightOverride(storage?: Pick<Storage, 'getItem'>): LightOverride {
   try {
-    const value = (storage ?? globalThis.localStorage)?.getItem(LIGHT_OVERRIDE_STORAGE_KEY);
+    const value = (storage ?? profileClientStateStorage)?.getItem(LIGHT_OVERRIDE_STORAGE_KEY);
     return isLightOverride(value) ? value : 'auto';
   } catch {
     return 'auto';
@@ -48,7 +50,7 @@ export function loadLightOverride(storage?: Pick<Storage, 'getItem'>): LightOver
 
 export function saveLightOverride(value: LightOverride, storage?: Pick<Storage, 'setItem' | 'removeItem'>): void {
   try {
-    const store = storage ?? globalThis.localStorage;
+    const store = storage ?? profileClientStateStorage;
     if (value === 'auto') store?.removeItem(LIGHT_OVERRIDE_STORAGE_KEY);
     else store?.setItem(LIGHT_OVERRIDE_STORAGE_KEY, value);
   } catch {

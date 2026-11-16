@@ -22,9 +22,9 @@ function Collapsed({ t, message }: { t: Messages; message: PortableMessage }) {
 }
 
 /** Read-only transcript of an imported conversation; tool and system messages start collapsed. */
-export function LibraryTranscript({ t, messages }: { t: Messages; messages: readonly PortableMessage[] }) {
+export function LibraryTranscript({ t, messages, latest = false }: { t: Messages; messages: readonly PortableMessage[]; latest?: boolean }) {
   const [all, setAll] = useState(false);
-  const shown = all ? messages : messages.slice(0, LIMIT);
+  const shown = all ? messages : latest ? messages.slice(-LIMIT) : messages.slice(0, LIMIT);
   return (
     <>
       <ol className="transcript library-transcript">
@@ -33,9 +33,9 @@ export function LibraryTranscript({ t, messages }: { t: Messages; messages: read
             case 'user':
               return <UserMessage key={message.index} t={t} item={{ kind: 'user', id: `library-${message.index}`, text: message.content, at: message.createdAt }} />;
             case 'assistant':
-              return <li key={message.index} className="msg assistant"><span className="visually-hidden">{t.history.roles.assistant}: </span><Markdown text={message.content} /></li>;
+              return <li key={message.index} data-transcript-id={`library-${message.index}`} className="msg assistant"><span className="visually-hidden">{t.history.roles.assistant}: </span><Markdown text={message.content} /></li>;
             default:
-              return <li key={message.index} className="msg"><Collapsed t={t} message={message} /></li>;
+              return <li key={message.index} data-transcript-id={`library-${message.index}`} className="msg"><Collapsed t={t} message={message} /></li>;
           }
         })}
       </ol>

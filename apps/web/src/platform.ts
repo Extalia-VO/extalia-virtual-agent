@@ -1,5 +1,5 @@
 import { DESKTOP_HOST_GLOBAL, type DesktopHostApi, type HostInfo, type Platform, type PlatformCapabilities, type RestartCapability } from '@extalia/platform';
-import { bridgeAgentHost, bridgeUpdater, readBridgeToken } from './host/bridgeHost';
+import { bridgeAgentHost, bridgeUpdater, createBridgeConnection, readBridgeToken } from './host/bridgeHost';
 import { browserNotifications } from './approvals/browserNotifications';
 import { desktopAgentHost, desktopNotifications, desktopRestart, desktopUpdater } from './host/desktopHost';
 
@@ -20,8 +20,8 @@ function browserOs(): HostInfo['os'] {
   return 'other';
 }
 
-function browserCapabilities(): PlatformCapabilities {
-  const picker = (window as unknown as { showDirectoryPicker?: DirectoryPicker }).showDirectoryPicker;
+function browserCapabilities(directories = true): PlatformCapabilities {
+  const picker = directories ? (window as unknown as { showDirectoryPicker?: DirectoryPicker }).showDirectoryPicker : undefined;
   // Browser notifications exist wherever the Notification API does; they show only after the user opts in (Settings).
   const notifications = browserNotifications();
   if (!picker) return notifications ? { notifications } : {};
@@ -59,7 +59,7 @@ export async function resolvePlatform(): Promise<Platform> {
 
   const desktop = (window as unknown as Record<string, DesktopHostApi | undefined>)[DESKTOP_HOST_GLOBAL];
   if (desktop) {
-    const capabilities: PlatformCapabilities = { filesystem: { selectDirectory: () => desktop.selectDirectory() } };
+    const capabilities: PlatformCapabilities = { filesystem: { selectDirectory: options => desktop.selectDirectory(options) } };
     // Older preload scripts may not expose these yet; a missing one is simply unavailable.
     if (desktop.agents) capabilities.agents = desktopAgentHost(desktop.agents);
     if (desktop.updater) capabilities.updater = desktopUpdater(desktop.updater);
@@ -71,7 +71,10 @@ export async function resolvePlatform(): Promise<Platform> {
   const info: HostInfo = { kind: 'web', appVersion: __APP_VERSION__, os: browserOs() };
   const token = readBridgeToken(document);
   if (token) {
-    return { info, capabilities: { ...browserCapabilities(), agents: bridgeAgentHost(token), updater: bridgeUpdater(token), restart: reloadPage } };
+    const connection = createBridgeConnection(token);
+    // Browser handles omit absolute paths. Bridge forms use its authenticated
+    // host-directory browser directly, avoiding two consecutive folder dialogs.
+    return { info, capabilities: { ...browserCapabilities(false), agents: bridgeAgentHost(connection), updater: bridgeUpdater(connection), restart: reloadPage } };
   }
   return { info, capabilities: { ...browserCapabilities(), restart: reloadPage } };
 }

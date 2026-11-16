@@ -116,10 +116,14 @@ export function CampusGrass() {
     detail.current.computeBoundingSphere();
   }, [patches, tuftShape]);
   useFrame(({ camera, size }) => {
-    if (!detail.current) return;
+    const mesh = detail.current;
+    if (!mesh) return;
+    for (let node = mesh.parent; node; node = node.parent) {
+      if (!node.visible) return;
+    }
     let pixels = 0.085 * size.height * camera.projectionMatrix.elements[5]! / 2;
     if (camera.projectionMatrix.elements[15] !== 1) pixels /= Math.max(1, camera.position.length());
-    detail.current.visible = pixels >= 2.4;
+    mesh.visible = pixels >= 2.4;
   });
   useEffect(() => () => { texture.dispose(); vergeTexture.dispose(); surface.dispose(); tuft.dispose(); }, [texture, vergeTexture, surface, tuft]);
   return <group name="campus-grass" userData={{ officeCollision: false, officePassable: true }}>

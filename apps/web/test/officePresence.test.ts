@@ -132,3 +132,44 @@ describe('projectOfficePresence', () => {
     ]);
   });
 });
+
+describe('explicit Office meetings', () => {
+  const start = { type: 'meeting.started', meetingId: 'review', participants: ['primary', 'member'], topic: 'Design review' } as const;
+  const spawned = event('s', 1, { type: 'subagent.spawned', subagentId: 'member', label: 'Member' });
+  const started = event('s', 2, { ...start, participants: [...start.participants] });
+  it('scopes membership to the exact session and keeps participants through stopped round workers', () => {
+    const events = [spawned, started, event('s', 3, { type: 'agent.stopped' }, 'member'),
+      event('s', 4, { type: 'meeting.contribution', meetingId: 'review', round: 2, text: 'Agreed' }, 'member')];
+    const projected = projectOfficePresence([session('s', { running: true }), session('foreign')], events);
+    expect(projected.filter(agent => agent.meeting).map(agent => agent.id)).toEqual(['s:primary', 's:member']);
+    expect(projected.find(agent => agent.id === 's:member')).toMatchObject({ status: 'working', meeting: { topic: 'Design review', round: 2, speakerId: 'member' } });
+    expect(projectOfficePresence([session('s', { running: true }), session('foreign')], events.slice().reverse())).toEqual(projected);
+  });
+  it('releases membership on every outcome, session end, failure and user cancellation', () => {
+    for (const terminal of [
+      { type: 'meeting.completed', meetingId: 'review', outcome: 'completed' },
+      { type: 'meeting.completed', meetingId: 'review', outcome: 'cancelled' },
+      { type: 'meeting.completed', meetingId: 'review', outcome: 'failed' },
+      { type: 'session.ended' }, { type: 'turn.failed', error: 'Failed' },
+      { type: 'user.intervention', action: 'cancel' },
+    ] as EventBody[]) {
+      const projected = projectOfficePresence([session('s', { running: true })], [spawned, started, event('s', 3, terminal)]);
+      expect(projected.every(agent => !agent.meeting)).toBe(true);
+    }
+  });
+  it('ignores unknown participants, duplicate membership, overflow, and work text mentioning meetings', () => {
+    for (const participants of [['primary', 'missing'], ['primary', 'primary'], Array.from({ length: 15 }, (_, i) => `a${i}`)]) {
+      const projected = projectOfficePresence([session('s')], [spawned, event('s', 2, { ...start, participants })]);
+      expect(projected.every(agent => !agent.meeting)).toBe(true);
+    }
+    const projected = projectOfficePresence([session('s')], [event('s', 1, { type: 'agent.state', state: 'working', summary: 'meeting discussion', activity: 'delegate' })]);
+    expect(projected[0]?.meeting).toBeUndefined();
+  });
+  it('ignores foreign contributors and never revives a completed meeting from a duplicate start', () => {
+    const projected = projectOfficePresence([session('s')], [spawned, started,
+      event('s', 3, { type: 'meeting.contribution', meetingId: 'review', round: 1, text: 'No membership' }, 'unknown'),
+      event('s', 4, { type: 'meeting.completed', meetingId: 'review' }), event('s', 5, { ...start, participants: [...start.participants] })]);
+    expect(projected.every(agent => !agent.meeting)).toBe(true);
+    expect(projected.some(agent => agent.agentId === 'unknown')).toBe(false);
+  });
+});

@@ -1,12 +1,13 @@
 import type { SessionPermissionMode, WorkspacePermissions } from '@extalia/core';
 import type { EventBody, RiskLevel, Usage } from '@extalia/protocol';
 import { composeTurn, type TurnAttachment } from './attachments.js';
-import { ProviderError, type ModelMessage, type ModelProvider, type ToolCall, type ToolResultEntry } from './model.js';
+import { ProviderError, type ModelMessage, type ModelProvider, type ModelRequest, type ToolCall, type ToolResultEntry } from './model.js';
 import { checkedVerdict, decide, offersAccess, POLICY_UNAVAILABLE, type PermissionRequest, type PermissionVerdict } from './policy.js';
 import { validateArguments, type AnyTool, type ToolAccess } from './tools.js';
 import type { LocalToolPipelines } from './localOperations.js';
 import { RequestBudgetError, checkRequestBudget, type RequestPressure } from './requestBudget.js';
 import { UsageAccumulator } from './usage.js';
+import { ContextCompactor, type ContextCompactionOptions, type ContextCompactionReport } from './contextCompaction.js';
 
 /**
  * One agent turn: send the conversation to the model, run the tools it asks
@@ -48,11 +49,21 @@ export interface TurnOptions {
   checkPermission?(request: PermissionRequest): Promise<PermissionVerdict>;
   signal: AbortSignal;
   maxSteps?: number;
+  /** Reserve the last bounded request for a response without tools; never execute calls from it. */
+  reserveFinalResponse?: boolean;
   /** Optional estimated input ceiling: a positive safe integer, never inferred from a model name. */
   maxInputTokens?: number;
+  /** Optional durable evidence archive and bounded request-only tool-output compaction. */
+  compaction?: ContextCompactionOptions;
+  /** Host-owned context refresh after steering, before every budget check/provider request. */
+  prepareRequest?(request: Readonly<Pick<ModelRequest, 'system' | 'messages' | 'tools'>> & { signal: AbortSignal; requestScope?: object }): Promise<string>;
   newId?: () => string;
   /** Internal native-mission lifecycle gate; tracks complete tool pipelines, including preflight waits. */
   localOperations?: LocalToolPipelines;
+  /** Host-owned, durably admitted text for this invocation, consumed only at safe transcript boundaries. */
+  takeSteering?(history: readonly ModelMessage[], boundary: 'step' | 'complete' | 'stop'): Promise<readonly string[]>;
+  /** Host-owned successful-task finalization, awaited before terminal events. Never recursively attached to delegated work. */
+  beforeComplete?(result: Readonly<TurnResult>): Promise<void>;
 }
 
 export type TurnOutcome = 'completed' | 'failed' | 'cancelled' | 'refused' | 'step-limit';
@@ -76,6 +87,7 @@ export interface TurnResult {
   /** A rejected prospective request is separate from context/usage of requests actually sent. */
   requestPressure?: RequestPressure;
   reason?: 'context';
+  compaction?: ContextCompactionReport;
 }
 
 const RESULT_LIMIT = 30_000;
@@ -96,6 +108,7 @@ const defaultId = () => {
 };
 
 export async function runTurn(options: TurnOptions): Promise<TurnResult> {
+  const requestScope = Object.freeze({});
   const { provider, emit, signal } = options;
   const newId = options.newId ?? defaultId;
   const mode = options.permissionMode ?? 'workspace';
@@ -103,6 +116,7 @@ export async function runTurn(options: TurnOptions): Promise<TurnResult> {
   const composed = composeTurn(options.prompt, options.attachments ?? [], { images: provider.images !== false });
   const history: ModelMessage[] = [...options.history, { role: 'user', text: composed.text, ...(composed.images.length ? { images: composed.images } : {}) }];
   const accumulated = new UsageAccumulator(), usage = accumulated.total;
+  const compactor = options.compaction ? new ContextCompactor(options.compaction) : undefined;
   let context: TurnContext | undefined;
   let requestPressure: RequestPressure | undefined;
   const maxSteps = options.maxSteps ?? 50;
@@ -111,17 +125,54 @@ export async function runTurn(options: TurnOptions): Promise<TurnResult> {
   const specsNow = () => offeredTools().map(tool => ({ name: tool.name, description: tool.description, parameters: tool.parameters }));
   const storedHistory = (): ModelMessage[] => history.map(message => (message.role === 'user' && message.images ? { role: 'user', text: message.text } : message));
 
-  const finish = (outcome: TurnOutcome, error?: string, reason?: 'context'): TurnResult => {
+  const takeSteering = async (boundary: 'step' | 'complete' | 'stop') => {
+    const pending = await options.takeSteering?.(storedHistory(), boundary) ?? [];
+    history.push(...pending.map(text => ({ role: 'user' as const, text })));
+    return pending.length;
+  };
+  const finish = async (outcome: TurnOutcome, error?: string, reason?: 'context'): Promise<TurnResult> => {
+    await takeSteering('stop');
+    const result: TurnResult = { outcome, history: storedHistory(), usage, ...(error ? { error } : {}), ...(context ? { context } : {}), ...(requestPressure ? { requestPressure } : {}), ...(reason ? { reason } : {}), ...(compactor?.report ? { compaction: compactor.report } : {}) };
+    if (outcome === 'completed') await options.beforeComplete?.(result);
     if (outcome === 'completed') emit({ type: 'turn.completed', ...(Object.keys(usage).length ? { usage } : {}) });
     else emit({ type: 'turn.failed', error: error ?? outcome, ...(reason ? { reason } : {}) });
     emit({ type: 'agent.state', state: 'idle' });
-    return { outcome, history: storedHistory(), usage, ...(error ? { error } : {}), ...(context ? { context } : {}), ...(requestPressure ? { requestPressure } : {}), ...(reason ? { reason } : {}) };
+    return result;
   };
 
   for (let step = 0; step < maxSteps; step++) {
     if (signal.aborted) return finish('cancelled', 'Stopped by the user.');
-    const specs = specsNow();
-    const budget = checkRequestBudget({ system: options.system, messages: history, tools: specs }, options.maxInputTokens);
+    await takeSteering('step');
+    if (signal.aborted) return finish('cancelled', 'Stopped by the user.');
+    const finalResponse = options.reserveFinalResponse === true && step === maxSteps - 1;
+    const specs = finalResponse ? [] : specsNow();
+    let system = options.system;
+    let messages = compactor?.project(history) ?? history;
+    // Context preparation may itself enforce a budget. Retry only local preparation,
+    // before provider admission, and at most twice after an acknowledged projection.
+    for (let preparation = 0; preparation < 3; preparation++) {
+      system = options.system;
+      messages = compactor?.project(history) ?? history;
+      try {
+        if (options.prepareRequest) system = await options.prepareRequest({ system, messages, tools: specs, signal, requestScope });
+        if (finalResponse) system += '\nThis is the final bounded response. No tools are available. Summarize only the evidence already gathered, state unresolved questions and failed reads explicitly, and do not claim unverified work is complete.';
+        if (compactor && preparation < 2 && await compactor.compact({ system, messages: history, tools: specs }, options.maxInputTokens, signal)) continue;
+      } catch (error) {
+        if (isAbort(error, signal)) return finish('cancelled', 'Stopped by the user.');
+        if (error instanceof RequestBudgetError) {
+          if (compactor && preparation < 2 && !error.priorRequestMayHaveRun && ['token-limit', 'character-limit'].includes(error.reason)) {
+            try {
+              if (await compactor.compact({ system, messages: history, tools: specs }, options.maxInputTokens, signal, true)) continue;
+            } catch (failure) { if (isAbort(failure, signal)) return finish('cancelled', 'Stopped by the user.'); }
+          }
+          requestPressure = error.pressure;
+          return finish('failed', error.code, 'context');
+        }
+        return finish('failed', 'The Native request context could not be prepared.');
+      }
+      break;
+    }
+    const budget = checkRequestBudget({ system, messages, tools: specs }, options.maxInputTokens);
     if (signal.aborted) return finish('cancelled', 'Stopped by the user.');
     requestPressure = budget.pressure;
     if (budget.reason || !budget.pressure) return finish('failed', 'native_context_limit', 'context');
@@ -130,7 +181,7 @@ export async function runTurn(options: TurnOptions): Promise<TurnResult> {
 
     let result;
     try {
-      result = await provider.complete({ system: options.system, messages: history, tools: specs, signal, onText: text => { if (!signal.aborted) emit({ type: 'model.delta', text }); } });
+      result = await provider.complete({ system, messages, tools: specs, signal, onText: text => { if (!signal.aborted) emit({ type: 'model.delta', text }); } });
     } catch (error) {
       if (isAbort(error, signal)) return finish('cancelled', 'Stopped by the user.');
       if (error instanceof RequestBudgetError) {
@@ -160,12 +211,17 @@ export async function runTurn(options: TurnOptions): Promise<TurnResult> {
     if (!result.toolCalls.length) {
       history.push(assistant);
       if (result.stop === 'max_tokens') return finish('failed', 'The answer was cut off because it reached the output limit.');
+      if (await takeSteering('complete')) continue;
       return finish('completed');
     }
     if (result.stop === 'max_tokens') {
       // Tool input cut off at the output limit may parse as a valid but truncated object.
       history.push({ ...assistant, toolCalls: [] });
       return finish('failed', 'A tool call was cut off because the answer reached the output limit.');
+    }
+    if (finalResponse) {
+      history.push({ ...assistant, toolCalls: [] });
+      return finish('step-limit', 'The bounded synthesis requested more tools instead of returning findings. No additional tools were run.');
     }
     history.push(assistant);
 
@@ -179,8 +235,8 @@ export async function runTurn(options: TurnOptions): Promise<TurnResult> {
       // Reserve every branch before any starts: an early failure must not hide an unstarted sibling.
       const pipelines = calls.map(() => options.localOperations?.reserveToolPipeline());
       results.push(...await Promise.all(calls.map((call, branch) => pipelines[branch]
-        ? pipelines[branch]!.run(() => runTool(call, options, newId))
-        : runTool(call, options, newId))));
+        ? pipelines[branch]!.run(() => runTool(call, options, newId, requestScope))
+        : runTool(call, options, newId, requestScope))));
       index = end;
     }
     // Every tool call needs a result, even when the turn was stopped part-way.
@@ -193,7 +249,7 @@ export async function runTurn(options: TurnOptions): Promise<TurnResult> {
   return finish('step-limit', `Stopped after ${maxSteps} steps without finishing. Send a follow-up to continue.`);
 }
 
-async function runTool(call: ToolCall, options: TurnOptions, newId: () => string): Promise<ToolResultEntry> {
+async function runTool(call: ToolCall, options: TurnOptions, newId: () => string, requestScope: object): Promise<ToolResultEntry> {
   const { emit, signal } = options;
   options.localOperations?.assertOpen();
   const failure = (content: string): ToolResultEntry => ({ toolCallId: call.id, name: call.name, content, isError: true });
@@ -259,7 +315,7 @@ async function runTool(call: ToolCall, options: TurnOptions, newId: () => string
   let outcome;
   try {
     options.localOperations?.assertOpen();
-    outcome = await tool.run(call.input, { signal, toolCallId: call.id, emit: body => emit(body) });
+    outcome = await tool.run(call.input, { signal, requestScope, toolCallId: call.id, emit: body => emit(body) });
   } catch (error) {
     outcome = { ok: false, output: error instanceof Error ? error.message : String(error) };
   }

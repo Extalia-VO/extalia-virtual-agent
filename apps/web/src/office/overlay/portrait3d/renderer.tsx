@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { CharacterBody } from '../../scene/avatars/OfficeCharacter';
 import { avatarVisual, characterHeightCm } from '../../scene/avatars/appearance';
 import { expressionStateForAgent, resolveCharacterExpression } from '../../scene/avatars/facialExpression';
+import { applyPortraitFraming, measurePortraitFraming, type PortraitFraming } from './framing';
 import { PORTRAIT_FRAME_MS, portraitFrameInterval, portraitSubject, type PortraitSubject } from './model';
 
 const WIDTH = 192;
@@ -24,6 +25,7 @@ interface Entry {
   targets: Set<Target>;
   scene: THREE.Scene;
   camera: THREE.OrthographicCamera;
+  framing: PortraitFraming | null;
   failed: boolean;
 }
 
@@ -97,14 +99,14 @@ class PortraitRenderer {
     let entry = this.entries.get(resolved.key);
     if (!entry) {
       const height = characterHeightCm(avatarVisual(resolved.id, resolved.appearance)) / 100;
-      // Keep the same crown clearance (1.08 × standing height), but crop below
-      // the shoulders so expressions remain legible in the small board tiles.
+      // Provisional view while the model loads. Rendered head/eye anatomy
+      // calibrates the final crop before its first frame is copied.
       const halfHeight = height * 0.15;
       const halfWidth = halfHeight * WIDTH / HEIGHT;
       const camera = new THREE.OrthographicCamera(-halfWidth, halfWidth, halfHeight, -halfHeight, 0.1, 10);
       camera.position.set(0, height * 0.93, 3);
       camera.lookAt(0, height * 0.93, 0);
-      entry = { key: resolved.key, subject, targets: new Set(), scene: new THREE.Scene(), camera, failed: false };
+      entry = { key: resolved.key, subject, targets: new Set(), scene: new THREE.Scene(), camera, framing: null, failed: false };
       this.entries.set(entry.key, entry);
     }
     // Wait for IntersectionObserver before mounting models for offscreen rows.
@@ -159,6 +161,12 @@ class PortraitRenderer {
       entry.scene.traverse(object => { if ((object as THREE.Mesh).isMesh) hasMesh = true; });
       // CharacterBody deliberately suspends its source model without a placeholder.
       if (!hasMesh) continue;
+      entry.scene.updateMatrixWorld(true);
+      if (entry.framing && !applyPortraitFraming(entry.camera, entry.framing, WIDTH, HEIGHT)) entry.framing = null;
+      if (!entry.framing) {
+        entry.framing = measurePortraitFraming(entry.scene);
+        if (entry.framing) applyPortraitFraming(entry.camera, entry.framing, WIDTH, HEIGHT);
+      }
       gl.setClearColor(0x000000, 0);
       gl.clear();
       gl.render(entry.scene, entry.camera);

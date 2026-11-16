@@ -14,6 +14,12 @@ Extalia is an open-source **spatial AI-agent workspace and orchestration platfor
 
 ---
 
+## Current implementation and requirements
+
+See the [documentation directory](../README.md), [module hubs](../modules/README.md)
+and [PRD status](../product/README.md) for implemented features and remaining gates.
+The reconciled baseline is v0.4.288; the v0.5 acceptance gate remains open.
+
 ## Wiki Navigation
 
 1. **[[Architecture]]**: System design, normalized protocol, runtime adapters, and monorepo structure.
@@ -27,4 +33,4 @@ Extalia is an open-source **spatial AI-agent workspace and orchestration platfor
 
 - **Main Repository:** [Extalia-VO/extalia-virtual-agent](https://github.com/Extalia-VO/extalia-virtual-agent)
 - **Project Tracking:** GitHub Projects Board & Milestones
-- **License:** MIT License
+- **License:** MIT for application source; distributed assets and dependencies retain their separate notices

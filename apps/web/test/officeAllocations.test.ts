@@ -75,3 +75,51 @@ describe('office seating policy: leads in the executive rooms, subagents in fitt
     expect(seatOf(next, 'z:primary')).toBe('executive-studio.ceo');
   });
 });
+
+describe('event-driven meeting seating', () => {
+  const participant = (session: string, id: string, participants: string[], roomId?: 'meeting-a' | 'meeting-b'): OfficeAgent => ({
+    ...agent(`${session}:${id}`, 'working'), sessionId: session, agentId: id,
+    ...(id !== 'primary' ? { parentId: `${session}:primary` } : {}),
+    meeting: { meetingId: 'sync', participants, topic: 'Review', ...(roomId ? { roomId } : {}) },
+  });
+  it('allocates distinct authored meeting chairs and returns to the reserved workstations', () => {
+    const ids = ['primary', 'member'];
+    const meeting = ids.map(id => participant('s', id, ids));
+    const normal = meeting.map(({ meeting: _meeting, ...agent }) => agent);
+    const desks = allocateOfficeAgents(normal);
+    const seated = allocateOfficeAgents(meeting, desks);
+    expect(new Set(seated.map(seat => seat.resourceId)).size).toBe(2);
+    expect(seated.every(seat => seat.resourceId.startsWith('meeting-a.seat-'))).toBe(true);
+    expect(seated.map(seat => seat.workstationId)).toEqual(desks.map(seat => seat.resourceId));
+    expect(allocateOfficeAgents(normal, seated)).toEqual(desks);
+    expect(seatingKey(meeting)).not.toBe(seatingKey(normal));
+    expect(allocateOfficeAgents(meeting.slice().reverse(), seated)).toEqual(seated);
+  });
+  it('selects the fourteen-seat room for eleven participants and refuses explicit small-room overflow', () => {
+    const ids = ['primary', ...Array.from({ length: 10 }, (_, i) => `member-${i}`)];
+    expect(allocateOfficeAgents(ids.map(id => participant('s', id, ids))).every(seat => seat.resourceId.startsWith('meeting-b.seat-'))).toBe(true);
+    expect(allocateOfficeAgents(ids.map(id => participant('s', id, ids, 'meeting-a'))).every(seat => !seat.resourceId.startsWith('meeting-'))).toBe(true);
+  });
+  it('keeps ordinary workers at desks and allocates concurrent sessions separate rooms without crowding', () => {
+    const agents = [participant('a', 'primary', ['primary']), participant('b', 'primary', ['primary']), participant('c', 'primary', ['primary']), agent('ordinary:primary')];
+    const seats = allocateOfficeAgents(agents);
+    expect(seats.find(seat => seat.agentId === 'a:primary')?.resourceId).toBe('meeting-a.seat-1');
+    expect(seats.find(seat => seat.agentId === 'b:primary')?.resourceId).toBe('meeting-b.seat-1');
+    expect(seats.filter(seat => !seat.resourceId.startsWith('meeting-'))).toHaveLength(2);
+    expect(new Set(seats.map(seat => seat.resourceId)).size).toBe(4);
+  });
+  it('refuses incomplete or inconsistent participant sets', () => {
+    const agents = [participant('a', 'primary', ['primary', 'unknown']), participant('foreign', 'unknown', ['primary', 'unknown'])];
+    expect(allocateOfficeAgents(agents).every(seat => !seat.resourceId.startsWith('meeting-'))).toBe(true);
+  });
+});
+
+
+it('preserves an occupied meeting room when a new earlier-sorting session arrives', () => {
+  const make = (sessionId: string): OfficeAgent => ({ ...agent(`${sessionId}:primary`, 'working'),
+    meeting: { meetingId: 'sync', participants: ['primary'] } });
+  const original = allocateOfficeAgents([make('z')]);
+  const next = allocateOfficeAgents([make('a'), make('z')], original);
+  expect(next.find(seat => seat.agentId === 'z:primary')?.resourceId).toBe(original[0]?.resourceId);
+  expect(next.find(seat => seat.agentId === 'a:primary')?.resourceId).toBe('meeting-b.seat-1');
+});

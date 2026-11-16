@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useSyncExternalStore, type ReactNode } from 'react';
+import { useFixedModelTransforms } from "../fixedModelTransforms";
+import { useEffect, useMemo, useRef, useSyncExternalStore, type ReactNode } from 'react';
 import { useFrame } from '@react-three/fiber';
 import type { Material, Mesh, MeshStandardMaterial, Object3D } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
@@ -60,8 +61,14 @@ export function updateInteriorEmission(instance:Pick<InteriorInstance,'lamps'|'l
 }
 function Emission({instance,seed}:{instance:InteriorInstance;seed:number}) {
   const {state,reducedMotion}=useSolarEnvironment(),factor=state.factors.interiorLightFactor;
+  const nextTick=useRef(0);
   useEffect(()=>updateInteriorEmission(instance,factor,0,reducedMotion,seed),[instance,factor,reducedMotion,seed]);
-  useFrame(({clock})=>{if(instance.leds.length)updateInteriorEmission(instance,factor,clock.elapsedTime,reducedMotion,seed)});
+  useFrame(({clock})=>{
+    if(reducedMotion||!instance.leds.length||clock.elapsedTime<nextTick.current)return;
+    for(let node=instance.root.parent;node;node=node.parent)if(!node.visible)return;
+    nextTick.current=clock.elapsedTime+0.08;
+    updateInteriorEmission(instance,factor,clock.elapsedTime,reducedMotion,seed);
+  });
   return null;
 }
 /** Named Blender part with a complete fallback; articulated parents retain their runtime transforms. */
@@ -72,6 +79,7 @@ export function InteriorPart({model,children,position,modelScale,upholsteryColor
   useEffect(()=>{void load()},[]);
   const source=assets?.get(model);
   const instance=useMemo(()=>source?createInteriorInstance(source,upholsteryColor):null,[source,upholsteryColor]);
+  useFixedModelTransforms(instance?.root);
   useEffect(()=>()=>{instance?.owned.forEach(material=>material.dispose())},[instance]);
   return <group name={`interior-part-${model}`} position={position?[...position]:[0,0,0]} userData={{officeDynamic:true,interiorModel:model,interiorAuthored:!!instance}}>
     {instance?<><group scale={modelScale?[...modelScale]:[1,1,1]}><primitive object={instance.root} dispose={null}/></group>

@@ -223,7 +223,7 @@ function accessory(kind: DeskAccessoryKind, p: Palette): ReactNode {
 /** The desk's own items in its slots (desk frame), resting on the desktop at `topY`. */
 export function DeskAccessorySlots({ layout, slots, topY }: { layout: DeskLayout; slots: readonly DeskSlot[]; topY: number }) {
   const palette = PALETTES[Math.floor(layout.tint * PALETTES.length) % PALETTES.length]!;
-  return <group>
+  return <group userData={{ officeSmallDecor: true }}>
     {layout.accessories.map((kind, index) => {
       const slot = slots[index];
       if (!kind || !slot) return null;

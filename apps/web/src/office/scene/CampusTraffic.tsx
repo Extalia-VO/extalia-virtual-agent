@@ -627,6 +627,7 @@ function TrafficHeadlights({ sim, lamps }: { sim: TrafficSim; lamps: ReadonlyMap
       nearestTrafficCars(sim.lights, sim.lightCount, focus, headlightSpotCount(getRenderBudget().liveBeams, power), assigned);
     }
     spots.forEach((light, index) => {
+      light.visible = power > 0;
       let pose: TrafficCarPose | undefined;
       for (let i = 0; i < sim.lightCount && assigned[index]! >= 0; i++) if (sim.lights[i]!.id === assigned[index]) { pose = sim.lights[i]; break; }
       const anchors = pose && lamps.get(pose.model);
@@ -663,7 +664,7 @@ function TurnSignals({ sim, lamps }: { sim: TrafficSim; lamps: ReadonlyMap<Mobil
   useLayoutEffect(() => { lens.current?.instanceMatrix.setUsage(DynamicDrawUsage); }, []);
   useFrame(() => {
     const lensMesh = lens.current;
-    if (!lensMesh) return;
+    if (!lensMesh || document.hidden || !visibleInHierarchy(lensMesh)) return;
     let count = 0;
     for (let index = 0; index < sim.lightCount && count < lensMesh.instanceMatrix.count - 1; index++) {
       const pose = sim.lights[index]!, anchors = lamps.get(pose.model);

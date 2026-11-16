@@ -12,6 +12,9 @@ import { HOOK_SOURCE_IDS } from '../hooks/normalize.js';
 import { isNotFound, readJson, writeJsonAtomic } from '../jsonStore.js';
 import { readMigrationMarker } from '../migration.js';
 import { NativeImportService } from '../nativeImport.js';
+import { resolveAgentLocations } from '../agentLocations.js';
+import { environmentValue, findExecutable } from '../executableDiscovery.js';
+import { executableLaunchPlan } from '../npmCommand.js';
 import {
   ANTIGRAVITY_EVENTS, antigravityCommand, existingAntigravityCommand, inspectAntigravityHooks, planAntigravityHooks, removeAntigravityEntries, type AntigravityDesired,
 } from './antigravity.js';
@@ -38,7 +41,7 @@ import {
   HERMES_EVENTS, existingHermesPort, inspectHermesConfig, planHermesConfig, removeHermesBlock,
 } from './hermes.js';
 import {
-  ConnectError, displayPath, findOnPath, isExecutable, sha256, timestampForPath, writableTarget, writeConfigFile, type Env,
+  ConnectError, displayPath, isExecutable, sha256, timestampForPath, writableTarget, writeConfigFile, type Env,
 } from './util.js';
 
 /** App versions the hook formats were verified against (prefix match). */
@@ -126,17 +129,21 @@ interface AppRecord {
 
 interface Manifest { schema: 'extalia.connect-manifest.v1'; apps: Partial<Record<AgentAppId, AppRecord>> }
 
-const defaultRun: RunCommand = (command, args, { env, timeoutMs }) => new Promise(resolve => {
+const defaultRun = async (command: string, args: string[], { env, timeoutMs }: { env: Env; timeoutMs: number }, platform = process.platform): Promise<RunResult | undefined> => {
+  let launch;
+  try { launch = await executableLaunchPlan(command, args, { env, platform }); } catch { return undefined; }
+  return new Promise(resolve => {
   let stdout = '', stderr = '';
   try {
-    const child = spawn(command, args, { env: env as NodeJS.ProcessEnv, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(launch.command, launch.args, { env: env as NodeJS.ProcessEnv, stdio: ['ignore', 'pipe', 'pipe'] });
     const timer = setTimeout(() => { child.kill(); resolve(undefined); }, timeoutMs);
     child.stdout.on('data', chunk => { stdout += chunk; });
     child.stderr.on('data', chunk => { stderr += chunk; });
     child.on('error', () => { clearTimeout(timer); resolve(undefined); });
     child.on('close', code => { clearTimeout(timer); resolve({ code, stdout, stderr }); });
   } catch { resolve(undefined); }
-});
+  });
+};
 
 /** Split a hook command into its arguments (POSIX single quotes, Windows double quotes, or bare words). */
 export function splitCommand(command: string): string[] {
@@ -175,7 +182,7 @@ const ENV_BIN: Record<AgentAppId, string> = {
 
 export function createConnectService(ctx: ConnectContext): ConnectService {
   const now = ctx.now ?? (() => new Date());
-  const run = ctx.run ?? defaultRun;
+  const run: RunCommand = ctx.run ?? ((command, args, options) => defaultRun(command, args, options, ctx.platform as NodeJS.Platform));
   const rpcFactory = ctx.codexRpc ?? spawnCodexAppServer;
   const connectDirectory = path.join(ctx.extaliaHome, 'connect');
   const manifestFile = path.join(connectDirectory, 'manifest.json');
@@ -187,23 +194,23 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
     return path.resolve(expected) !== path.resolve(target);
   };
 
-  const hermesRootDir = (): string => {
-    const configured = ctx.env.HERMES_HOME?.trim();
-    if (!configured) return path.join(ctx.homeDirectory, '.hermes');
-    return path.basename(path.dirname(configured)) === 'profiles' ? path.dirname(path.dirname(configured)) : configured;
-  };
-
+  const locations = () => resolveAgentLocations({ env: ctx.env, homeDirectory: ctx.homeDirectory, platform: ctx.platform as NodeJS.Platform });
   const configPath = (app: AgentAppId): string => {
-    if (app === 'codex') return path.join(ctx.env.CODEX_HOME?.trim() || path.join(ctx.homeDirectory, '.codex'), 'config.toml');
-    if (app === 'claude') return path.join(ctx.env.CLAUDE_CONFIG_DIR?.trim() || path.join(ctx.homeDirectory, '.claude'), 'settings.json');
-    if (app === 'gemini') return path.join(ctx.env.GEMINI_CLI_HOME?.trim() || path.join(ctx.homeDirectory, '.gemini'), 'settings.json');
-    if (app === 'antigravity') return path.join(ctx.env.ANTIGRAVITY_CONFIG_DIR?.trim() || path.join(ctx.homeDirectory, '.gemini', 'config'), 'hooks.json');
-    return path.join(ctx.env.HERMES_HOME?.trim() || path.join(ctx.homeDirectory, '.hermes'), 'config.yaml');
+    const roots = locations();
+    if (roots.problems?.[app]) throw new ConnectError(roots.problems[app]);
+    if (app === 'codex') return path.join(roots.codexHome, 'config.toml');
+    if (app === 'claude') return path.join(roots.claudeHome, 'settings.json');
+    if (app === 'gemini') return path.join(roots.geminiHome, 'settings.json');
+    if (app === 'antigravity') return path.join(roots.antigravityConfigHome, 'hooks.json');
+    return path.join(roots.hermes.selectedHome, 'config.yaml');
   };
 
   /** The default and named Hermes configs other than the selected primary profile. */
   async function extraHermesProfileConfigs(primaryFile: string): Promise<Array<{ profile: string; file: string }>> {
-    const root = hermesRootDir();
+    const selectedHome = path.dirname(primaryFile);
+    const parentName = path.basename(path.dirname(selectedHome));
+    const isProfile = (ctx.platform === 'win32' ? parentName.toLowerCase() : parentName) === 'profiles';
+    const root = isProfile ? path.dirname(path.dirname(selectedHome)) : selectedHome;
     const profilesDir = path.join(root, 'profiles');
     const found: Array<{ profile: string; file: string }> = [];
     const defaultFile = path.join(root, 'config.yaml');
@@ -241,9 +248,9 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
   }
 
   let resolvedNodePath: string | undefined;
-  const commandEnv = (): Env => resolvedNodePath
-    ? { ...ctx.env, PATH: [path.dirname(resolvedNodePath), ctx.env.PATH].filter(Boolean).join(ctx.platform === 'win32' ? ';' : ':') }
-    : ctx.env;
+  const commandEnv = (): Env => ({ ...ctx.env, HOME: ctx.homeDirectory, USERPROFILE: ctx.homeDirectory,
+    ...(resolvedNodePath ? { PATH: [path.dirname(resolvedNodePath), environmentValue(ctx.env, 'PATH', ctx.platform)].filter(Boolean).join(ctx.platform === 'win32' ? ';' : ':') } : {}),
+  });
   async function nodeValid(candidate: string | undefined): Promise<boolean> {
     if (!candidate || !path.isAbsolute(candidate) || !await isExecutable(candidate)) return false;
     const electron = ctx.electronPath ?? (process.versions.electron ? process.execPath : undefined);
@@ -273,25 +280,37 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
     return build(node!, forwarder, ctx.platform);
   }
 
-  async function detect(app: AgentAppId): Promise<{ installed: boolean; bin?: string; version?: string; verified?: boolean }> {
+  async function detect(app: AgentAppId, selectedFile = configPath(app)): Promise<{ installed: boolean; bin?: string; version?: string; verified?: boolean; launchProblem?: string }> {
     if (!isSupported(app)) return { installed: false };
-    const env = commandEnv();
-    const findBinary = ctx.findBinary ?? ((name: string) => findOnPath(name, env, ctx.platform));
-    const override = ctx.env[ENV_BIN[app]]?.trim();
-    const bin = override || (app === 'antigravity' ? (await findBinary('agy')) || (await findBinary('antigravity')) : await findBinary(app));
+    const roots = locations();
+    const env: Env = { ...commandEnv(),
+      ...(app === 'hermes' ? { HERMES_HOME: roots.hermes.rootHome }
+        : app === 'codex' ? { CODEX_HOME: roots.codexHome }
+          : app === 'claude' ? { CLAUDE_CONFIG_DIR: roots.claudeHome }
+            : app === 'gemini' ? { GEMINI_CLI_HOME: path.dirname(roots.geminiHome) }
+              : { ANTIGRAVITY_HOME: roots.antigravityHome, ANTIGRAVITY_CONFIG_DIR: roots.antigravityConfigHome }),
+    };
+    const findBinary = ctx.findBinary ?? ((name: string) => findExecutable(name, { env, platform: ctx.platform, homeDirectory: ctx.homeDirectory }));
+    const override = environmentValue(ctx.env, ENV_BIN[app], ctx.platform);
+    const bin = override !== undefined ? await findExecutable(app, { env, platform: ctx.platform, homeDirectory: ctx.homeDirectory, override }) : (app === 'antigravity' ? (await findBinary('agy')) || (await findBinary('antigravity')) : await findBinary(app));
     // Detection is independent of config readability; describe/plan report the
     // specific file error without hiding the other apps' diagnostics.
-    const text = await readTextSafe(configPath(app)).catch(() => undefined);
+    const text = await readTextSafe(selectedFile).catch(() => undefined);
     const configDirExists = text !== undefined
-      || (await dirExists(path.dirname(configPath(app))))
+      || (await dirExists(path.dirname(selectedFile)))
       || (app === 'antigravity' && (
-        (await dirExists(ctx.env.ANTIGRAVITY_HOME?.trim() || path.join(ctx.homeDirectory, '.gemini', 'antigravity')))
+        (await dirExists(locations().antigravityHome))
         || (await dirExists(path.join(ctx.homeDirectory, '.gemini', 'tasks')))
         || (await dirExists(path.join(ctx.homeDirectory, '.gemini')))
       ));
-    const version = bin ? parseVersion(await run(bin, ['--version'], { env, timeoutMs: 8000 }), app) : undefined;
+    let launchProblem: string | undefined;
+    if (bin && ctx.platform === 'win32') {
+      try { await executableLaunchPlan(bin, ['--version'], { env, platform: 'win32', homeDirectory: ctx.homeDirectory }); }
+      catch (error) { launchProblem = error instanceof Error ? error.message : 'The command launcher is unavailable.'; }
+    }
+    const version = bin && !launchProblem ? parseVersion(await run(bin, ['--version'], { env, timeoutMs: 8000 }), app) : undefined;
     const rule = VERIFIED_VERSIONS[app];
-    return { installed: Boolean(bin) || configDirExists, ...(bin ? { bin } : {}), ...(version ? { version, verified: rule.pattern.test(version) } : {}) };
+    return { installed: Boolean(bin) || configDirExists, ...(bin && !launchProblem ? { bin } : {}), ...(launchProblem ? { launchProblem } : {}), ...(version ? { version, verified: rule.pattern.test(version) } : {}) };
   }
 
   async function commandValid(command: string | undefined, app: Exclude<AgentAppId, 'hermes'>): Promise<boolean> {
@@ -343,11 +362,22 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
 
   async function describe(app: AgentAppId, lookup: NodeLookup): Promise<AgentAppConnection> {
     const label = LABELS[app];
-    const file = configPath(app);
+    const problem = locations().problems?.[app];
     const base: AgentAppConnection = {
       app, label, supported: isSupported(app), nodeStatus: app === 'hermes' ? 'not-required' : 'missing', installed: false, connected: false, state: 'not-connected',
-      trust: { status: 'not-applicable', trusted: 0, total: 0 }, warnings: [], events: [], hostRunning: false, port: DEFAULT_HOOK_PORT, configPath: file,
+      trust: { status: 'not-applicable', trusted: 0, total: 0 }, warnings: [], events: [], hostRunning: false, port: DEFAULT_HOOK_PORT,
     };
+    const record = (await readManifest()).apps[app];
+    if (record && (problem || path.resolve(record.configPath) !== path.resolve(configPath(app)))) {
+      base.state = 'stale';
+      base.configPath = record.configPath;
+      base.configuredAt = record.updatedAt;
+      if (problem) base.warnings.push(problem);
+      base.warnings.push(`${label} was connected using ${displayPath(record.configPath, ctx.homeDirectory)}. The selected configuration folder changed. Disconnect the original configuration before connecting the new location. Neither configuration was changed.`);
+      return base;
+    }
+    if (problem) { base.warnings.push(problem); return base; }
+    const file = configPath(app); base.configPath = file;
     const endpoint = await readEndpoint(ctx.extaliaHome, ctx.alive);
     base.hostRunning = Boolean(endpoint?.alive);
     if (endpoint?.alive) base.port = endpoint.port;
@@ -364,8 +394,9 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
     } catch (error) { base.warnings.push(error instanceof Error ? error.message : 'The connection journal could not be read.'); }
 
     if (app !== 'hermes' && await lookup()) base.nodeStatus = 'ready';
-    const detected = await detect(app);
+    const detected = await detect(app, file);
     base.installed = detected.installed;
+    if (detected.launchProblem) base.warnings.push(detected.launchProblem);
     if (detected.version) { base.version = detected.version; base.versionVerified = Boolean(detected.verified); }
     if (detected.version && !detected.verified) base.warnings.push(`${label} ${detected.version} was not verified; hooks were tested with ${VERIFIED_VERSIONS[app].text}.`);
 
@@ -543,6 +574,7 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
     if (app !== 'hermes') await lookup();
     const detected = await detect(app);
     const warnings: string[] = [];
+    if (detected.launchProblem) warnings.push(detected.launchProblem);
     const base: AgentAppConnectPlan = {
       app, supported: isSupported(app), nodeStatus: app === 'hermes' ? 'not-required' : 'ready', installed: detected.installed, ...(detected.version ? { version: detected.version, versionVerified: Boolean(detected.verified) } : {}),
       configPath: file, changes: false, diff: '', events: [], needsTrust: false, warnings, backupRoot: path.join(connectDirectory, 'backups', app),
@@ -740,6 +772,9 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
     const priorToken = await readToken(ctx.extaliaHome);
     const token = !priorToken || options.rotate ? randomBytes(32).toString('hex') : priorToken;
     const real = await compute(app, { ...options, rotate: false }, { token }, lookup);
+    if (path.resolve(real.file) !== path.resolve(preview.file)
+      || JSON.stringify(real.extraProfiles?.map(item => item.file) ?? []) !== JSON.stringify(preview.extraProfiles?.map(item => item.file) ?? []))
+      throw new ConnectError('The application configuration location changed. Review a new preview before applying. Nothing was written.');
     if (real.plan.nodeStatus === 'missing') throw new ConnectError(nodePrerequisite(app));
     const file = real.file;
     const target = await writableTarget(file);
@@ -850,7 +885,7 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
   /** Enable automatic transcript discovery for the connected app so sessions fall back gracefully when hooks have not fired yet. */
   async function enableAutoWatchOnConnect(app: AgentAppId): Promise<void> {
     try {
-      const importer = await NativeImportService.create({ homeDirectory: ctx.homeDirectory, env: ctx.env });
+      const importer = await NativeImportService.create({ homeDirectory: ctx.homeDirectory, env: ctx.env, platform: ctx.platform as NodeJS.Platform });
       const sourceId = HOOK_SOURCE_IDS[app];
       const stateDir = path.join(ctx.extaliaHome, 'state');
       const settingsFile = path.join(stateDir, 'observer-discovery.json');
@@ -898,7 +933,8 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
     const replaceFile = async (target: string, before: Buffer, after: string | Buffer) => { await journal.record(target, before, after); await writeConfigFile(target, after); };
     const manifest = await readManifest();
     const record = manifest.apps[app];
-    const candidates = [...new Set([configPath(app), ...(record ? [record.configPath] : [])])];
+    // Undo the recorded enrollment even if the environment now selects another installation.
+    const candidates = record ? [record.configPath] : locations().problems?.[app] ? [] : [configPath(app)];
     const warnings: string[] = [];
     let result: AgentAppDisconnectResult = { app, changed: false, restoredExactly: false, removed: 0, warnings };
 
@@ -965,7 +1001,7 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
       };
       const extraCandidates = new Map<string, ExtraProfileRecord | undefined>();
       for (const extra of record?.profiles ?? []) extraCandidates.set(path.resolve(extra.configPath), extra);
-      for (const extra of await extraHermesProfileConfigs(configPath('hermes'))) {
+      for (const extra of record || !locations().problems?.hermes ? await extraHermesProfileConfigs(record?.configPath ?? configPath('hermes')) : []) {
         if (!extraCandidates.has(path.resolve(extra.file))) extraCandidates.set(path.resolve(extra.file), undefined);
       }
       for (const [resolvedPath, profileRecord] of extraCandidates) {

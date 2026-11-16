@@ -1,6 +1,6 @@
 import { rename } from 'node:fs/promises';
 import path from 'node:path';
-import type { ProfilePreferences, UserProfile } from '@extalia/platform';
+import type { ProfileClientState, ProfilePreferences, UserProfile } from '@extalia/platform';
 import { readJson, writeJsonAtomic } from './jsonStore.js';
 import { PRIVATE_FILE_MODE } from './paths.js';
 
@@ -17,6 +17,15 @@ export const DISPLAY_NAME_LIMIT = 80;
 const NEVER_SAVED = new Date(0).toISOString();
 const PREFERENCE_KEYS = ['language', 'theme', 'material', 'font', 'sidebar'] as const satisfies readonly (keyof ProfilePreferences)[];
 const LANGUAGES = ['en', 'id'] as const;
+const CLIENT_STATE_KEYS = ['lastWorkspaceId', 'officeLights', 'approvalNotifications', 'earlierOpen'] as const satisfies readonly (keyof ProfileClientState)[];
+
+function validClientValue(key: keyof ProfileClientState, value: unknown): value is string {
+  if (typeof value !== 'string') return false;
+  if (key === 'lastWorkspaceId') return /^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,127}$/.test(value);
+  if (key === 'officeLights') return ['auto', 'on', 'off'].includes(value);
+  if (key === 'approvalNotifications') return value === 'on' || value === 'off';
+  return value === '0' || value === '1';
+}
 const TOKEN = /^[a-z0-9][a-z0-9-]{0,39}$/;
 
 /** A profile change the host refuses; the message is safe to show. */
@@ -50,6 +59,12 @@ export function decodeProfile(raw: unknown): UserProfile {
   if (name) profile.displayName = name;
   const preferences = value.preferences && typeof value.preferences === 'object' && !Array.isArray(value.preferences) ? value.preferences as Record<string, unknown> : {};
   for (const key of PREFERENCE_KEYS) if (validPreference(key, preferences[key])) (profile.preferences as Record<string, string>)[key] = preferences[key] as string;
+  if (value.clientState && typeof value.clientState === 'object' && !Array.isArray(value.clientState)) {
+    const stored = value.clientState as Record<string, unknown>;
+    const state: Record<string, string> = {};
+    for (const key of CLIENT_STATE_KEYS) if (validClientValue(key, stored[key])) state[key] = stored[key];
+    if (Object.keys(state).length) profile.clientState = state as ProfileClientState;
+  }
   if (typeof value.updatedAt === 'string' && Number.isFinite(Date.parse(value.updatedAt))) profile.updatedAt = value.updatedAt;
   return profile;
 }
@@ -57,7 +72,7 @@ export function decodeProfile(raw: unknown): UserProfile {
 /** Apply a patch from a client. Anything malformed is refused as a whole, so nothing half-applies. */
 export function applyProfilePatch(current: UserProfile, patch: unknown, stamp: string): UserProfile {
   if (!patch || typeof patch !== 'object' || Array.isArray(patch)) throw new ProfileError('The profile change is not valid.');
-  const { displayName, preferences, ...rest } = patch as Record<string, unknown>;
+  const { displayName, preferences, clientState, ...rest } = patch as Record<string, unknown>;
   if (Object.keys(rest).length) throw new ProfileError(`Unknown profile field: ${Object.keys(rest)[0]}.`);
   const next: UserProfile = { ...current, preferences: { ...current.preferences }, updatedAt: stamp };
   if (displayName !== undefined) {
@@ -77,6 +92,19 @@ export function applyProfilePatch(current: UserProfile, patch: unknown, stamp: s
       if (!validPreference(field, value)) throw new ProfileError(`The ${key} preference is not valid.`);
       (next.preferences as Record<string, string>)[field] = value;
     }
+  }
+  if (clientState !== undefined) {
+    if (!clientState || typeof clientState !== 'object' || Array.isArray(clientState)) throw new ProfileError('The interface state is not valid.');
+    const state: Record<string, string> = { ...current.clientState };
+    for (const [key, value] of Object.entries(clientState as Record<string, unknown>)) {
+      if (!(CLIENT_STATE_KEYS as readonly string[]).includes(key)) throw new ProfileError(`Unknown interface state: ${key}.`);
+      const field = key as keyof ProfileClientState;
+      if (value === null || value === undefined) { delete state[field]; continue; }
+      if (!validClientValue(field, value)) throw new ProfileError(`The ${key} interface state is not valid.`);
+      state[field] = value;
+    }
+    if (Object.keys(state).length) next.clientState = state as ProfileClientState;
+    else delete next.clientState;
   }
   return next;
 }

@@ -52,3 +52,10 @@ export function mcpToolName(name: string): string | undefined {
   const server = clean(match[1]!), tool = clean(match[2]!);
   return server && tool ? `${server} · ${tool}` : undefined;
 }
+
+export * from './daemonLearning.js';
+export * from './daemonWorkMemory.js';
+export * from './providerModels.js';
+export * from './providerComplete.js';
+export * from './providerWorker.js';
+export * from './skillLoading.js';

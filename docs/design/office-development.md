@@ -1,5 +1,9 @@
 # Office development and character roadmap
 
+Current behavior reconciled against v0.4.288 on 2026-11-12. Dated verification
+paragraphs retain their original scope; see the [module status](../modules/office.md)
+for implementation boundaries and remaining acceptance.
+
 ## One application and one source of truth
 
 Extalia Virtual Agent is the development home for the Office renderer, characters,
@@ -15,6 +19,98 @@ review its source diff and adapt it here. Check dependencies, neutral labels,
 protocol/session contracts and asset provenance before copying it. Compare the
 affected room or character visually in Web and Desktop. Imported geometry is
 adapted source code, not an automatically synchronized copy.
+
+## Native standby shifts
+
+Enabled Native teams can keep a small configured crew in the Office while no
+task is running. The current lead retains its actual state and presence; only
+eligible dormant team members become explicitly labelled **Standby** or **Off
+shift** rows. This creates no sessions, protocol work events or model requests.
+Actual work, approvals, failures, stalled/unknown outcomes and mission workers
+retain their original state and take precedence.
+
+The member floor is `min(team size, 5, 1 + ceil(team size / 8))`, excluding the
+lead: teams of 10, 20 and 32 therefore target main + 3, main + 4 and main + 5.
+Existing present members cover that floor before synthetic standby is added.
+Across all shown workspaces there are at most five additional standby leases;
+active work is never hidden to satisfy this presentation limit. Departing
+characters can remain briefly visible during the physical handover.
+
+Each lease uses the existing per-character `subagentLingerMs` duration (7–20
+minutes). Expired leases yield to less recently used eligible members, while
+recent real attendance also counts toward fairness. A late clock tick replaces
+the expired crew once instead of replaying missed shifts. A backwards clock
+does not renew leases. Empty or disabled rosters, removed members and ended
+sessions retire their standby state. The latest current managed conversation
+per workspace is selected before Native eligibility checks, so an ended,
+disabled or switched-to-Hermes conversation cannot revive a historical crew.
+Observe stays independent and receives no synthetic standby.
+
+Only those current enabled Native teams retain idle event history, through the
+existing Office hydrator. Synthetic availability waits for successful history
+and roster hydration, including successfully empty histories. Failed or pending
+reads cannot turn an unknown former worker into healthy standby. Availability
+is gated by the current roster request signature and host/profile identity: old
+display metadata retained during a failed revision refresh never certifies a
+new shift. Unchanged sibling rosters can remain ready during that refresh.
+Fairness is cached across Office navigation in a bounded, weak-host-owned profile/view
+cache; switching profile/data source remounts the Office and cannot reuse its
+previous profile's roster or movement state. Restarting the app clears this
+presentation cache; attendance is not a persisted runtime schedule.
+
+New shift members reuse the two-character admission waves below. Existing SVG
+portraits remain until their bodies are admitted. Repeated rotations reuse
+configured identities and saved looks; they do not invent new teammates. This
+bounds extra standby attendance, not the shared asset cache or whole-app RAM.
+
+The [32-member browser record](../bench/native-standby-qa.json) uses the
+mock-only `?mock=ready&standby=32` fixture, which configures an idle team and
+never starts a worker turn. Across the initial selection and two accelerated
+wall-clock rotations, the lead stayed identical, five members were Standby,
+27 were Off shift, and 15 distinct members took a turn. The minified
+production-React QA run reported no page or console errors. Separate tests
+cover sizes 10/20/32, global limits, protected outcomes, cache isolation,
+hydration readiness, cancellation, roster changes and full-roster fairness.
+After the final roster-readiness guard, a rebuilt snapshot also passed English
+light at 1366 px and Indonesian dark at 390 px with five standby labels, 27
+off-shift rows, no page/console errors and no document horizontal overflow.
+
+## Character admission waves
+
+The movement director admits at most two new characters per 1200 ms wave.
+This is a presentation queue: Native/observed agent execution, team limits,
+session state and the complete board roster do not wait for a character mesh.
+An eight-character burst can therefore appear as 2–2–2–2 when independent
+arrival points are clear. A shared or blocked portal can admit fewer than two.
+
+Already-present characters hydrate in seated pairs instead of a mass walk-in.
+The first pair's cooldown starts at the first render-loop tick, so shader or
+loading stalls before that tick cannot place four characters in the first
+frame. Live arrivals retain their floor portal, a 1200 ms same-portal interval
+and at least 0.9 m of clear space around that point, including facility bodies.
+Blocked heads do not prevent admissions through another clear portal. Delayed
+frames skip missed waves instead of banking admissions for a catch-up burst.
+Reduced motion retains batching and seats arriving characters directly.
+
+Pending characters reserve their current desk and retain agent metadata but
+have no mover, rendered body or live position. Changes to their seat, parent
+and gait are reconciled before admission; cancellation removes the pending
+entry. Portraits inside the Office use the same live-position admission gate:
+the existing SVG illustration remains until the character is admitted, then
+the normal shared 3D portrait can load. Other pages keep their normal portrait
+behavior. Bubbles and quick replies do not anchor to an empty pending desk.
+The last frame's admitted bodies remain fully rendered; this changes initial
+construction timing, not the eventual model count or GLB size. No whole-app
+memory or FPS improvement is implied without separate measurements.
+
+The [browser QA record](../bench/office-arrival-waves.json) captures a mixed
+Native/observed mock roster at 2, 4, 6, 8, 10, 12 and 13 characters, without an
+observed increment above two. A minified production-React QA build shows the
+same portrait-admission sequence without page or console errors. RAF snapshot
+timestamps can lag admission during shader/loading stalls; deterministic tests
+cover the actual cooldown, 8/32-character waves, blocked portals, cancellation,
+queued reseating and delayed first frames. The portrait test proves that 32
+queued identities do not request the 3D module and only admitted identities load.
 
 ## Drawing-buffer continuity
 
@@ -95,8 +191,8 @@ sessions when listing.
 | Hair | Shipped: distinct preset cuts plus explicit choice of every style |
 | Clothing | Shipped: shirt, blouse, knit, turtleneck; trousers, skirt, dress; outfit layers and colors |
 | Accessories | Shipped: glasses, watches, earrings, bags, tie, badge, headphones; bags are carried standing and set beside the seat |
-| Movement | Shipped (MVP): gait parameters drive the idle weight shift, seated sway and the walk cycle (stride, cadence, arm swing, hip sway and roll; speed = stride × cadence). New presences walk in from the entrance (a worker from beside its lead), sit down at their desk; removed presences stand up and walk out (a worker back to its lead). Routes follow an authored waypoint graph with A* through doorways, the indoor stair lanes and both glass elevators. Reduced motion places and removes characters at their seats. No collision avoidance between walkers yet |
-| Consistency | Seated poses follow each resource’s cushion height and front edge; idle, typing and walking share the procedural and local source-model characters, with sit/stand blending |
+| Movement | Shipped (MVP): gait parameters drive the idle weight shift, seated sway and the walk cycle (stride, cadence, arm swing, hip sway and roll; speed = stride × cadence). New presences walk in from the entrance (a worker from beside its lead), sit down at their desk; removed presences stand up and walk out (a worker back to its lead). Routes follow an authored waypoint graph with A* through doorways, the indoor stair lanes and both glass elevators. Reduced motion places and removes characters at their seats. Natural curve/lane variation, short-horizon passing and crowd recovery now supplement authored graph routes; portal/contact controllers retain exact constraints |
+| Consistency | Seated poses follow each resource’s cushion height and front edge; idle, typing and walking share the procedural fallback and registered source-model characters, with sit/stand blending |
 | Preferences | Shipped: stored per character in the host and shared by Web and Desktop; reduced motion stops idle sway |
 
 Extend the shared character implementation here so both Web and Desktop
@@ -104,20 +200,26 @@ receive each improvement together.
 
 ### Character models and assets
 
-The public build draws every character procedurally; this is the supported
-default and what CI exercises. Source-derived GLB models are local-only: put them
-in the git-ignored `apps/web/local-assets/avatars/` folder (layout in
-`apps/web/src/office/scene/avatars/README.md`) and they replace the procedural
-character on that machine. Without the folder, builds, tests and `pnpm check`
-still pass. `pnpm lint` rejects any tracked, staged or non-ignored `.glb`,
-`.gltf` or `.fbx` file. A third-party model needs a license that allows
-redistribution before it can be committed, together with its attribution and
-license text.
+The public build includes licensed Blender-retargeted body/hair models and fitted
+wardrobe pieces registered in `apps/web/public-assets/models.json`. Source URL
+selection prefers these public assets; procedural characters remain fallbacks
+for unavailable or failed source loading. Unknown local files are excluded from
+ordinary production builds. Explicit `--mode local-assets` development can add
+private fallback models, but is not a public packaging mode.
+
+The current inventory contains 133 GLBs totaling 152,104,948 bytes (about 145 MiB
+before compression), including furniture, architecture, avatars, vehicles and
+greenery. These are asset bytes, not startup or runtime memory measurements.
+The [public inventory](../../apps/web/public-assets/README.md) and notices retain
+per-component licenses. Project-authored MIT scene models and separately licensed
+avatar exports follow different provenance; a free download alone never proves
+redistribution permission. Newly distributed models require reviewed license
+records, hashes and the existing public asset validation.
 
 ### Avatar spawn and loading
 
-`CharacterBody` separates source loading from source failure. When both local
-URLs exist, its Suspense boundary waits without a procedural body placeholder;
+`CharacterBody` separates source loading from source failure. When the selected
+source body/hair URLs exist, its Suspense boundary waits without a procedural body placeholder;
 `SourceAvatarBoundary` still renders the procedural fallback on a failed load.
 Missing source URLs select that fallback immediately. The selected body/hair
 preloads start together and use the renderer's separate URL cache entries, so
@@ -151,6 +253,15 @@ Office/meeting/guest cushions sit at 46 cm, sofas at 43 cm and armchairs at
 71 cm, below the 78.5 cm workstation surface. Update chair choreography contact
 targets with the same blueprint whenever changing chair geometry. Keep moving
 chairs independent even when their immutable mesh resources are instanced.
+
+Fixed office chairs use their authored seat-to-stage lane for departure and its
+reverse for arrival. Clearance authenticates the fixed workstation's registry
+pose and stage and masks only the owning chair along that lane; the reception
+counter, walls, other chairs and pedestrians remain solid. The receptionist's
+chair sits 15 cm farther behind the work shelf so the full walking body radius
+fits the side exit; its keyboard moves 10 cm toward the sitter while remaining
+supported by the shelf and within the normal typing reach. Facility chairs remain
+fixed and unavailable to agent seats.
 
 ### Desk device dimensions and placement
 
@@ -201,11 +312,13 @@ device) overrides the interior only. Auto switches the lights on after dusk
 (`interiorLightFactor` 0.3); Off leaves only exit signs, screens and the site
 lighting outside. Lit windows follow the interior lights.
 
-An adaptive render budget (`office/scene/environment/renderBudget.ts`) keeps the
-scene above 40 fps: after two slow two-second windows it lowers the pixel ratio,
-then the shadow refresh rate, and finally the live fixture beams and shadow map
-size; it steps back up after sustained headroom. Baked light pools are never
-reduced. Development builds expose `__EXTALIA_SOLAR_PREVIEW__(minutes | null)`,
+An adaptive render budget (`office/scene/environment/renderBudget.ts`) pursues 60 FPS without imposing a frame-rate ceiling. Each application load begins with a 1080-pixel physical short-edge ceiling; the five levels cover 720, 900, 1080, 1440 and 2160 pixels. These are resolution ceilings, not fixed 16:9 canvases: the Office keeps its actual aspect ratio. DPR never exceeds the display's native ratio or 2, and total pixels stay within 3840 × 2160 even on ultrawide displays. Resizing or changing display density recalculates the physical drawing buffer; DOM text and controls stay native-sharp.
+
+After a three-second warm-up, three stable slow windows permit a lower-resolution trial. Three warmed candidate windows must demonstrate at least 10% and 2 ms improvement before that reduction is retained. Otherwise the confirmed resolution returns and reductions wait 60 foreground windows. Near-60 throughput and periodic restoration trials allow a sharper image, including in CPU-bound views below 60 FPS. Composition, camera, visibility and context changes invalidate unproven comparisons. Each change settles briefly; hidden time never advances a trial. The effective budget FPS never exceeds either raw or filtered throughput.
+
+Remounting the scene in the same application keeps the settled tier and resumes adaptation. Resolution trials hold lights, shadows, traffic and geometry detail constant; baked light pools remain present. This responds to render throughput, not network speed, and cannot guarantee 60 FPS when geometry or CPU work is the bottleneck. GLB downloads, decoded geometry and avatar portrait canvases are not reduced by DPR. See [the resource guide](../bench/office-adaptive.md).
+
+Development builds expose `__EXTALIA_SOLAR_PREVIEW__(minutes | null)`,
 `__EXTALIA_ENV_STATE__()`, `__EXTALIA_RENDER_BUDGET__` and
 `__EXTALIA_SET_RENDER_BUDGET__(level | null)` for visual QA.
 

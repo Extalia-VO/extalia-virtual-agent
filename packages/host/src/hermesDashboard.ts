@@ -1,4 +1,4 @@
-import { safeLabel, safeText, type ImportMode, type PortableSession } from '@extalia/core';
+import { literalProjectPath, safeLabel, safeText, type ImportMode, type PortableSession } from '@extalia/core';
 import { parseHermes, type TranscriptStep } from '@extalia/importers';
 
 /**
@@ -179,7 +179,7 @@ export class HermesDashboardClient {
       if (!id) continue;
       const startedAt = isoTime(item.started_at ?? item.created_at ?? item.startedAt, nowMs);
       const updatedAt = isoTime(item.last_activity_at ?? item.updated_at ?? item.ended_at ?? item.updatedAt ?? startedAt, nowMs);
-      const cwd = str(item.cwd) ?? str(item.project_path) ?? str(item.git_repo_root);
+      const cwd = literalProjectPath(item.cwd) ?? literalProjectPath(item.project_path) ?? literalProjectPath(item.git_repo_root);
       const profile = str(item.profile);
       const title = safeLabel(str(item.title) ?? `Hermes · ${id.slice(0, 24)}`, 160);
       const count = typeof item.message_count === 'number' ? item.message_count : typeof item.messageCount === 'number' ? item.messageCount : undefined;

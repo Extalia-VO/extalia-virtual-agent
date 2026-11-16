@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { BoxGeometry, Mesh, MeshBasicMaterial } from 'three';
+import { BoxGeometry, Group, Mesh, MeshBasicMaterial, Object3D, Vector3, type OrthographicCamera } from 'three';
 import { defaultCharacterAppearance, lookIdentity, lookSeed } from '../src/office/scene/avatars/appearance';
 import { portraitSubject } from '../src/office/overlay/portrait3d/model';
 
@@ -87,7 +87,7 @@ describe('shared portrait renderer lifecycle', () => {
   }
 
   function renderedEntries() {
-    return fiber.render.mock.lastCall?.[0].props.entries as Array<{ targets: Set<unknown>; scene: { add: (mesh: Mesh) => void }; subject: { appearance?: unknown } }>;
+    return fiber.render.mock.lastCall?.[0].props.entries as Array<{ targets: Set<unknown>; scene: { add: (mesh: Object3D) => void }; subject: { appearance?: unknown } }>;
   }
 
   function runFrame(time: number) {
@@ -187,6 +187,33 @@ describe('shared portrait renderer lifecycle', () => {
     expect(b.report).toHaveBeenCalledWith(true);
     const { getPortrait3DDiagnostics } = await import('../src/office/overlay/portrait3d/renderer');
     expect(getPortrait3DDiagnostics()).toMatchObject({ webglContexts: 1, subjects: 1, targets: 2, visibleScenes: 1, renderedScenes: 1, copiedFrames: 2 });
+  });
+
+  it('calibrates a loaded face before copying, follows its eye line without zooming and reframes a replacement', async () => {
+    const a = await attach(); await show(a.handle); const gl = provideMesh();
+    const entry = renderedEntries()[0]! as ReturnType<typeof renderedEntries>[number] & { camera: OrthographicCamera };
+    const makeHead = (y: number, height: number) => {
+      const head = new Group(); head.name = 'avatar-head'; head.position.y = y;
+      const geometry = new BoxGeometry(.2, height, .18), material = new MeshBasicMaterial();
+      const surface = new Mesh(geometry, material); surface.name = 'avatar-head-surface'; head.add(surface);
+      // Match the production landmark: eyes are inside the head skin's depth,
+      // not beyond the box's +0.09 surface (which correctly fails validation).
+      const eyes = new Object3D(); eyes.name = 'avatar-eyes'; eyes.position.set(0, .02, .08); head.add(eyes);
+      entry.scene.add(head); releases.push(() => { geometry.dispose(); material.dispose(); }); return {head,eyes};
+    };
+    const first = makeHead(1.6, .28);
+    runFrame(100);
+    expect(gl.render).toHaveBeenCalledTimes(1);
+    expect((entry as unknown as {framing:unknown}).framing).not.toBeNull();
+    const eyeLine = (eyes: Object3D) => (1 - eyes.getWorldPosition(new Vector3()).project(entry.camera).y) / 2;
+    expect(eyeLine(first.eyes)).toBeCloseTo(.42, 5);
+    const span = entry.camera.top - entry.camera.bottom, cameraY = entry.camera.position.y;
+    first.head.position.y += .3; runFrame(200);
+    expect(eyeLine(first.eyes)).toBeCloseTo(.42, 5); expect(entry.camera.position.y - cameraY).toBeCloseTo(.3, 5);
+    expect(entry.camera.top - entry.camera.bottom).toBeCloseTo(span, 8);
+    first.head.removeFromParent(); const replacement = makeHead(1.9, .34); runFrame(300);
+    expect(eyeLine(replacement.eyes)).toBeCloseTo(.42, 5); expect(entry.camera.top - entry.camera.bottom).toBeGreaterThan(span);
+    expect(gl.render).toHaveBeenCalledTimes(3); expect(a.context.drawImage).toHaveBeenCalledTimes(3);
   });
 
   it('stops scheduling after a static reduced-motion portrait is ready', async () => {

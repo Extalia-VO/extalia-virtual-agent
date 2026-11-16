@@ -3,8 +3,9 @@
 //!
 //! # Object store
 //!
-//! `<data>/profiles/<profile-id>/skills/objects/<tree-sha256>/` holds one immutable copy of
-//! each revision's package, per profile (no cross-profile reuse, ADR 0025 question 4).
+//! `<data>/skills/objects/<tree-sha256>/` holds the Unix default global library.
+//! Explicit nondefault CLI namespaces and non-Unix compatibility retain their legacy
+//! `<data>/profiles/<profile-id>/skills/objects/` layout. Authority rows stay namespaced.
 //! Packages are copied (never linked) into `skills/staging/<unique>/`, hashed there, then
 //! renamed into `objects/`. Stored files are read-only (`0400`, or `0500` when executable)
 //! and directories `0500`; the store directories are private (`0700`). On Windows only
@@ -183,15 +184,18 @@ pub fn find_case_collision<'a>(paths: impl IntoIterator<Item = &'a str>) -> Opti
 #[derive(Debug, Clone)]
 pub struct ObjectStore {
     root: PathBuf,
+    data: PathBuf,
+    profile: ProfileId,
 }
 
 impl ObjectStore {
+    /// The owner must call `storage::initialize` before first use (daemon startup does so
+    /// under its core store lock). Independent producers only use `storage::prepare`.
     pub fn new(data_dir: &Path, profile: &ProfileId) -> Self {
         Self {
-            root: data_dir
-                .join("profiles")
-                .join(profile.as_str())
-                .join("skills"),
+            root: super::storage::root(data_dir, profile),
+            data: data_dir.to_owned(),
+            profile: profile.clone(),
         }
     }
 
@@ -204,6 +208,7 @@ impl ObjectStore {
     /// bytes staged twice address the same object; an existing object is re-verified and
     /// never overwritten.
     pub fn stage(&self, source: &Path, limits: &StagingLimits) -> Result<Tree, SkillError> {
+        let _layout = super::storage::prepare(&self.data, &self.profile)?;
         match fs::symlink_metadata(source) {
             Ok(meta) if meta.file_type().is_dir() => {}
             Ok(_) => return Err(refused(Refusal::NotADirectory, None)),
@@ -220,7 +225,11 @@ impl ObjectStore {
         }
         let source = fs::canonicalize(source)?;
         let store_root = fs::canonicalize(&self.root)?;
-        if source.starts_with(&store_root) || store_root.starts_with(&source) {
+        let inbox = store_root.join("imports");
+        let admitted_inbox = super::storage::is_global(&self.profile)
+            && source != inbox
+            && source.starts_with(&inbox);
+        if (source.starts_with(&store_root) && !admitted_inbox) || store_root.starts_with(&source) {
             return Err(refused(Refusal::InsideStore, None));
         }
         let entries = collect(&source, limits)?;
@@ -252,7 +261,7 @@ impl ObjectStore {
         match fs::symlink_metadata(&object) {
             Ok(_) => {
                 drop(cleanup);
-                self.verify(&tree.sha256, limits)
+                self.verify_unlocked(&tree.sha256, limits)
             }
             Err(error) if error.kind() == io::ErrorKind::NotFound => {
                 fs::rename(&temp, &object)?;
@@ -267,6 +276,15 @@ impl ObjectStore {
     /// Re-hash a stored object. A missing, altered or no longer acceptable object is
     /// [`SkillError::Integrity`]; other IO failures are returned as they are.
     pub fn verify(&self, tree_sha256: &str, limits: &StagingLimits) -> Result<Tree, SkillError> {
+        let _layout = super::storage::prepare(&self.data, &self.profile)?;
+        self.verify_unlocked(tree_sha256, limits)
+    }
+
+    fn verify_unlocked(
+        &self,
+        tree_sha256: &str,
+        limits: &StagingLimits,
+    ) -> Result<Tree, SkillError> {
         match scan(&self.object_dir(tree_sha256), limits) {
             Ok(tree) if tree.sha256 == tree_sha256 => Ok(tree),
             Ok(_) | Err(SkillError::Refused { .. }) => Err(SkillError::Integrity),
@@ -285,6 +303,7 @@ impl ObjectStore {
         path: &str,
         expected: &TreeFile,
     ) -> Result<Vec<u8>, SkillError> {
+        let _layout = super::storage::prepare(&self.data, &self.profile)?;
         if check_relative_path(path).is_err() || expected.path != path {
             return Err(SkillError::Denied("invalid_path"));
         }

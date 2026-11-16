@@ -91,6 +91,12 @@ export function RoofFanMotion({ rotors }: { rotors: RefObject<Group | null>[] })
   const motors = useRef<FanMotor[] | null>(null);
   useFrame((_, delta) => {
     if (reducedMotion) return;
+    const first = rotors[0]?.current;
+    if (first) {
+      for (let node: { visible: boolean; parent: typeof node } | null = first; node; node = node.parent) {
+        if (!node.visible) return;
+      }
+    }
     // A fresh schedule per visit; within a visit each motor keeps its own stream.
     motors.current ??= rotors.map((_, index) => createFanMotor(index, Math.random()));
     motors.current.forEach((motor, index) => {

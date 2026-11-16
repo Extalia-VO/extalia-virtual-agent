@@ -10,6 +10,7 @@ export * from './models.js';
 export * from './names.js';
 export * from './portable.js';
 export * from './privacy.js';
+export * from './queueThumbnail.js';
 export * from './sources.js';
 export * from './stopReasons.js';
 export * from './teams.js';
@@ -17,3 +18,5 @@ export * from './teamSpec.js';
 export { decode, type DecodeResult } from './validation.js';
 export * from './modelGuide.js';
 export * from './teamRuntimePolicy.js';
+
+export * from './operatingProfiles.js';

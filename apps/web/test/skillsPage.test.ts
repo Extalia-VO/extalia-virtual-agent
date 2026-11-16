@@ -50,11 +50,11 @@ function openManagement(tree: ReactNode): string {
 }
 
 describe('Skills page navigation', () => {
-  it('lists Grimoire beside Knowledge in Library whenever an agent host exists', () => {
+  it('lists Grimoire beside Knowledge only in the managed workflow', () => {
     for (const workflow of ['managed', 'observe'] as const) {
       for (const canChat of [true, false]) {
         const groups = navigationGroups({ agents: true, workflow, canChat });
-        expect(groups.find(group => group.section === 'library')!.pages).toEqual(['knowledge', 'skills']);
+        expect(groups.find(group => group.section === 'library')?.pages ?? []).toEqual(workflow === 'managed' ? ['knowledge', 'skills'] : []);
         expect(groups.find(group => group.section === 'app')!.pages).toEqual(['settings', 'diagnostics']);
         expect(groups.find(group => group.section === 'work')!.pages).not.toContain('skills');
       }

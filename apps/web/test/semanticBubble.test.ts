@@ -32,7 +32,7 @@ const SECRETS = [
 
 describe('semantic bubble phrases (EN)', () => {
   it.each([
-    ['command', tool('command', 'Running npm run build'), 'Running a command…'],
+    ['build', tool('command', 'Running npm run build'), 'Building the project…'],
     ['file read', tool('read', 'Reading src/app.ts'), 'Reading a file…'],
     ['search', tool('search', 'Searching for login'), 'Searching files…'],
     ['git', tool('command', 'Running git status'), 'Checking repository…'],
@@ -61,7 +61,7 @@ describe('semantic bubble phrases (EN)', () => {
 
 describe('semantic bubble phrases (ID)', () => {
   it.each([
-    [tool('command', 'npm run build'), 'Menjalankan perintah…'],
+    [tool('command', 'npm run build'), 'Membangun proyek…'],
     [tool('read', 'src/app.ts'), 'Membaca berkas…'],
     [tool('search', 'login'), 'Mencari berkas…'],
     [tool('command', 'git log'), 'Memeriksa repositori…'],
@@ -86,11 +86,68 @@ describe('semantic bubble phrases (ID)', () => {
 });
 
 describe('semantic categories', () => {
-  it('reads raw text only to tell git and test commands apart, and never treats a path as a test', () => {
+  it('classifies execution prefixes and never treats paths as executed actions', () => {
     expect(semanticCategory({ kind: 'tool', activity: 'read', text: 'Reading test/vitest.config.ts' })).toBe('read');
     expect(semanticCategory({ kind: 'tool', activity: 'edit', text: 'Editing src/git-status.ts' })).toBe('edit');
     expect(semanticCategory({ kind: 'tool', activity: 'command', text: 'Running npm test' })).toBe('test');
-    expect(semanticCategory({ kind: 'tool', activity: 'command', text: 'Running rm -rf /' })).toBe('command');
+    expect(semanticCategory({ kind: 'tool', activity: 'command', text: 'Running rm -rf /' })).toBe('delete');
+  });
+
+  it.each([
+    ['write_file', 'write'], ['Write', 'write'], ['write_to_file', 'write'],
+    ['edit_file', 'edit'], ['functions.apply_patch', 'edit'], ['replace_file_content', 'edit'],
+    ['create_file', 'create'], ['create_directory', 'create'], ['delete_file', 'delete'],
+    ['mcp__filesystem__remove_file', 'delete'], ['move_file', 'move'], ['rename_file', 'move'], ['copy_file', 'copy'],
+    ['format_code', 'format'], ['build_project', 'build'], ['install_dependencies', 'install'], ['query_database', 'data'],
+    ['read_file', 'read'], ['search_files', 'search'],
+  ] as const)('uses exact reported tool %s rather than words in its file target', (name, category) => {
+    const input = activity('tool', { activity: 'tool', tool: name, target: 'rm old.txt', text: 'git status' });
+    expect(semanticCategory(input)).toBe(category);
+    for (const language of ['en', 'id'] as const) {
+      expect(semanticBubble(input, MESSAGES[language])).toBe(MESSAGES[language].officeUx.semantic[category]);
+      expect(semanticBubble(input, MESSAGES[language])).not.toContain(input.target);
+    }
+  });
+
+  it.each([
+    ['rm -- old.txt', 'delete'], ['Remove-Item old.txt', 'delete'], ['mv a.txt b.txt', 'move'], ['cp a.txt b.txt', 'copy'],
+    ['mkdir new-folder', 'create'], ['touch new.txt', 'create'], ['npm run build', 'build'], ['cargo build --release', 'build'],
+    ['pnpm install', 'install'], ['python3 -m pip install example', 'install'], ['pnpm exec vitest run', 'test'],
+    ['cargo test', 'test'], ['pnpm lint', 'review'], ['prettier --write src', 'format'], ['prettier --check src', 'review'],
+    ['cargo fmt --check', 'review'], ['cargo fmt', 'format'], ['sqlite3 data.db .tables', 'data'], ['jq .items data.json', 'data'],
+  ] as const)('recognizes an actual executed command prefix: %s', (command, category) => {
+    expect(semanticCategory({ kind: 'tool', activity: 'command', text: `Running ${command}` })).toBe(category);
+    expect(semanticCategory({ kind: 'tool', activity: 'tool', tool: 'functions.exec_command', target: command, text: 'Terminal' })).toBe(category);
+  });
+
+  it.each([
+    'rm --help', "rm '--help'", 'rm --version', 'rm --dry-run old.txt', 'Remove-Item old.txt -WhatIf',
+    'cp --help a b', 'npm install --dry-run', 'echo rm old.txt', 'printf "git status"', 'cat delete_file.txt',
+    'cd project && rm old.txt', 'echo ready; rm old.txt', 'rm old.txt && echo done', 'git status | cat', 'python3 report.py',
+  ])('keeps help, dry runs, quoted instructions and compound commands generic: %s', command => {
+    expect(semanticCategory({ kind: 'tool', activity: 'command', text: command })).toBe('command');
+  });
+
+  it('does not infer file mutations from prompts, searches, file names or unknown tool suffixes', () => {
+    expect(semanticCategory({ kind: 'prompt', text: 'delete_file old.txt', tool: 'delete_file' })).toBe('prompt');
+    expect(semanticCategory({ kind: 'tool', activity: 'read', tool: 'read_file', target: 'rm old.txt' })).toBe('read');
+    expect(semanticCategory({ kind: 'tool', activity: 'search', text: 'rm old.txt delete_file' })).toBe('search');
+    expect(semanticCategory({ kind: 'tool', activity: 'tool', text: 'Please delete old.txt' })).toBe('working');
+    expect(semanticCategory({ kind: 'tool', activity: 'tool', tool: 'not_delete_file', text: 'delete_file' })).toBe('working');
+    expect(semanticCategory({ kind: 'tool', activity: 'tool', tool: '__proto__', text: 'rm old.txt' })).toBe('working');
+    expect(semanticCategory({ kind: 'tool', activity: 'tool', text: 'notes/review.md' })).toBe('working');
+  });
+
+  it('prefers an explicit command target over a conflicting presentation label', () => {
+    expect(semanticCategory({ kind: 'tool', activity: 'command', tool: 'run_command', target: 'echo hello', text: 'Running rm old.txt' })).toBe('command');
+    expect(semanticCategory({ kind: 'tool', activity: 'command', tool: 'run_command', target: 'cp a b', text: 'Terminal' })).toBe('copy');
+    expect(semanticCategory({ kind: 'tool', activity: 'command', tool: 'run_command', target: 'Running rm old.txt', text: 'Terminal' })).toBe('command');
+  });
+
+  it('keeps oversized command bodies generic while retaining exact file-tool identity', () => {
+    const target = `rm ${'example/'.repeat(300)} --dry-run`;
+    expect(semanticCategory({ kind: 'tool', activity: 'command', target })).toBe('command');
+    expect(semanticCategory({ kind: 'tool', activity: 'edit', tool: 'write_file', target })).toBe('write');
   });
 });
 
@@ -132,7 +189,7 @@ describe('injection: raw labels never reach the output', () => {
       device: 'monitor', lightsOn: true, night: false,
       occupant: { name: 'Agent', status: 'working', activity: 'command', target: `rm -rf ${HOME}/secret.txt`, summary: ENV_SECRET },
     }), surfaceGeometry(0.72, 0.43), { language: 'en', phase: 0 });
-    expect(spec.target).toBe('Running a command…');
+    expect(spec.target).toBe('Deleting files…');
     expect(JSON.stringify(spec)).not.toContain('secret');
     expect(JSON.stringify(spec)).not.toContain('sk-live');
     const idSpec = buildSurfaceSpec(resolveScreenContent({

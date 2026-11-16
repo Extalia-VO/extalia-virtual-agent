@@ -6,14 +6,32 @@ For page responsibilities and navigation, see
 For messages and answers in an already open outside-agent conversation, see
 [Observed reply channels and source capabilities](observed-replies.md).
 
+## Guides by module
+
+| Module | Guides |
+| --- | --- |
+| Native Chat and workspaces | [Orchestration](chat-orchestration.md), [teams](native-teams.md), [model guide](model-selection-guide.md), [prompt suggestions](prompt-suggestions.md), [workspace boundaries](workspace-boundaries.md), [session workspaces](native-session-workspaces.md) |
+| Missions and recovery | [Missions](missions.md), [changes/integration](mission-changes.md), [Native core](native-core.md) |
+| Skills | [Built-ins](builtin-skills.md), [project skills](project-skills.md), [automatic loading](native-skill-loading.md), [security center](skill-security-center.md), [marketplace](skill-marketplace.md) |
+| Knowledge and memory | [Knowledge/Obsidian](knowledge.md), [workspace memory](workspace-memory.md), [automatic learning](automatic-learning.md), [meetings](team-meetings.md) |
+| Observed apps | [Settings/Observe/Import](settings-observe-import.md), [messaging](observed-agent-messaging.md), [Codex control](observed-codex-control.md), [replies](observed-replies.md), [handover](cross-agent-handover.md) |
+
+For Office, architecture, packaging and feature limits, use the
+[module directory](../modules/README.md).
+
 ## Use Extalia
 
 Agents need a host that can reach your files and run commands, so Extalia runs
 in one of two ways:
 
 - **Desktop app** (macOS, Windows, Linux): download it from GitHub Releases. It
-  checks for updates when it starts, downloads them in the background and
-  restarts into the new version when no agent is working.
+  checks for updates shortly after it starts. If a newer version is available,
+  a dialog shows both versions. Choose **Update and restart** to download it,
+  or **Later** to keep working. After an approved download, Extalia waits for
+  running agents to finish before a postponable 10-second restart. A normal
+  quit does not install an update. You can also check and update under
+  **Settings → System**. Automatic installation requires a supported packaged
+  build; ad-hoc macOS previews continue to use manual replacement.
 - **Web client through the `extalia` command**:
 
   ```bash
@@ -30,11 +48,12 @@ in one of two ways:
   checkout uses pnpm, and local npm installs into its linked dependency tree can
   fail inside npm with `Cannot read properties of null (reading 'matches')`.
 
-The macOS v0.4.109 DMG has an invalid ad-hoc app signature and no notarization
-ticket, so macOS can reject it as damaged or unverified. Use the npm Web command
-above until a replacement is available. Free macOS previews use a valid ad-hoc
-signature; they remain unnotarized and require manual opening approval (via **System Settings → Privacy & Security → Open Anyway** or running `xattr -dr com.apple.quarantine /Applications/Extalia.app` in Terminal) and
-manual updates. See [macOS release modes](../release/packaging.md#macos-release-modes).
+Use the current [GitHub release](https://github.com/Extalia-VO/extalia-virtual-agent/releases)
+for Desktop downloads. The old v0.4.109 macOS DMG had an invalid ad-hoc signature;
+it is historical and should not be reused. The v0.4.288 free macOS preview has
+verified ad-hoc signatures, remains unnotarized and may require manual opening
+approval through **System Settings → Privacy & Security → Open Anyway**.
+These previews use manual replacement updates. See [macOS release modes](../release/packaging.md#macos-release-modes).
 
 Desktop and the Web Bridge share one profile and only one may own it at a time.
 If Desktop reports `Extalia is already running (Bridge, process ...)`, stop the
@@ -45,12 +64,26 @@ before `pnpm dev:desktop`; it will have its own setup and sessions.
 
 On first start a short setup asks for:
 
-1. **A model connection**: OpenAI, Anthropic, OpenRouter, 9Router, OmniRoute,
+1. **A model connection**: choose **Extalia Native** for the primary API/local
+   setup path, then select OpenAI, Anthropic, OpenRouter, 9Router, OmniRoute,
    Ollama or any OpenAI-compatible endpoint, with its API key (kept in your OS
    credential store) or an environment variable. Choose who provides memory and
    skills: Extalia, the provider where it has its own (OmniRoute), or off.
-2. **A workspace**: the project folder the agent works in, and whether file
-   edits and commands need your approval (they do by default).
+2. **A workspace** (optional during setup): select the project folder with
+   **Choose folder**, or skip and add it from the first Chat or Settings later.
+   Desktop uses a native folder dialog; Web browses folders on the Bridge
+   computer. File edits require approval by default; Native commands remain
+   unavailable until a verified isolated executor exists.
+
+For a local connection, select the matching preset and check its API base URL.
+Ollama defaults to `http://localhost:11434/v1` and needs no key; 9Router and
+OmniRoute allow an optional key. Use **Custom** for another OpenAI-compatible
+router or an authenticated Ollama proxy. Use the service's actual API base path;
+Extalia preserves it rather than adding `/v1` automatically. The existing named
+preset is **OmniRoute**; an OmniRouter service can use Custom with its own URL.
+Run **Test connection**, then choose or enter the intended model. Catalog success
+checks discovery, not whether every listed model can run tools or process images.
+Hermes Agent is an optional runtime with its own configuration.
 
 After setup, you land in the **3D Office** in the same application, and every later
 launch opens there too, after a short start screen (the last-used workspace is kept).
@@ -62,8 +95,9 @@ inside Office; managed primary characters accept prompts there, and workers show
 their reported activity in the parent session. Observed
 sessions show observation status, without claiming their native agent is running.
 **Appearance** in a character's panel changes its hair, clothing, accessories and
-walking style, with feminine, masculine and neutral presets; walking and
-navigation are still being developed.
+walking style, with feminine, masculine and neutral presets. Walking, doors,
+chairs and cross-floor transit are implemented; sustained crowd/performance
+acceptance remains scoped in the [Office module](../modules/office.md).
 
 Open Chat and describe the task. The agent reads and searches the project,
 asks before edits when required, and reports every step. Native terminal commands
@@ -80,8 +114,9 @@ team and automatic mission plans; without one, the lead uses its own knowledge.
 
 ### Projects, sessions and Diagnostics
 
-Register a project through Setup or **Settings → Workspaces**. Desktop offers a native
-folder picker; the web Bridge accepts a full path and checks it on the host. In Chat,
+Register a project through Setup, the first Chat, or **Settings → Workspaces**.
+Desktop offers a native folder picker; Web offers authenticated host-folder
+browsing and also accepts a path checked by the Bridge. In Chat,
 select a workspace to see only that project's sessions. Saved sessions persist across
 host restarts; sessions marked **Not saved** are intentionally kept in memory only.
 
@@ -118,14 +153,20 @@ closer to the repository as another workspace. Git inspection stays read-only.
 
 ### Is Python required?
 
-Extalia Native, the local Bridge and the Desktop shell use JavaScript/TypeScript and
-Node/Electron. Python is not bundled or required for these paths. Native history imports
-use the Node parsers; Hermes SQLite history needs Node.js 22.13 or newer.
+Ordinary Native Chat, the local Bridge and the Desktop shell do not require a
+user-installed Python interpreter. Node/Electron hosts the app; a bundled Rust
+daemon supplies scoped Native services. Supported macOS 14+ ARM64 packages
+include a pinned Python/SkillSpector bundle for supervised skill inspection.
+That specific worker is not a general Python coding executor, and unsupported
+scanner platforms remain unavailable. See [Skills](../modules/skills.md) and
+[platform limits](../modules/platform-release.md). Native history imports use
+the Node parsers; Hermes SQLite history needs Node.js 22.13 or newer.
 
 If a workspace uses Hermes Agent, follow Hermes' installation requirements separately.
 Extalia launches the installed `hermes` executable. Likewise, project
 commands that run Python use the interpreter selected by that project. Installing Python
-is an optional runtime/project concern, not part of Extalia's base setup.
+for project commands is an optional runtime/project concern; it does not replace
+the pinned scanner environment.
 
 ### Try it without an API key
 
@@ -171,10 +212,23 @@ pnpm test:desktop   # Electron smoke test (needs a display; use xvfb-run on Linu
 
 ## Where to go next
 
+- [Guides by module and current feature limits](../modules/README.md)
+- [Requirements: implemented and remaining work](../product/README.md)
+
 - [Architecture overview](../architecture/overview.md)
 - [Runtimes, providers and observed agents](../architecture/runtime-adapters.md)
 - [Contributing](../../CONTRIBUTING.md)
 - [Roadmap](../wiki/Roadmap-and-Phases.md)
+
+## Reset Extalia without deleting projects
+
+Quit Desktop and stop the Bridge first. Removing the active `~/.extalia-vo`
+folder resets setup, settings, saved chats, workspace registrations and
+import/observation records on the next start. `EXTALIA_HOME` selects another
+active folder when set. Project files stay wherever you saved them; clearing
+Extalia's profile does not delete them or the source histories of other agents.
+Browser UI caches cannot refill a new profile. See
+[storage locations and exceptions](../architecture/storage.md).
 
 ## Files and folders
 

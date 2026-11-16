@@ -48,6 +48,7 @@ describe('standalone Codex permission forwarder', () => {
 
   async function run(body = JSON.stringify(payload), signal?: NodeJS.Signals, closeInput = true, args = ['--session', payload.session_id], auditPrivateReads = false) {
     const probe = path.join(home, 'probe.mjs');
+    const startupReady = path.join(home, 'signal-handler-ready');
     if (auditPrivateReads) await writeFile(probe, `
       import fs from 'node:fs';
       import path from 'node:path';
@@ -62,7 +63,17 @@ describe('standalone Codex permission forwarder', () => {
       }
       syncBuiltinESMExports();
     `);
-    const child = spawn(process.execPath, [...(auditPrivateReads ? ['--import', pathToFileURL(probe).href] : []), codexPermissionForwarderPath(home), ...args], { stdio: ['pipe', 'pipe', 'pipe'] });
+    if (signal && !closeInput) await writeFile(probe, `
+      import fs from 'node:fs';
+      const marker = ${JSON.stringify(startupReady)};
+      const original = process.on;
+      process.on = function(event, listener) {
+        const result = original.call(this, event, listener);
+        if (event === 'SIGINT') fs.writeFileSync(marker, 'ready');
+        return result;
+      };
+    `);
+    const child = spawn(process.execPath, [...(auditPrivateReads || (signal && !closeInput) ? ['--import', pathToFileURL(probe).href] : []), codexPermissionForwarderPath(home), ...args], { stdio: ['pipe', 'pipe', 'pipe'] });
     let stdout = '', stderr = '';
     child.stdout.on('data', chunk => { stdout += String(chunk); });
     child.stderr.on('data', chunk => { stderr += String(chunk); });
@@ -72,7 +83,7 @@ describe('standalone Codex permission forwarder', () => {
     if (signal) {
       // Wait for the outstanding request, rather than racing process startup.
       if (closeInput) await vi.waitFor(() => expect(received).toHaveLength(1));
-      if (!closeInput) await new Promise(resolve => setTimeout(resolve, 250));
+      if (!closeInput) await vi.waitFor(async () => expect(await readFile(startupReady, 'utf8')).toBe('ready'));
       child.kill(signal);
     }
     return result;

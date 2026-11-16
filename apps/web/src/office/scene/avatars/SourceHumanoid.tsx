@@ -1,17 +1,18 @@
  
-import { useEffect, useMemo, useRef } from 'react';
-import { useFrame } from '@react-three/fiber';
+import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import { useFrame, useThree } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import type { Group, Material, Mesh, Object3D } from 'three';
 import { Bone, Color, DoubleSide, Euler, Matrix4, MeshStandardMaterial, Quaternion, Skeleton, SkinnedMesh, Vector3 } from 'three';
 import { clone } from 'three/examples/jsm/utils/SkeletonUtils.js';
+import { shareAvatarSkeletons } from './avatarSkeletonSharing';
 import { resolveWardrobe, officeGarmentVisibility, OFFICE_WARDROBE_MESHES, SOURCE_WARDROBE_MESHES } from './AvatarWardrobe';
 import { SCAN_OUTFIT_MODEL, scanAccessorySlots, scanOutfitSlot } from './wardrobe';
 import { presentationPreset, type AvatarVisualConfig } from './appearance';
 import { createHumanoidRigProfile } from './rig';
 import { gaitParameters, idlePose } from './gait';
 import { createWalkPose, writeWalkPose, type CharacterMotion } from '../movement/walkCycle';
-import { createClipDriver, stepClipDriver } from './activityPose';
+import { blendActivityPose, createClipDriver, stepClipDriver } from './activityPose';
 import { createSeatedLegPose, floorSeatedKnee, seatedLegPose, supportedThigh } from './seatedPose';
 import { createArmPoleSolution, solveArmPole } from './armPole';
 import { solveArm3D, wristAngle, type Arm3DSolution } from './armIk';
@@ -45,7 +46,9 @@ import { sourceWaistBacking } from './sourceWaistBacking';
 import { sourceCoveredSkin } from './sourceCoveredSkin';
 import { sourceTrouserLining } from './sourceTrouserLining';
 import { sourceNativeNeckline } from './sourceNativeNeckline';
-import { createLodState, lodStep, lodTier, screenHeightPixels, setCastShadows, widenSkinnedBounds } from './avatarLod';
+import { beginAvatarPose, createLodState, lodStep, lodTier, screenHeightPixels, setCastShadows, widenSkinnedBounds } from './avatarLod';
+import { disposeAvatarClone, ownAvatarCloneGeometry } from './avatarCloneResources';
+import { batchFittedOutfitMeshes } from './avatarOutfitBatch';
 import { createFacialPose, expressionTimeSeconds, resolveCharacterExpression, writeFacialPose, type CharacterExpressionState } from './facialExpression';
 import { attachSourceFaceExpressions, writeSourceFaceExpressions, type SourceFaceBinding } from './sourceFaceExpressions';
 
@@ -104,13 +107,19 @@ function attachOutfitModel(body: Group, outfit: Group, name = SCAN_OUTFIT_MODEL)
   outfit.traverse(child => { if ((child as SkinnedMesh).isSkinnedMesh) meshes.push(child as SkinnedMesh); });
   if (!host || meshes.some(source => source.skeleton.bones.some(bone => !bones.has(bone.name)))) return 0;
   let attached = 0;
+  const reboundSkeletons = new Map<Skeleton, Skeleton>();
   for (const source of meshes) {
     const joints = source.skeleton.bones.map(bone => bones.get(bone.name));
     if (!host || joints.some(bone => !bone)) continue;
     const mesh = new SkinnedMesh(source.geometry, Array.isArray(source.material) ? source.material.map(material => material.clone()) : source.material.clone());
     copyFittedMorphTargets(source, mesh);
     mesh.name = name;
-    mesh.bind(new Skeleton(joints as Bone[], source.skeleton.boneInverses.map(matrix => matrix.clone())), (scan ?? source).bindMatrix.clone());
+    let skeleton = reboundSkeletons.get(source.skeleton);
+    if (!skeleton) {
+      skeleton = new Skeleton(joints as Bone[], source.skeleton.boneInverses.map(matrix => matrix.clone()));
+      reboundSkeletons.set(source.skeleton, skeleton);
+    }
+    mesh.bind(skeleton, (scan ?? source).bindMatrix.clone());
     mesh.castShadow = mesh.receiveShadow = true;
     host.add(mesh);
     attached++;
@@ -128,6 +137,7 @@ export function SourceHumanoid({ visual, urls, pieces, seated, typing, reducedMo
   /** Desk the character sits at (the single desk without one). */
   desk?: DeskReach | undefined;
 }) {
+  const hostScene = useThree(state => state.scene);
   const female = presentationPreset(visual.presentation) === 'feminine';
   // Source packs are uncompressed: avoid Draco network downloads and an unused WebAssembly decoder.
   const gltf = useGLTF(urls.body, false, false);
@@ -145,14 +155,12 @@ export function SourceHumanoid({ visual, urls, pieces, seated, typing, reducedMo
       for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) cutOutHairCards(material);
       mesh.castShadow = mesh.receiveShadow = true;
     });
+    shareAvatarSkeletons(scene);
     scene.updateMatrixWorld(true);
     widenSkinnedBounds(scene);
     return { scene, bones };
   }, [hairGltf.scene]);
-  useEffect(() => () => hairModel.scene.traverse(child => {
-    const mesh = child as Mesh;
-    if (mesh.isMesh) for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) material.dispose();
-  }), [hairModel]);
+  useEffect(() => () => disposeAvatarClone(hairModel.scene), [hairModel]);
   useEffect(() => {
     hairModel.scene.traverse(child => {
       const mesh = child as Mesh;
@@ -206,7 +214,7 @@ export function SourceHumanoid({ visual, urls, pieces, seated, typing, reducedMo
     const bones = new Map<string, { bone: Bone; rest: Quaternion; world: Quaternion }>();
     scene.traverse(child => { if (child instanceof Bone) bones.set(child.name, { bone: child, rest: child.quaternion.clone(), world: inverse.clone().multiply(child.getWorldQuaternion(new Quaternion())) }); });
     const handCurls: { mesh: SkinnedMesh; targets: readonly [number, number] }[] = [];
-    const curlMeshes: SkinnedMesh[] = [];
+    let curlMeshes: SkinnedMesh[] = [];
     scene.traverse(child => { if ((child as SkinnedMesh).isSkinnedMesh) curlMeshes.push(child as SkinnedMesh); });
     if (originalFeatures.nativeNeckline) {
       const nativeNecks = curlMeshes.filter(mesh => mesh.name.replace(/_\d+$/, '') === 'BodyNeckline');
@@ -267,9 +275,14 @@ export function SourceHumanoid({ visual, urls, pieces, seated, typing, reducedMo
       for (const mesh of curlMeshes) mesh.geometry = sourceUnderlayerFit(mesh, upperLayers);
       widenSkinnedBounds(scene);
     }
+    const privateGeometryMeshes: SkinnedMesh[] = [];
     const bottomLayer = loadedParts.bottom && curlMeshes.find(mesh => mesh.name === 'WardrobePieceBottom');
     if (bottomLayer) {
-      for (const mesh of curlMeshes) mesh.geometry = sourceWaistBacking(mesh, bottomLayer);
+      for (const mesh of curlMeshes) {
+        const backing = sourceWaistBacking(mesh, bottomLayer);
+        if (backing !== mesh.geometry) privateGeometryMeshes.push(mesh);
+        mesh.geometry = backing;
+      }
       widenSkinnedBounds(scene);
     }
     // Only inspected trouser/short assets may occlude skin. OriginalBottom is
@@ -285,6 +298,15 @@ export function SourceHumanoid({ visual, urls, pieces, seated, typing, reducedMo
       fullOutfit: fittedOutfit && !originalFeatures.nativeFootwear,
       bottom: loadedParts.bottom === true && replacements.footwear === true,
     });
+    // Fit and measure each authored part first. Bind the animation correctives
+    // only after compatible pieces have joined their final draw mesh.
+    if (fittedOutfit && !mixing && !bottomLayer && !originalFeatures.ownHands) {
+      const merged = batchFittedOutfitMeshes(curlMeshes.filter(mesh => mesh.name === SCAN_OUTFIT_MODEL));
+      if (merged.length) {
+        curlMeshes = curlMeshes.filter(mesh => mesh.parent !== null);
+        for (const mesh of merged) widenSkinnedBounds(mesh);
+      }
+    }
     const curlLengths = sourceHandCurlLengths(curlMeshes);
     const faces: SourceFaceBinding[] = [];
     for (const mesh of curlMeshes) {
@@ -293,13 +315,28 @@ export function SourceHumanoid({ visual, urls, pieces, seated, typing, reducedMo
       const face = attachSourceFaceExpressions(mesh, urls.body);
       if (face) faces.push(face);
     }
+    // Later correction/morph caches can derive another geometry from the fresh
+    // backing. That private input cannot be shared with another clone; own the
+    // final uploaded result rather than its never-rendered intermediate.
+    for (const mesh of privateGeometryMeshes) ownAvatarCloneGeometry(scene, mesh.geometry);
+    shareAvatarSkeletons(scene);
     return { scene, bones, handCurls, faces, seatedDrapes: seatedDrapeBindings(curlMeshes), walkDrapes: walkDrapeBindings(curlMeshes), shoulderCorrectives: shoulderCorrectiveBindings(curlMeshes, bones), standingHip: bones.get('hips')?.bone.position.y ?? 1.0064, footSoles, footwearSlot, nativeFootwear, ownNeckline: originalFeatures?.ownNeckline === true, ownEyewear: originalFeatures.ownEyewear === true,
       slots: new Set(curlMeshes.map(mesh => mesh.name.replace(/_\d+$/, ''))) };
   }, [gltf.scene, urls.body, urls.outfit, outfitGltf.scene, topPiece, bottomPiece, outerPiece, mixing, selectedOuter, female, visual.clothing?.parts?.bottom, visual.clothing?.model]);
-  useEffect(() => () => model.scene.traverse(child => {
-    const mesh = child as Mesh;
-    if (mesh.isMesh) for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) material.dispose();
-  }), [model]);
+  useEffect(() => () => disposeAvatarClone(model.scene), [model]);
+  // Compare appearance values rather than a rebuilt prop object's identity.
+  const compositionAppearance = JSON.stringify([visual.identityId, visual.presentation, visual.modelVariant, visual.stature,
+    visual.heightMeters, visual.hairVariant, visual.clothing, visual.accessories]);
+  useLayoutEffect(() => {
+    // Deep GLB readiness/replacement may not change shallow scene counts or GPU
+    // memory totals. Keep this epoch local to its Canvas, including portrait scenes.
+    const changed = () => {
+      const before = hostScene.userData.officeAvatarCompositionEpoch;
+      hostScene.userData.officeAvatarCompositionEpoch = (Number.isSafeInteger(before) ? before : 0) + 1;
+    };
+    changed();
+    return changed;
+  }, [hostScene, model, hairModel, compositionAppearance]);
   const rig = useMemo(() => createHumanoidRigProfile(visual.identityId, { stature: visual.stature }), [visual.identityId, visual.stature]);
   const wardrobe = useMemo(() => resolveWardrobe(visual, rig.seed), [visual, rig.seed]);
   const footSoles = wardrobeFootSoleProfile(model.footSoles, model.footwearSlot ?? scanOutfitSlot(wardrobe.outfit, model.slots, visual.clothing?.model), model.nativeFootwear);
@@ -419,6 +456,8 @@ export function SourceHumanoid({ visual, urls, pieces, seated, typing, reducedMo
   const lod = useMemo(() => createLodState(), []);
   const lodRoot = useRef<Group>(null);
   useFrame(({ clock, camera, size }, frameDelta) => {
+    const revealed = !lod.visible;
+    if (!beginAvatarPose(lod, lodRoot.current)) return;
     let delta = frameDelta;
     if (lodRoot.current) {
       const tier = lodTier(screenHeightPixels(lodRoot.current, camera, size.height), lod.tier);
@@ -446,6 +485,7 @@ export function SourceHumanoid({ visual, urls, pieces, seated, typing, reducedMo
     const atFitness = walk < 0.1 && !!resourceId?.startsWith("fitness.");
     const activityTime = atFitness ? (equipment?.phase ?? 0) / 3.4 : time * rig.motion.tempo + rig.motion.phaseOffset;
     const act = stepClipDriver(clipDriver, clip, activityTime, delta, sit, walk, 0, rig.motion.gestureAmount);
+    if (revealed) blendActivityPose(clipDriver.shown, clipDriver.target, 1);
     const deckLift = atFitness && clip === "jog" ? FITNESS_BLUEPRINT.treadmillDeckHeight / scale : 0;
     const hips = model.bones.get('hips')?.bone;
     const standingHip = model.standingHip + standingSoleLift + Math.sin(time * 1.2) * 0.005 * still;
@@ -482,7 +522,6 @@ export function SourceHumanoid({ visual, urls, pieces, seated, typing, reducedMo
     rotate('spine', 0.05 * sit + 0.02 * walk + act.torsoPitch * 0.6, act.torsoYaw * 0.5, idle.torsoRoll * 0.4 * still + stride.pelvisRoll);
     rotate('chest', 0.06 * sit + act.torsoPitch * 0.4, stride.torsoTwist + act.torsoYaw * 0.5, idle.torsoRoll * 0.6 * still);
     rotate('neck', act.headPitch * 0.4, Math.sin(time * 0.5) * 0.025 + act.headYaw * 0.4);
-    rotate('head', act.headPitch * 0.6 + facePose.headPitch + 0.24 * (goalsRef.current?.shown.tablet ?? 0), Math.sin(time * 0.5) * 0.035 - stride.torsoTwist + act.headYaw * 0.6 + facePose.headYaw);
     const hands = typing && clip === 'none' && !reducedMotion ? Math.sin(time * 6) * 0.045 : 0;
     // Hand goals at the desk, glided between clips; the arms follow the same solve as the procedural character.
     const actTime = time * rig.motion.tempo + rig.motion.phaseOffset;
@@ -494,7 +533,8 @@ export function SourceHumanoid({ visual, urls, pieces, seated, typing, reducedMo
         if (goal) { goals.target.target[index] = goal; goals.target.weight[index] = 1; }
       }
     }
-    blendHandGoals(goals.shown, goals.target, 1 - Math.exp(-Math.max(0, delta) * 5));
+    blendHandGoals(goals.shown, goals.target, revealed ? 1 : 1 - Math.exp(-Math.max(0, delta) * 5));
+    rotate('head', act.headPitch * 0.6 + facePose.headPitch + 0.24 * goals.shown.tablet, Math.sin(time * 0.5) * 0.035 - stride.torsoTwist + act.headYaw * 0.6 + facePose.headYaw);
     // Undo the actual posed torso, whose spine and chest rotate around distinct
     // pivots. A single rotation around the hips shifts desk contacts by centimetres.
     const chest = model.bones.get('chest')?.bone ?? model.scene;
@@ -558,7 +598,7 @@ export function SourceHumanoid({ visual, urls, pieces, seated, typing, reducedMo
             const targetRoll = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, roll * 0.75));
             // Smooth the bounded offset, not the already-reset bone rotation.
             // This also avoids a skin snap if the shortest twist crosses +/-PI.
-            forearmRoll.current[index]! += (targetRoll - forearmRoll.current[index]!) * (1 - Math.exp(-Math.max(0, delta) * 10));
+            forearmRoll.current[index]! += (targetRoll - forearmRoll.current[index]!) * (revealed ? 1 : 1 - Math.exp(-Math.max(0, delta) * 10));
             const pronation = forearmRoll.current[index]! * w;
             forearmAxis.copy(handEntry.bone.position).normalize();
             handParent.quaternion.multiply(forearmPronation.setFromAxisAngle(forearmAxis, pronation));

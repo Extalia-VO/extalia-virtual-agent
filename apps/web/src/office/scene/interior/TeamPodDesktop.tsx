@@ -1,3 +1,4 @@
+import { useFixedModelTransforms } from "../fixedModelTransforms";
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import type { Group, Mesh } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
@@ -75,6 +76,7 @@ export function TeamPodDesktop() {
     });
     return scene;
   }, [source]);
+  useFixedModelTransforms(clone);
   // A floor-wide batch must never retain a baked copy of the temporary backup.
   return <group name="team-pod-desktop" userData={{ officeDynamic: true, teamPodAuthored: !!clone, officeCollisionFootprint: TEAM_POD_STRUCTURE_FOOTPRINT }}>
     {clone ? <primitive name="blender-team-pod-desktop" object={clone} dispose={null} /> : <ProceduralTeamPodDesktop />}

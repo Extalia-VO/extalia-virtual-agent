@@ -6,6 +6,7 @@ import type { OfficeActivity } from '../activityFeed';
 import { formatAgo, timeAgo } from './activityBoard';
 
 const ICON: Record<OfficeActivity['kind'], IconName> = {
+  'meeting-started': 'users', 'meeting-contribution': 'chat', 'meeting-completed': 'check', 'meeting-cancelled': 'close', 'meeting-failed': 'alert',
   prompt: 'chat', reply: 'chat', tool: 'tool', approval: 'shield', delegated: 'users', done: 'check', failed: 'alert',
 };
 
@@ -37,7 +38,7 @@ export function ActivityBoard({ t, id, items, names, now, onSelect, onClose, onO
             <Icon name={ICON[activity.kind]} />
             <span className="office-board-text">
               <span className="office-board-line"><strong>{name}</strong><time dateTime={activity.at}>{formatAgo(o.ago, timeAgo(activity.at, now))}</time></span>
-              <small>{t.officeUx.toast[activity.kind]}{activity.text ? ` · ${activity.text}` : ''}</small>
+              <small>{t.officeUx.toast[activity.kind]}{activity.round ? ` · ${t.office.meetingRound(activity.round)}` : ''}{activity.text ? ` · ${activity.text}` : ''}</small>
             </span>
           </button>
           {approval && <div className="office-board-approval"><ApprovalActions t={t} approval={approval} compact /></div>}

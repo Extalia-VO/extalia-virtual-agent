@@ -6,6 +6,8 @@ import { installerBrand, installerCopy } from './scripts/installer-copy.mjs';
 const common = { bundle: true, platform: 'node', format: 'cjs', target: 'node22', external: ['electron'], sourcemap: true, logLevel: 'warning' };
 
 await Promise.all([
+  build({ bundle: true, platform: 'node', format: 'esm', target: 'node22', entryPoints: ['src/continuityReader.ts'],
+    outfile: 'dist/continuity-reader.mjs', logLevel: 'warning' }),
   build({ ...common, entryPoints: ['src/main.ts'], outfile: 'dist/main.cjs',
     define: { __EXTALIA_INSTALLER_COPY__: JSON.stringify(await installerCopy()) } }),
   build({ ...common, entryPoints: ['src/preload.ts'], outfile: 'dist/preload.cjs' }),

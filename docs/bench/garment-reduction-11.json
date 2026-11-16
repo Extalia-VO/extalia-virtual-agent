@@ -1,0 +1,1334 @@
+{
+  "schemaVersion": 1,
+  "baseline": "283f64225fc837d410c06308a30f23d35f35cb57",
+  "meshoptimizer": "1.1.1",
+  "method": "offline attribute-aware indexed triangle simplification; no decoder extension; original image payloads and retained vertex bytes exact",
+  "review": "All seven compared as isolated garments in Blender Cycles512px front/rear rest,walk,sit,reach; no new visible silhouette/cloth holes found at review scale. Minor shading smoothing; source underside/cuff irregularities remain. Not complete full-body gameplay QA.",
+  "distanceMethod": "One-way sampled referenced baseline vertices, maximum1000 per primitive, nearest candidate triangle surface under CPU skinning. Model units; not full Hausdorff or intersection test.",
+  "files": [
+    {
+      "changed": true,
+      "sourceBytes": 3968396,
+      "outputBytes": 1819172,
+      "beforeTriangles": 116010,
+      "afterTriangles": 45056,
+      "sourceSHA256": "35a6855e232ba83d255eb823f021f063153adabaa20e1314660794596ae42d37",
+      "outputSHA256": "f0a4553c610f0a239b231e13dafa5fed9bd18b017f6e0845c01b440ef2c85d5a",
+      "retainedVertexBytesExact": true,
+      "imagePayloadsExact": true,
+      "primitives": [
+        {
+          "mesh": 0,
+          "primitive": 0,
+          "material": "OriginalTop_P0S0",
+          "beforeTriangles": 20046,
+          "afterTriangles": 7332,
+          "relativeError": 0.0029864793177694082,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 1,
+          "material": "OriginalTop_P1S0",
+          "beforeTriangles": 9874,
+          "afterTriangles": 4588,
+          "relativeError": 0.002999383257701993,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 2,
+          "material": "OriginalTop_P2S0",
+          "beforeTriangles": 15246,
+          "afterTriangles": 6560,
+          "relativeError": 0.00299734715372324,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 3,
+          "material": "OriginalTop_P3S0",
+          "beforeTriangles": 18448,
+          "afterTriangles": 6608,
+          "relativeError": 0.0029937236104160547,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 4,
+          "material": "OriginalTop_P4S0",
+          "beforeTriangles": 15516,
+          "afterTriangles": 4118,
+          "relativeError": 0.002972587011754513,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 5,
+          "material": "OriginalTop_P5S0",
+          "beforeTriangles": 12492,
+          "afterTriangles": 3464,
+          "relativeError": 0.002995177637785673,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 6,
+          "material": "OriginalTop_P6S0",
+          "beforeTriangles": 6796,
+          "afterTriangles": 4032,
+          "relativeError": 0.0029292169492691755,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 7,
+          "material": "OriginalTop_P7S0",
+          "beforeTriangles": 15132,
+          "afterTriangles": 5922,
+          "relativeError": 0.002996252616867423,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 9,
+          "material": "Skin_Skin",
+          "beforeTriangles": 260,
+          "afterTriangles": 232,
+          "relativeError": 0.002930538496002555,
+          "smallAccent": false
+        }
+      ],
+      "path": "avatars/wardrobe/male/top/green-white-hoodie.glb",
+      "parameters": {
+        "ratio": 0.05,
+        "error": 0.003,
+        "meshNames": null,
+        "excludeMaterials": null
+      },
+      "sampledPoseDistances": [
+        {
+          "pose": "rest",
+          "samplePoints": 9316,
+          "p95Distance": 0.0006714500195812434,
+          "maxDistance": 0.0024798577651381493
+        },
+        {
+          "pose": "sit",
+          "samplePoints": 9316,
+          "p95Distance": 0.0006962394254514948,
+          "maxDistance": 0.002763328142464161
+        },
+        {
+          "pose": "walk",
+          "samplePoints": 9316,
+          "p95Distance": 0.0006822924333391711,
+          "maxDistance": 0.0023417314514517784
+        },
+        {
+          "pose": "reach",
+          "samplePoints": 9316,
+          "p95Distance": 0.0007276054966496304,
+          "maxDistance": 0.0031569034326821566
+        }
+      ]
+    },
+    {
+      "changed": true,
+      "sourceBytes": 7956312,
+      "outputBytes": 6157416,
+      "beforeTriangles": 162928,
+      "afterTriangles": 110756,
+      "sourceSHA256": "3a6b6cb12bc262476f499ce541158118a25b7153ce7c3d883c4ab08cb83f8c8b",
+      "outputSHA256": "f3cecdded1d98491b3895c1ce4a5930a3c57bc4ac2fea73fe796e7f9e5db6a3c",
+      "retainedVertexBytesExact": true,
+      "imagePayloadsExact": true,
+      "primitives": [
+        {
+          "mesh": 0,
+          "primitive": 0,
+          "material": "OriginalTop_P0S0",
+          "beforeTriangles": 3432,
+          "afterTriangles": 1688,
+          "relativeError": 0.0029967338778078556,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 1,
+          "material": "OriginalTop_P1S1",
+          "beforeTriangles": 60354,
+          "afterTriangles": 29298,
+          "relativeError": 0.002988416701555252,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 2,
+          "material": "OriginalTop_P2S2",
+          "beforeTriangles": 5546,
+          "afterTriangles": 4328,
+          "relativeError": 0.002977220807224512,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 3,
+          "material": "OriginalTop_P3S3",
+          "beforeTriangles": 9308,
+          "afterTriangles": 6652,
+          "relativeError": 0.002865608548745513,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 4,
+          "material": "OriginalTop_P4S3",
+          "beforeTriangles": 8350,
+          "afterTriangles": 6774,
+          "relativeError": 0.002353709889575839,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 5,
+          "material": "OriginalTop_P5S3",
+          "beforeTriangles": 8436,
+          "afterTriangles": 6776,
+          "relativeError": 0.002487644786015153,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 6,
+          "material": "OriginalTop_P6S3",
+          "beforeTriangles": 6680,
+          "afterTriangles": 6526,
+          "relativeError": 0.0016877203015610576,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 7,
+          "material": "OriginalTop_P7S3",
+          "beforeTriangles": 7954,
+          "afterTriangles": 6818,
+          "relativeError": 0.002437158953398466,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 8,
+          "material": "OriginalTop_P8S3",
+          "beforeTriangles": 8962,
+          "afterTriangles": 6754,
+          "relativeError": 0.0025059233885258436,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 9,
+          "material": "OriginalTop_P9S3",
+          "beforeTriangles": 9432,
+          "afterTriangles": 6920,
+          "relativeError": 0.002890158211812377,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 10,
+          "material": "OriginalTop_P10S3",
+          "beforeTriangles": 7934,
+          "afterTriangles": 6732,
+          "relativeError": 0.002665037987753749,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 11,
+          "material": "OriginalTop_P11S3",
+          "beforeTriangles": 9089,
+          "afterTriangles": 6979,
+          "relativeError": 0.0028811488300561905,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 12,
+          "material": "OriginalTop_P12S3",
+          "beforeTriangles": 7306,
+          "afterTriangles": 6660,
+          "relativeError": 0.002460783114656806,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 13,
+          "material": "OriginalTop_P13S3",
+          "beforeTriangles": 8626,
+          "afterTriangles": 6332,
+          "relativeError": 0.0029313417617231607,
+          "smallAccent": false
+        }
+      ],
+      "path": "avatars/wardrobe/female/top/source-flame-hoodie.glb",
+      "parameters": {
+        "ratio": 0.05,
+        "error": 0.003,
+        "meshNames": null,
+        "excludeMaterials": null
+      },
+      "sampledPoseDistances": [
+        {
+          "pose": "rest",
+          "samplePoints": 15140,
+          "p95Distance": 0.0003143780559184961,
+          "maxDistance": 0.0018919522408396006
+        },
+        {
+          "pose": "sit",
+          "samplePoints": 15140,
+          "p95Distance": 0.00031502300116699185,
+          "maxDistance": 0.0018919447902590036
+        },
+        {
+          "pose": "walk",
+          "samplePoints": 15140,
+          "p95Distance": 0.00031481893965974446,
+          "maxDistance": 0.0018919516587629914
+        },
+        {
+          "pose": "reach",
+          "samplePoints": 15140,
+          "p95Distance": 0.00031495637522311877,
+          "maxDistance": 0.0020534247159957886
+        }
+      ]
+    },
+    {
+      "changed": true,
+      "sourceBytes": 4029348,
+      "outputBytes": 1517776,
+      "beforeTriangles": 117711,
+      "afterTriangles": 35377,
+      "sourceSHA256": "7f620a7df6178d789279c69976923a59b27dfdc76317a74cd171ca41948279de",
+      "outputSHA256": "99f370183e2ade72708c41f57e6035bb47eae648f761d6a5e06821ff090b1875",
+      "retainedVertexBytesExact": true,
+      "imagePayloadsExact": true,
+      "primitives": [
+        {
+          "mesh": 0,
+          "primitive": 0,
+          "material": "OriginalTop_P0S1",
+          "beforeTriangles": 16952,
+          "afterTriangles": 3042,
+          "relativeError": 0.0029926057904958725,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 1,
+          "material": "OriginalTop_P1S1",
+          "beforeTriangles": 11508,
+          "afterTriangles": 5816,
+          "relativeError": 0.002995189279317856,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 2,
+          "material": "OriginalTop_P2S1",
+          "beforeTriangles": 13340,
+          "afterTriangles": 2896,
+          "relativeError": 0.002989579923450947,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 3,
+          "material": "OriginalAccent_P3S0",
+          "beforeTriangles": 960,
+          "afterTriangles": 312,
+          "relativeError": 0.04846625775098801,
+          "smallAccent": true
+        },
+        {
+          "mesh": 0,
+          "primitive": 6,
+          "material": "OriginalAccent_P6S4",
+          "beforeTriangles": 960,
+          "afterTriangles": 292,
+          "relativeError": 0.04636417329311371,
+          "smallAccent": true
+        },
+        {
+          "mesh": 0,
+          "primitive": 7,
+          "material": "OriginalTop_P7S1",
+          "beforeTriangles": 18642,
+          "afterTriangles": 5008,
+          "relativeError": 0.002925410633906722,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 8,
+          "material": "OriginalTop_P8S1",
+          "beforeTriangles": 18124,
+          "afterTriangles": 5524,
+          "relativeError": 0.0029931017197668552,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 9,
+          "material": "OriginalTop_P9S1",
+          "beforeTriangles": 14494,
+          "afterTriangles": 3064,
+          "relativeError": 0.002992932917550206,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 10,
+          "material": "OriginalTop_P10S1",
+          "beforeTriangles": 14414,
+          "afterTriangles": 3470,
+          "relativeError": 0.002998938085511327,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 12,
+          "material": "Skin_Skin",
+          "beforeTriangles": 5769,
+          "afterTriangles": 3405,
+          "relativeError": 0.0029915226623415947,
+          "smallAccent": false
+        }
+      ],
+      "path": "avatars/wardrobe/female/top/source-pink-hoodie.glb",
+      "parameters": {
+        "ratio": 0.05,
+        "error": 0.003,
+        "meshNames": null,
+        "excludeMaterials": null
+      },
+      "sampledPoseDistances": [
+        {
+          "pose": "rest",
+          "samplePoints": 10436,
+          "p95Distance": 0.0008143910672515631,
+          "maxDistance": 0.0025781402364373207
+        },
+        {
+          "pose": "sit",
+          "samplePoints": 10436,
+          "p95Distance": 0.0008133898518281057,
+          "maxDistance": 0.002707117237150669
+        },
+        {
+          "pose": "walk",
+          "samplePoints": 10436,
+          "p95Distance": 0.0008145205065375194,
+          "maxDistance": 0.0025781423319131136
+        },
+        {
+          "pose": "reach",
+          "samplePoints": 10436,
+          "p95Distance": 0.0008355477330042049,
+          "maxDistance": 0.004987317603081465
+        }
+      ]
+    },
+    {
+      "changed": true,
+      "sourceBytes": 3152328,
+      "outputBytes": 1507792,
+      "beforeTriangles": 83703,
+      "afterTriangles": 29111,
+      "sourceSHA256": "506ca3716ea35a751159510d905d172ab3af7b13dc4515abbeda7b2fa6c13c6a",
+      "outputSHA256": "286e08168bea93faa30ea91a01f2fc3cd179e2240ca87c8bde246e462516122f",
+      "retainedVertexBytesExact": true,
+      "imagePayloadsExact": true,
+      "primitives": [
+        {
+          "mesh": 0,
+          "primitive": 0,
+          "material": "OriginalTop_P0S1",
+          "beforeTriangles": 39540,
+          "afterTriangles": 10110,
+          "relativeError": 0.002987877232953906,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 1,
+          "material": "OriginalAccent_P1S0",
+          "beforeTriangles": 42825,
+          "afterTriangles": 17997,
+          "relativeError": 0.002992018358781934,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 2,
+          "material": "Skin_Skin",
+          "beforeTriangles": 1338,
+          "afterTriangles": 1004,
+          "relativeError": 0.002998398384079337,
+          "smallAccent": false
+        }
+      ],
+      "path": "avatars/wardrobe/female/top/source-gothic-blouse.glb",
+      "parameters": {
+        "ratio": 0.05,
+        "error": 0.003,
+        "meshNames": null,
+        "excludeMaterials": null
+      },
+      "sampledPoseDistances": [
+        {
+          "pose": "rest",
+          "samplePoints": 2962,
+          "p95Distance": 0.0010241885960567737,
+          "maxDistance": 0.0036997252609580755
+        },
+        {
+          "pose": "sit",
+          "samplePoints": 2962,
+          "p95Distance": 0.0010419124912004914,
+          "maxDistance": 0.0036997420247644186
+        },
+        {
+          "pose": "walk",
+          "samplePoints": 2962,
+          "p95Distance": 0.0010323613299988209,
+          "maxDistance": 0.0036997245624661446
+        },
+        {
+          "pose": "reach",
+          "samplePoints": 2962,
+          "p95Distance": 0.001057889801450073,
+          "maxDistance": 0.0036997355055063963
+        }
+      ]
+    },
+    {
+      "changed": true,
+      "sourceBytes": 6896760,
+      "outputBytes": 4303052,
+      "beforeTriangles": 185778,
+      "afterTriangles": 104320,
+      "sourceSHA256": "1fcce32acf28d37b5f16daae695250a4071df55bfb5e4a1b1927d102d5ae83b4",
+      "outputSHA256": "cab296f55907c96316a42621c72291a70cdf0812cefc7d324b2a3ee79c7d5f67",
+      "retainedVertexBytesExact": true,
+      "imagePayloadsExact": true,
+      "primitives": [
+        {
+          "mesh": 0,
+          "primitive": 1,
+          "material": "OriginalTop_P1S11",
+          "beforeTriangles": 1646,
+          "afterTriangles": 1412,
+          "relativeError": 0.0029152394272387028,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 3,
+          "material": "OriginalTop_P3S13",
+          "beforeTriangles": 1686,
+          "afterTriangles": 1420,
+          "relativeError": 0.0029921235982328653,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 10,
+          "material": "OriginalTop_P11S4",
+          "beforeTriangles": 5826,
+          "afterTriangles": 2688,
+          "relativeError": 0.0029790105763822794,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 11,
+          "material": "OriginalTop_P12S4",
+          "beforeTriangles": 6784,
+          "afterTriangles": 2864,
+          "relativeError": 0.0029929333832114935,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 12,
+          "material": "OriginalTop_P13S4",
+          "beforeTriangles": 8924,
+          "afterTriangles": 4224,
+          "relativeError": 0.0029790266416966915,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 13,
+          "material": "OriginalTop_P14S4",
+          "beforeTriangles": 12714,
+          "afterTriangles": 7338,
+          "relativeError": 0.0029937198851257563,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 14,
+          "material": "OriginalTop_P15S4",
+          "beforeTriangles": 8064,
+          "afterTriangles": 5240,
+          "relativeError": 0.0029963101260364056,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 15,
+          "material": "OriginalTop_P18S4",
+          "beforeTriangles": 7196,
+          "afterTriangles": 3618,
+          "relativeError": 0.0029782296624034643,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 16,
+          "material": "OriginalTop_P19S4",
+          "beforeTriangles": 13070,
+          "afterTriangles": 7932,
+          "relativeError": 0.0029955273494124413,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 17,
+          "material": "OriginalTop_P20S4",
+          "beforeTriangles": 11834,
+          "afterTriangles": 6030,
+          "relativeError": 0.002989233937114477,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 18,
+          "material": "OriginalTop_P22S4",
+          "beforeTriangles": 5418,
+          "afterTriangles": 3224,
+          "relativeError": 0.0029939471278339624,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 19,
+          "material": "OriginalTop_P23S4",
+          "beforeTriangles": 10618,
+          "afterTriangles": 5932,
+          "relativeError": 0.002984602004289627,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 20,
+          "material": "OriginalTop_P24S4",
+          "beforeTriangles": 9276,
+          "afterTriangles": 4220,
+          "relativeError": 0.0029900341760367155,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 21,
+          "material": "OriginalTop_P25S4",
+          "beforeTriangles": 11406,
+          "afterTriangles": 9672,
+          "relativeError": 0.0029842089861631393,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 22,
+          "material": "OriginalTop_P26S4",
+          "beforeTriangles": 9162,
+          "afterTriangles": 4168,
+          "relativeError": 0.0029670048970729113,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 23,
+          "material": "OriginalTop_P27S4",
+          "beforeTriangles": 1418,
+          "afterTriangles": 642,
+          "relativeError": 0.00296723167411983,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 24,
+          "material": "OriginalTop_P28S4",
+          "beforeTriangles": 542,
+          "afterTriangles": 292,
+          "relativeError": 0.002999786986038089,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 25,
+          "material": "OriginalAccent_P29S5",
+          "beforeTriangles": 1890,
+          "afterTriangles": 418,
+          "relativeError": 0.0029701022431254387,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 26,
+          "material": "OriginalAccent_P30S19",
+          "beforeTriangles": 564,
+          "afterTriangles": 484,
+          "relativeError": 0.04932714253664017,
+          "smallAccent": true
+        },
+        {
+          "mesh": 0,
+          "primitive": 27,
+          "material": "OriginalAccent_P31S2",
+          "beforeTriangles": 516,
+          "afterTriangles": 504,
+          "relativeError": 0.0029141639824956656,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 28,
+          "material": "OriginalAccent_P32S3",
+          "beforeTriangles": 432,
+          "afterTriangles": 332,
+          "relativeError": 0.04961426556110382,
+          "smallAccent": true
+        },
+        {
+          "mesh": 0,
+          "primitive": 29,
+          "material": "OriginalAccent_P33S6",
+          "beforeTriangles": 1008,
+          "afterTriangles": 432,
+          "relativeError": 0.0029678435530513525,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 30,
+          "material": "OriginalAccent_P34S7",
+          "beforeTriangles": 2346,
+          "afterTriangles": 1152,
+          "relativeError": 0.0029788489919155836,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 31,
+          "material": "OriginalAccent_P35S8",
+          "beforeTriangles": 718,
+          "afterTriangles": 436,
+          "relativeError": 0.002809852361679077,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 32,
+          "material": "OriginalTop_P36S9",
+          "beforeTriangles": 1636,
+          "afterTriangles": 1406,
+          "relativeError": 0.0029922581743448973,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 33,
+          "material": "OriginalBottom_P5S15",
+          "beforeTriangles": 2320,
+          "afterTriangles": 1658,
+          "relativeError": 0.0029264334589242935,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 34,
+          "material": "OriginalBottom_P14S4",
+          "beforeTriangles": 1044,
+          "afterTriangles": 548,
+          "relativeError": 0.002990130102261901,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 35,
+          "material": "OriginalBottom_P15S4",
+          "beforeTriangles": 3716,
+          "afterTriangles": 2066,
+          "relativeError": 0.0029965669382363558,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 36,
+          "material": "OriginalBottom_P16S4",
+          "beforeTriangles": 6910,
+          "afterTriangles": 2982,
+          "relativeError": 0.0029669776558876038,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 37,
+          "material": "OriginalBottom_P17S4",
+          "beforeTriangles": 10732,
+          "afterTriangles": 4700,
+          "relativeError": 0.0029948758892714977,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 38,
+          "material": "OriginalBottom_P18S4",
+          "beforeTriangles": 1912,
+          "afterTriangles": 1174,
+          "relativeError": 0.0029992484487593174,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 39,
+          "material": "OriginalBottom_P21S1",
+          "beforeTriangles": 2336,
+          "afterTriangles": 1614,
+          "relativeError": 0.00299951434135437,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 40,
+          "material": "OriginalBottom_P22S4",
+          "beforeTriangles": 5788,
+          "afterTriangles": 2804,
+          "relativeError": 0.0029973925556987524,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 41,
+          "material": "OriginalBottom_P25S4",
+          "beforeTriangles": 1366,
+          "afterTriangles": 756,
+          "relativeError": 0.0029949515592306852,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 42,
+          "material": "OriginalBottom_P26S4",
+          "beforeTriangles": 1260,
+          "afterTriangles": 684,
+          "relativeError": 0.0029899762012064457,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 43,
+          "material": "OriginalBottom_P27S4",
+          "beforeTriangles": 7114,
+          "afterTriangles": 3450,
+          "relativeError": 0.0029978076927363873,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 44,
+          "material": "OriginalBottom_P28S4",
+          "beforeTriangles": 392,
+          "afterTriangles": 242,
+          "relativeError": 0.0029410705901682377,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 46,
+          "material": "Skin_Skin",
+          "beforeTriangles": 1458,
+          "afterTriangles": 826,
+          "relativeError": 0.002923893742263317,
+          "smallAccent": false
+        }
+      ],
+      "path": "avatars/outfits/male/outfit-sweatshirt-jacket-workwear.glb",
+      "parameters": {
+        "ratio": 0.05,
+        "error": 0.003,
+        "meshNames": null,
+        "excludeMaterials": null
+      },
+      "sampledPoseDistances": [
+        {
+          "pose": "rest",
+          "samplePoints": 35698,
+          "p95Distance": 0.000975978781934828,
+          "maxDistance": 0.0051604206673800945
+        },
+        {
+          "pose": "sit",
+          "samplePoints": 35698,
+          "p95Distance": 0.00101731243194081,
+          "maxDistance": 0.015020533464848995
+        },
+        {
+          "pose": "walk",
+          "samplePoints": 35698,
+          "p95Distance": 0.0009876433410681785,
+          "maxDistance": 0.007376766763627529
+        },
+        {
+          "pose": "reach",
+          "samplePoints": 35698,
+          "p95Distance": 0.0009932998917065565,
+          "maxDistance": 0.0051604206673800945
+        }
+      ]
+    },
+    {
+      "changed": true,
+      "sourceBytes": 9462408,
+      "outputBytes": 7943360,
+      "beforeTriangles": 190833,
+      "afterTriangles": 144273,
+      "sourceSHA256": "29352417e77d0dc4ad4c243fbc1c68c7d976137e4ae7ddc56367af75c9203c39",
+      "outputSHA256": "f688c4ca59d5df2edbcfb56cc59deac2115283a2bbfff7c2eec5a6325bf38dc1",
+      "retainedVertexBytesExact": true,
+      "imagePayloadsExact": true,
+      "primitives": [
+        {
+          "mesh": 0,
+          "primitive": 0,
+          "material": "OriginalTop_P0S3",
+          "beforeTriangles": 6480,
+          "afterTriangles": 3274,
+          "relativeError": 0.0029964724089950323,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 1,
+          "material": "OriginalTop_P1S3",
+          "beforeTriangles": 3196,
+          "afterTriangles": 1400,
+          "relativeError": 0.0029935042839497328,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 2,
+          "material": "OriginalTop_P2S3",
+          "beforeTriangles": 3582,
+          "afterTriangles": 1782,
+          "relativeError": 0.0029993546195328236,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 3,
+          "material": "OriginalTop_P3S3",
+          "beforeTriangles": 1717,
+          "afterTriangles": 985,
+          "relativeError": 0.0029196515679359436,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 4,
+          "material": "OriginalTop_P4S3",
+          "beforeTriangles": 6429,
+          "afterTriangles": 3287,
+          "relativeError": 0.002963580656796694,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 5,
+          "material": "OriginalTop_P5S3",
+          "beforeTriangles": 8524,
+          "afterTriangles": 4526,
+          "relativeError": 0.002997686853632331,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 6,
+          "material": "OriginalTop_P6S3",
+          "beforeTriangles": 2884,
+          "afterTriangles": 1610,
+          "relativeError": 0.0029858388006687164,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 7,
+          "material": "OriginalTop_P7S3",
+          "beforeTriangles": 3156,
+          "afterTriangles": 1378,
+          "relativeError": 0.002983835758641362,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 8,
+          "material": "OriginalTop_P8S3",
+          "beforeTriangles": 2372,
+          "afterTriangles": 1482,
+          "relativeError": 0.0029993532225489616,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 9,
+          "material": "OriginalTop_P9S3",
+          "beforeTriangles": 6490,
+          "afterTriangles": 3058,
+          "relativeError": 0.002999155782163143,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 11,
+          "material": "OriginalTop_P11S3",
+          "beforeTriangles": 272,
+          "afterTriangles": 168,
+          "relativeError": 0.002657548291608691,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 14,
+          "material": "OriginalAccent_P14S4",
+          "beforeTriangles": 6422,
+          "afterTriangles": 6412,
+          "relativeError": 0.019028326496481895,
+          "smallAccent": true
+        },
+        {
+          "mesh": 0,
+          "primitive": 16,
+          "material": "OriginalAccent_P16S4",
+          "beforeTriangles": 6390,
+          "afterTriangles": 6382,
+          "relativeError": 0.01853541098535061,
+          "smallAccent": true
+        },
+        {
+          "mesh": 0,
+          "primitive": 21,
+          "material": "OriginalAccent_P21S0",
+          "beforeTriangles": 730,
+          "afterTriangles": 278,
+          "relativeError": 0.0029332060366868973,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 28,
+          "material": "OriginalAccent_P28S7",
+          "beforeTriangles": 2464,
+          "afterTriangles": 584,
+          "relativeError": 0.002993799978867173,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 29,
+          "material": "OriginalAccent_P29S7",
+          "beforeTriangles": 2424,
+          "afterTriangles": 600,
+          "relativeError": 0.0029825919773429632,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 30,
+          "material": "OriginalAccent_P30S7",
+          "beforeTriangles": 200,
+          "afterTriangles": 152,
+          "relativeError": 0.04962030053138733,
+          "smallAccent": true
+        },
+        {
+          "mesh": 0,
+          "primitive": 31,
+          "material": "OriginalAccent_P31S1",
+          "beforeTriangles": 508,
+          "afterTriangles": 326,
+          "relativeError": 0.002926073269918561,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 32,
+          "material": "OriginalAccent_P32S2",
+          "beforeTriangles": 3750,
+          "afterTriangles": 1124,
+          "relativeError": 0.002978539327159524,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 33,
+          "material": "OriginalTop_P33S3",
+          "beforeTriangles": 2150,
+          "afterTriangles": 1010,
+          "relativeError": 0.002999410033226013,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 34,
+          "material": "OriginalTop_P34S3",
+          "beforeTriangles": 3446,
+          "afterTriangles": 1554,
+          "relativeError": 0.00299669336527586,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 35,
+          "material": "OriginalTop_P35S3",
+          "beforeTriangles": 6846,
+          "afterTriangles": 3168,
+          "relativeError": 0.0029404242523014545,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 36,
+          "material": "OriginalTop_P36S3",
+          "beforeTriangles": 7486,
+          "afterTriangles": 3924,
+          "relativeError": 0.002990408567711711,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 37,
+          "material": "OriginalBottom_P8S3",
+          "beforeTriangles": 7272,
+          "afterTriangles": 3948,
+          "relativeError": 0.0029749078676104546,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 38,
+          "material": "OriginalBottom_P9S3",
+          "beforeTriangles": 3116,
+          "afterTriangles": 1720,
+          "relativeError": 0.0029889727011322975,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 39,
+          "material": "OriginalBottom_P11S3",
+          "beforeTriangles": 3166,
+          "afterTriangles": 1720,
+          "relativeError": 0.0029280963353812695,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 40,
+          "material": "OriginalBottom_P33S3",
+          "beforeTriangles": 2820,
+          "afterTriangles": 1988,
+          "relativeError": 0.002996158553287387,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 42,
+          "material": "Skin_Skin",
+          "beforeTriangles": 497,
+          "afterTriangles": 389,
+          "relativeError": 0.00296477391384542,
+          "smallAccent": false
+        }
+      ],
+      "path": "avatars/outfits/male/outfit-black-business-suit.glb",
+      "parameters": {
+        "ratio": 0.05,
+        "error": 0.003,
+        "meshNames": null,
+        "excludeMaterials": null
+      },
+      "sampledPoseDistances": [
+        {
+          "pose": "rest",
+          "samplePoints": 38716,
+          "p95Distance": 0.0006924780900590122,
+          "maxDistance": 0.004594265483319759
+        },
+        {
+          "pose": "sit",
+          "samplePoints": 38716,
+          "p95Distance": 0.0007590151653857902,
+          "maxDistance": 0.006305556278675795
+        },
+        {
+          "pose": "walk",
+          "samplePoints": 38716,
+          "p95Distance": 0.0007158628577599302,
+          "maxDistance": 0.004594253376126289
+        },
+        {
+          "pose": "reach",
+          "samplePoints": 38716,
+          "p95Distance": 0.0007392431143671274,
+          "maxDistance": 0.005565748084336519
+        }
+      ]
+    },
+    {
+      "changed": true,
+      "sourceBytes": 5989688,
+      "outputBytes": 5389892,
+      "beforeTriangles": 135660,
+      "afterTriangles": 115446,
+      "sourceSHA256": "0e69fcd01b057550ce46a592871717757b821f8e2bd8d6207a3e1ac1a3858c7d",
+      "outputSHA256": "8d4e97f71b97041c8bf77b82213fba5bdcfc9052a2ffa6a5c3928fb61783391d",
+      "retainedVertexBytesExact": true,
+      "imagePayloadsExact": true,
+      "primitives": [
+        {
+          "mesh": 0,
+          "primitive": 0,
+          "material": "OriginalOuter_Reception0",
+          "beforeTriangles": 27257,
+          "afterTriangles": 19973,
+          "relativeError": 0.002999352989718318,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 2,
+          "material": "OriginalTop_Reception2",
+          "beforeTriangles": 11730,
+          "afterTriangles": 10322,
+          "relativeError": 0.0029294523410499096,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 3,
+          "material": "OriginalBottom_Reception3",
+          "beforeTriangles": 24346,
+          "afterTriangles": 17284,
+          "relativeError": 0.002999542746692896,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 5,
+          "material": "OriginalTop_Reception5",
+          "beforeTriangles": 808,
+          "afterTriangles": 770,
+          "relativeError": 0.0029114626813679934,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 6,
+          "material": "OriginalTop_Reception6",
+          "beforeTriangles": 1658,
+          "afterTriangles": 906,
+          "relativeError": 0.0029748198576271534,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 7,
+          "material": "OriginalTop_Reception7",
+          "beforeTriangles": 49032,
+          "afterTriangles": 47474,
+          "relativeError": 0.0029373758006840944,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 8,
+          "material": "OriginalTop_Reception8",
+          "beforeTriangles": 14016,
+          "afterTriangles": 13448,
+          "relativeError": 0.0029393380973488092,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 10,
+          "material": "OriginalTop_Reception10",
+          "beforeTriangles": 822,
+          "afterTriangles": 376,
+          "relativeError": 0.002968618180602789,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 11,
+          "material": "Skin_SourceSkin",
+          "beforeTriangles": 2655,
+          "afterTriangles": 1557,
+          "relativeError": 0.0029741355683654547,
+          "smallAccent": false
+        }
+      ],
+      "path": "avatars/outfits/female/reception-uniform.glb",
+      "parameters": {
+        "ratio": 0.05,
+        "error": 0.003,
+        "meshNames": null,
+        "excludeMaterials": [
+          "OriginalTop_Reception4",
+          "OriginalTop_Reception9"
+        ]
+      },
+      "sampledPoseDistances": [
+        {
+          "pose": "rest",
+          "samplePoints": 10839,
+          "p95Distance": 0.0004871357872616513,
+          "maxDistance": 0.004452235531061888
+        },
+        {
+          "pose": "sit",
+          "samplePoints": 10839,
+          "p95Distance": 0.0005060670431703336,
+          "maxDistance": 0.005801601335406303
+        },
+        {
+          "pose": "walk",
+          "samplePoints": 10839,
+          "p95Distance": 0.00049836186808534,
+          "maxDistance": 0.004452233202755451
+        },
+        {
+          "pose": "reach",
+          "samplePoints": 10839,
+          "p95Distance": 0.0004956641350872815,
+          "maxDistance": 0.004452222026884556
+        }
+      ]
+    }
+  ]
+}

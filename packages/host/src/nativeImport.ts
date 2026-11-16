@@ -1,13 +1,16 @@
-import { safeLabel, safeText, type ImportMode, type PortableSession } from '@extalia/core';
+import { literalProjectPath, safeLabel, safeText, type ImportMode, type PortableSession } from '@extalia/core';
 import {
-  codexThreadSpawn, mergeSubagentSteps, parseAntigravity, parseClaude, parseCodex, parseGemini, parseHermes,
+  codexThreadSpawn, codexTurnWorkingDirectory, isInjectedContext, mergeSubagentSteps, parseAntigravity, parseClaude, parseCodex, parseGemini, parseHermes,
   type CodexThreadSpawn, type NativeParseResult, type NativeSourceId, type ParseContext, type SubagentTranscript, type TranscriptContext, type TranscriptStep,
 } from '@extalia/importers';
 import type { ImportCandidate, ImportDiagnostic, ImportLocation, ImportScan } from '@extalia/platform';
 import { createHash, randomUUID } from 'node:crypto';
-import { closeSync, existsSync, fstatSync, openSync, readdirSync, readSync, realpathSync, statSync, type Dirent } from 'node:fs';
+import { closeSync, existsSync, fstatSync, lstatSync, openSync, readdirSync, readSync, realpathSync, statSync, type BigIntStats, type Dirent } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path';
 import type * as Sqlite from 'node:sqlite';
+import { resolveAgentLocations } from './agentLocations.js';
+import { isCodexSuggestionOnlyMessages } from './codexSuggestionSessions.js';
+import { parse as parseToml } from 'smol-toml';
 
 /**
  * Read-only discovery of native agent histories in their known locations.
@@ -38,6 +41,9 @@ const DISCOVERY_COLD_PER_POLL = 400;
 const MAX_SUBAGENTS = 100;
 const MAX_SIDECAR_BYTES = 64 * 1024;
 const MAX_THREAD_INDEX_BYTES = 4 * 1024 * 1024;
+const MAX_FULL_TRANSCRIPT_SCAN_BYTES = 128 * 1024 * 1024;
+const MAX_FULL_LINE_BYTES = 4 * 1024 * 1024;
+const HYDRATED_CONTENT_LIMIT = 100_000;
 /** Codex rollout names carry local time; child threads are looked for from a day before their root started. */
 const THREAD_SLACK_MS = 26 * 60 * 60 * 1000;
 
@@ -46,9 +52,9 @@ type Kind = 'codex' | 'claude' | 'gemini' | 'antigravity' | 'hermes' | 'binary' 
 interface Location extends ImportLocation { root: string; kind: Kind; sourceId: NativeSourceId | 'antigravity-ide' | 'antigravity-cli' }
 interface FileIdentity { size: number; mtime: number; ino: number }
 /** `titled` is false when the candidate title is only a placeholder; imports then use the first prompt. */
-interface Ref { location: Location; path: string; candidate: ImportCandidate; identity: FileIdentity; titled: boolean; rowFingerprint?: string; spawn?: CodexThreadSpawn }
+interface Ref { location: Location; path: string; candidate: ImportCandidate; identity: FileIdentity; titled: boolean; rowFingerprint?: string; spawn?: CodexThreadSpawn; suggestionOnly?: boolean }
 /** First record of a Codex rollout: its thread id and, for sub-agent threads, how it was spawned. Immutable once written. */
-interface ThreadHeader { ino: number; id: string; spawn?: CodexThreadSpawn; cwd?: string; startMs?: number }
+interface ThreadHeader { fileIdentity: string; id: string; spawn?: CodexThreadSpawn; cwd?: string; startMs?: number }
 interface ParsedSubagent { steps: TranscriptStep[]; model?: string; startedAt?: string }
 interface Budget { files: number; limit: number; truncated: boolean }
 
@@ -71,6 +77,8 @@ function identity(path: string): FileIdentity {
 }
 
 const same = (a: FileIdentity, b: FileIdentity) => a.size === b.size && a.mtime === b.mtime && a.ino === b.ino;
+/** Preserve all 64 file-ID bits without invalidating a binding when a transcript grows. */
+const stableFileIdentity = (path: string, info: Pick<BigIntStats, 'dev' | 'ino'>) => JSON.stringify([path, String(info.dev), String(info.ino)]);
 
 /** Start time a Codex rollout name states (`rollout-2026-10-16T17-10-25-<id>.jsonl`, local time). */
 function rolloutTime(path: string): number | undefined {
@@ -92,6 +100,149 @@ function readBounded(root: string, path: string, max: number): string {
   return readBoundedBuffer(root, path, max).toString('utf8');
 }
 
+/**
+ * Antigravity writes a compact `transcript.jsonl` that replaces the middle of long
+ * `content` or `tool_calls` fields with `<truncated N bytes>` and records the field
+ * names in `truncated_fields`, while keeping the complete JSON row on the matching
+ * `step_index` line of the sibling `transcript_full.jsonl`. Recover conversational
+ * `content` (and truncated `tool_calls`) from `transcript_full.jsonl` without loading
+ * full `thinking` traces or huge tool outputs into memory.
+ */
+function hydrateAntigravityTranscript(root: string, transcriptPath: string, content: string): string {
+  if (!content.includes('"truncated_fields"') && !content.includes('<truncated ')) return content;
+  const lines = content.split('\n');
+  const needed = new Map<number, { indices: number[]; rows: Row[] }>();
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index]!;
+    if (!line.includes('"truncated_fields"') && !line.includes('<truncated ')) continue;
+    try {
+      const row = JSON.parse(line) as Row;
+      const stepIndex = typeof row.step_index === 'number' && Number.isInteger(row.step_index) ? row.step_index : undefined;
+      if (stepIndex === undefined || (row.type !== 'USER_INPUT' && row.type !== 'PLANNER_RESPONSE')) continue;
+      const truncated = Array.isArray(row.truncated_fields) ? row.truncated_fields : [];
+      const contentTruncated = truncated.includes('content') || (typeof row.content === 'string' && /<truncated \d+ bytes>/.test(row.content));
+      const toolsTruncated = truncated.includes('tool_calls');
+      if (!contentTruncated && !toolsTruncated) continue;
+      const bucket = needed.get(stepIndex) ?? { indices: [], rows: [] };
+      bucket.indices.push(index);
+      bucket.rows.push(row);
+      needed.set(stepIndex, bucket);
+    } catch { /* partial line */ }
+  }
+  if (!needed.size) return content;
+
+  const fullPath = join(dirname(transcriptPath), 'transcript_full.jsonl');
+  if (!existsSync(fullPath)) return content;
+  let canonical: string;
+  try { canonical = contained(root, fullPath); } catch { return content; }
+  let fd: number;
+  try { fd = openSync(canonical, 'r'); } catch { return content; }
+  try {
+    const info = fstatSync(fd);
+    if (!info.isFile()) return content;
+    const scanLimit = Math.min(info.size, MAX_FULL_TRANSCRIPT_SCAN_BYTES);
+    const chunk = Buffer.alloc(256 * 1024);
+    let parts: Buffer[] = [];
+    let lineBytes = 0;
+    let lineOverflow = false;
+    let position = 0;
+
+    const processLineBuffer = (lineBuf: Buffer) => {
+      if (lineBuf.length === 0 || !needed.size) return;
+      const headLen = Math.min(lineBuf.length, 512);
+      const headMatch = /"step_index"\s*:\s*(\d+)/.exec(lineBuf.subarray(0, headLen).toString('utf8'));
+      if (headMatch && !needed.has(Number(headMatch[1]))) return;
+      const lineText = lineBuf.toString('utf8');
+      const stepMatch = headMatch ?? /"step_index"\s*:\s*(\d+)/.exec(lineText);
+      if (!stepMatch) return;
+      const stepIndex = Number(stepMatch[1]);
+      const bucket = needed.get(stepIndex);
+      if (!bucket) return;
+      try {
+        const fullRow = JSON.parse(lineText) as Row;
+        for (let i = 0; i < bucket.rows.length; i++) {
+          const compactRow = bucket.rows[i]!;
+          const lineIdx = bucket.indices[i]!;
+          if (typeof fullRow.content === 'string' && fullRow.content.length > 0) {
+            compactRow.content = fullRow.content.length > HYDRATED_CONTENT_LIMIT
+              ? fullRow.content.slice(0, HYDRATED_CONTENT_LIMIT)
+              : fullRow.content;
+          } else if (Array.isArray(fullRow.content)) {
+            compactRow.content = fullRow.content;
+          }
+          if (Array.isArray(fullRow.tool_calls) && Array.isArray(compactRow.truncated_fields) && compactRow.truncated_fields.includes('tool_calls')) {
+            compactRow.tool_calls = fullRow.tool_calls;
+          }
+          if (Array.isArray(compactRow.truncated_fields)) {
+            const remaining = compactRow.truncated_fields.filter(field => field !== 'content' && field !== 'tool_calls');
+            if (remaining.length) compactRow.truncated_fields = remaining;
+            else delete compactRow.truncated_fields;
+          }
+          lines[lineIdx] = JSON.stringify(compactRow);
+        }
+        needed.delete(stepIndex);
+      } catch { /* ignore malformed full line */ }
+    };
+
+    const flushLine = () => {
+      const chunks = parts;
+      const total = lineBytes;
+      const overflow = lineOverflow;
+      parts = [];
+      lineBytes = 0;
+      lineOverflow = false;
+      if (overflow || total === 0 || !needed.size) return;
+      processLineBuffer(chunks.length === 1 ? chunks[0]! : Buffer.concat(chunks, total));
+    };
+
+    while (position < scanLimit && needed.size > 0) {
+      const readLen = readSync(fd, chunk, 0, Math.min(chunk.length, scanLimit - position), position);
+      if (readLen <= 0) break;
+      position += readLen;
+      let start = 0;
+      for (let i = 0; i < readLen; i++) {
+        if (chunk[i] === 0x0a) {
+          const sliceLen = i - start;
+          if (parts.length === 0 && !lineOverflow) {
+            if (sliceLen > 0 && sliceLen <= MAX_FULL_LINE_BYTES) processLineBuffer(chunk.subarray(start, i));
+          } else {
+            if (!lineOverflow && sliceLen > 0) {
+              if (lineBytes + sliceLen <= MAX_FULL_LINE_BYTES) {
+                parts.push(Buffer.from(chunk.subarray(start, i)));
+                lineBytes += sliceLen;
+              } else {
+                lineOverflow = true;
+                parts = [];
+              }
+            }
+            flushLine();
+          }
+          if (!needed.size) break;
+          start = i + 1;
+        }
+      }
+      if (start < readLen && needed.size > 0) {
+        const tailLen = readLen - start;
+        if (!lineOverflow) {
+          if (lineBytes + tailLen <= MAX_FULL_LINE_BYTES) {
+            parts.push(Buffer.from(chunk.subarray(start, readLen)));
+            lineBytes += tailLen;
+          } else {
+            lineOverflow = true;
+            parts = [];
+          }
+        }
+      }
+    }
+    if (parts.length > 0 && needed.size > 0) flushLine();
+  } catch {
+    return content;
+  } finally {
+    try { closeSync(fd); } catch { /* ignore */ }
+  }
+  return lines.join('\n');
+}
+
 function readBoundedBuffer(root: string, path: string, max: number): Buffer {
   const canonical = contained(root, path), before = identity(canonical);
   const fd = openSync(canonical, 'r');
@@ -105,6 +256,55 @@ function readBoundedBuffer(root: string, path: string, max: number): Buffer {
   } finally {
     closeSync(fd);
   }
+}
+
+/** Classify only complete bounded heads; unknown or partial user records keep the session visible. */
+function codexSuggestionHead(head: string, size: number): boolean {
+  const lines = head.split('\n');
+  if (size > HEADER_BYTES || Buffer.byteLength(head, 'utf8') !== size || lines.slice(100).some(line => line.trim())) return false;
+  const messages: { role: string; content: string }[] = [];
+  let title: string | undefined;
+  for (const line of lines.slice(0, 100)) {
+    if (!line.trim()) continue;
+    try {
+      const row = JSON.parse(line) as Row;
+      if (!row || typeof row !== 'object' || Array.isArray(row)) return false;
+      const payload = row.payload as Row | undefined;
+      if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+        if (row.type === 'event_msg' || row.type === 'response_item') return false;
+        continue;
+      }
+      if (row.type === 'session_meta' && typeof payload.title === 'string') title = payload.title;
+      if (row.type === 'event_msg' && payload.type === 'user_message') {
+        if (typeof payload.message !== 'string' || !payload.message.trim()) return false;
+        messages.push({ role: 'user', content: payload.message });
+      } else if (row.type === 'response_item' && payload.type === 'message' && typeof payload.role !== 'string') return false;
+      else if (row.type === 'response_item' && payload.role === 'user') {
+        if (payload.type !== 'message' || !Array.isArray(payload.content) || !payload.content.length) return false;
+        const parts: string[] = [];
+        for (const item of payload.content) {
+          if (!item || typeof item !== 'object' || item.type !== 'input_text' || typeof item.text !== 'string') return false;
+          parts.push(item.text);
+        }
+        const content = parts.join('\n');
+        if (!content.trim()) return false;
+        messages.push({ role: 'user', content });
+      }
+    } catch { return false; }
+  }
+  return isCodexSuggestionOnlyMessages('codex', messages, title);
+}
+
+/** One optional reviewed configuration file; a missing file is distinct from an unsafe one. */
+function resumeSettings(root: string, name: string): { content: string; revision: string } | undefined {
+  const file = join(root, name);
+  try { lstatSync(file); } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined; throw error; }
+  const canonical = contained(root, file), before = statSync(canonical, { bigint: true });
+  if (!before.isFile() || before.size > BigInt(256 * 1024)) throw new Error('Unsupported native settings file.');
+  const content = readBounded(root, file, 256 * 1024), after = statSync(contained(root, file), { bigint: true });
+  const stamp = (info: typeof before) => [info.dev, info.ino, info.size, info.mtimeNs, info.ctimeNs].map(String);
+  if (JSON.stringify(stamp(before)) !== JSON.stringify(stamp(after))) throw new Error('Native settings changed during review.');
+  return { content, revision: digest(JSON.stringify([canonical, stamp(after), digest(content)])) };
 }
 
 /** Read top-level primitive fields of a JSON object without parsing nested message bodies. */
@@ -165,30 +365,52 @@ function sessionQuery(db: Database): { fields: string; id: string; order: string
 export interface NativeImportOptions {
   homeDirectory: string;
   env: Readonly<Record<string, string | undefined>>;
+  platform?: NodeJS.Platform;
   now?: () => number;
 }
 
 export interface NativePreview {
-  sessions: { candidateId: string; session: PortableSession; steps?: TranscriptStep[]; model?: string; context?: TranscriptContext }[];
+  sessions: { candidateId: string; session: PortableSession; steps?: TranscriptStep[]; model?: string; modelAt?: string; effort?: NativeParseResult['effort']; effortAt?: string; context?: TranscriptContext; userInput?: NativeParseResult['userInput']; runningTaskIds?: string[]; runningTaskCallIds?: string[] }[];
   diagnostics: ImportDiagnostic[];
 }
 
 /** Host-only reference pinned by a selected preview. Never accepted as a UI argument. */
 export interface NativeObservationRef { locationId: string; sourceId: string; nativeSessionId: string; path: string }
 
+/** Private source authority for an explicitly reviewed official CLI resume. */
+export interface NativeCliResumeSource {
+  family: 'codex' | 'claude' | 'gemini'; sourceId: string; nativeSessionId: string;
+  cwd: string; profilePath: string; fingerprint: string; revision: string;
+  /** Stable pairing authority; ordinary transcript appends only change revision. */
+  authorityRevision?: string;
+  credentialEnvironmentKeys?: string[];
+  resumeModel?: string; resumeModelSource?: 'profile' | 'project' | 'environment';
+}
+
+/** Private gateway authority resolved from one retained Hermes database reference. */
+export interface NativeHermesControlSource {
+  nativeSessionId: string;
+  cwd: string;
+  profile: string;
+  profileHome: string;
+  fingerprint: string;
+}
+
 /**
  * A transcript read for live observation: the conversation and its structured
  * activity, including the activity of its sub-agents (Claude Code subagent
  * files, Codex threads it spawned), and the lead's latest model.
  */
-export interface ObservedRead { session: PortableSession; steps: TranscriptStep[]; model?: string; context?: TranscriptContext }
+/** Host-only read evidence: internalEmpty requires supported input-only source steps;
+ * internalSuggestion is revision-pinned Codex evidence. False includes inconclusive reads. */
+export interface ObservedRead { internalEmpty?: boolean; internalSuggestion?: boolean; session: PortableSession; steps: TranscriptStep[]; model?: string; modelAt?: string; effort?: NativeParseResult['effort']; effortAt?: string; context?: TranscriptContext; userInput?: NativeParseResult['userInput']; activeTaskAt?: string; activeTaskCallIds?: string[] }
 
 /** A session whose source changed after `since`, found by automatic discovery. */
 export interface DiscoveredSession { reference: NativeObservationRef; updatedAt: number; projectPath?: string }
 
 interface DiscoveryCache {
   dirs: Map<string, { stamp: string; entries: { name: string; dir: boolean }[] }>;
-  files: Map<string, { mtime: number; ino: number; header?: { nativeSessionId: string; projectPath?: string; child?: boolean } }>;
+  files: Map<string, { mtime: number; ino: number; size?: number; header?: { nativeSessionId: string; projectPath?: string; child?: boolean; suggestionOnly?: boolean } }>;
   cursor: number;
   dbStamp?: string;
   dbFound?: { nativeSessionId: string; updatedAt: number }[];
@@ -200,6 +422,7 @@ export class NativeImportService {
   private readonly discoveryCaches = new Map<string, DiscoveryCache>();
   private readonly threadListings = new Map<string, DiscoveryCache>();
   private readonly threadHeaders = new Map<string, ThreadHeader>();
+  private readonly codexDirectories = new Map<string, { stamp: string; value?: { cwd: string; at: string; recent: boolean } }>();
   private readonly threadFileMemo = new Map<string, { at: number; files: string[] }>();
   private readonly subagentReads = new Map<string, { stamp: string; value: ParsedSubagent }>();
   private readonly lineCounts = new Map<string, { ino: number; position: number; lines: number }>();
@@ -227,30 +450,149 @@ export class NativeImportService {
       if (reference.sourceId !== 'codex' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(reference.nativeSessionId)) return undefined;
       const location = this.observationLocation(reference);
       if (location.kind !== 'codex') return undefined;
-      const file = contained(location.path, reference.path), info = statSync(file), header = this.codexHeader(location, file);
-      if (!info.isFile() || header?.id !== reference.nativeSessionId) return undefined;
+      const file = contained(location.path, reference.path), info = statSync(file, { bigint: true });
+      if (!info.isFile()) return undefined;
+      const fileIdentity = stableFileIdentity(file, info), header = this.codexHeader(location, file);
+      if (header?.id !== reference.nativeSessionId || header.fileIdentity !== fileIdentity) return undefined;
+      const currentFile = contained(location.path, reference.path), current = statSync(currentFile, { bigint: true });
+      if (!current.isFile() || stableFileIdentity(currentFile, current) !== fileIdentity) return undefined;
       return { codexHome: realpathSync(location.root), transcriptPath: file, sourceFingerprint: digest(JSON.stringify([file, String(info.dev), String(info.ino), header.id])) };
     } catch { return undefined; }
   }
 
+  /** A named profile and working directory must come from the selected database, never a label or default guess. */
+  hermesControlSource(reference: NativeObservationRef): NativeHermesControlSource | undefined {
+    try {
+      if (reference.sourceId !== 'hermes' || !reference.nativeSessionId || reference.nativeSessionId.length > 256 || /\p{Cc}/u.test(reference.nativeSessionId)) return undefined;
+      const location = this.observationLocation(reference);
+      if (location.kind !== 'hermes' || !location.profile || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(location.profile)) return undefined;
+      const file = contained(location.root, reference.path), before = statSync(file, { bigint: true });
+      if (!before.isFile()) return undefined;
+      const db = this.database(location);
+      let project: string | undefined;
+      try {
+        const query = sessionQuery(db), row = db.prepare(`SELECT ${query.fields} FROM sessions WHERE ${quoted(query.id)} = ?`).get(reference.nativeSessionId) as Row | undefined;
+        if (!row || row[query.id] !== reference.nativeSessionId) return undefined;
+        project = literalProjectPath(row.cwd) ?? literalProjectPath(row.project_path) ?? literalProjectPath(row.git_repo_root);
+      } finally { db.close(); }
+      if (!project || !isAbsolute(project) || /\p{Cc}/u.test(project)) return undefined;
+      const cwd = realpathSync(project), profileHome = realpathSync(dirname(file));
+      if (!statSync(cwd).isDirectory() || !statSync(profileHome).isDirectory()) return undefined;
+      const currentFile = contained(location.root, reference.path), after = statSync(currentFile, { bigint: true });
+      if (!after.isFile() || stableFileIdentity(currentFile, after) !== stableFileIdentity(file, before)) return undefined;
+      return { nativeSessionId: reference.nativeSessionId, cwd, profile: location.profile, profileHome,
+        fingerprint: digest(JSON.stringify([stableFileIdentity(file, before), reference.nativeSessionId, cwd, location.profile, profileHome])) };
+    } catch { return undefined; }
+  }
+
+  /** Resolve only a registered source's own existing transcript, profile and project. */
+  cliResumeSource(reference: NativeObservationRef): NativeCliResumeSource | undefined {
+    try {
+      const families = { codex: 'codex', 'claude-code': 'claude', 'gemini-cli': 'gemini' } as const;
+      if (!Object.hasOwn(families, reference.sourceId) || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(reference.nativeSessionId)) return undefined;
+      const family = families[reference.sourceId as keyof typeof families], location = this.observationLocation(reference);
+      if (location.kind !== family || family === 'codex' && relative(location.root, location.path) !== 'sessions') return undefined;
+      const file = contained(location.path, reference.path), before = statSync(file, { bigint: true });
+      if (!before.isFile()) return undefined;
+      const ref = this.fileRef(location, file, true);
+      if (ref.candidate.nativeSessionId !== reference.nativeSessionId || !ref.candidate.projectPath || !isAbsolute(ref.candidate.projectPath)) return undefined;
+      // A large omitted middle cannot authorize resuming in its origin folder; require current tail evidence.
+      if (family === 'codex' && ref.identity.size > LIVE_FULL_BYTES && !this.codexWorkingDirectory(location, file)?.recent) return undefined;
+      const cwd = realpathSync(ref.candidate.projectPath), profilePath = realpathSync(location.root);
+      if (!statSync(cwd).isDirectory() || !statSync(profilePath).isDirectory()) return undefined;
+      // Read only the selected provider's environment variable name; credentials remain in the parent environment.
+      let provider: string | undefined, credentialEnvironmentKeys: string[] | undefined, configurationRevision: string | undefined;
+      let resumeModel: string | undefined, resumeModelSource: NativeCliResumeSource['resumeModelSource'];
+      if (family === 'codex') {
+        const configPath = join(location.root, 'config.toml');
+        let present = true;
+        try { lstatSync(configPath); } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') present = false; else throw error; }
+        if (present) {
+          const configFile = contained(location.root, configPath), configInfo = statSync(configFile, { bigint: true });
+          if (!configInfo.isFile() || configInfo.size > BigInt(256 * 1024)) return undefined;
+          const configText = readBounded(location.root, configPath, 256 * 1024), config = parseToml(configText) as Record<string, unknown>;
+          const configAfter = statSync(contained(location.root, configPath), { bigint: true });
+          const configStamp = (info: typeof configInfo) => [info.dev, info.ino, info.size, info.mtimeNs, info.ctimeNs].map(String);
+          if (JSON.stringify(configStamp(configInfo)) !== JSON.stringify(configStamp(configAfter))) return undefined;
+          if (config.model_provider !== undefined && (typeof config.model_provider !== 'string' || !config.model_provider.trim() || config.model_provider.length > 200)) return undefined;
+          provider = config.model_provider as string | undefined;
+          if (provider && config.model_providers !== undefined) {
+            const providers = config.model_providers;
+            if (!providers || typeof providers !== 'object' || Array.isArray(providers)) return undefined;
+            const selected = Object.hasOwn(providers, provider) ? (providers as Record<string, unknown>)[provider] : undefined;
+            if (selected !== undefined) {
+              if (!selected || typeof selected !== 'object' || Array.isArray(selected)) return undefined;
+              const key = (selected as Record<string, unknown>).env_key;
+              if (key !== undefined) {
+                if (typeof key !== 'string' || !/^[A-Za-z_][A-Za-z0-9_]{0,127}$/.test(key)) return undefined;
+                credentialEnvironmentKeys = [key];
+              }
+            }
+          }
+          configurationRevision = digest(JSON.stringify([configFile, configStamp(configAfter), digest(configText)]));
+        }
+      } else {
+        const settings = resumeSettings(location.root, 'settings.json');
+        configurationRevision = settings?.revision;
+        if (family === 'claude') {
+          // Review only these explicit model sources; managed policy and native aliases remain native authority.
+          // Claude documents local > project > user; ANTHROPIC_MODEL overrides the model setting.
+          const modelValue = (value: unknown): string => {
+            if (typeof value !== 'string' || !value || value.length > 200 || /^[\s-]|\s$|[\p{Cc}]/u.test(value)) throw new Error('Unsupported configured model.');
+            return value;
+          };
+          const revisions: Array<[string, string | undefined]> = [];
+          const select = (scope: 'profile' | 'project', name: string, value: ReturnType<typeof resumeSettings>) => {
+            revisions.push([name, value?.revision]);
+            if (!value) return;
+            const row: unknown = JSON.parse(value.content);
+            if (!row || typeof row !== 'object' || Array.isArray(row)) throw new Error('Unsupported native settings object.');
+            const configured = row as Record<string, unknown>;
+            if (configured.model !== undefined) { resumeModel = modelValue(configured.model); resumeModelSource = scope; }
+          };
+          select('profile', 'profile', settings);
+          select('project', 'project', resumeSettings(cwd, join('.claude', 'settings.json')));
+          select('project', 'project-local', resumeSettings(cwd, join('.claude', 'settings.local.json')));
+          const environmentModel = this.options.env.ANTHROPIC_MODEL;
+          if (environmentModel !== undefined) { resumeModel = modelValue(environmentModel); resumeModelSource = 'environment'; }
+          const selectors = ['ANTHROPIC_MODEL', 'ANTHROPIC_DEFAULT_MODEL', 'ANTHROPIC_DEFAULT_SONNET_MODEL', 'ANTHROPIC_DEFAULT_OPUS_MODEL', 'ANTHROPIC_DEFAULT_HAIKU_MODEL', 'ANTHROPIC_DEFAULT_FABLE_MODEL']
+            .map(key => [key, this.options.env[key]]);
+          configurationRevision = digest(JSON.stringify([revisions, resumeModel, resumeModelSource, selectors]));
+        }
+      }
+      const headerHash = digest(readBounded(location.path, file, HEADER_BYTES)), after = statSync(contained(location.path, reference.path), { bigint: true });
+      const stamp = (info: typeof before) => [info.dev, info.ino, info.size, info.mtimeNs, info.ctimeNs].map(String);
+      if (JSON.stringify(stamp(before)) !== JSON.stringify(stamp(after))) return undefined;
+      const fingerprint = digest(JSON.stringify([file, String(before.dev), String(before.ino), reference.nativeSessionId, profilePath, cwd, provider, credentialEnvironmentKeys]));
+      return { family, sourceId: reference.sourceId, nativeSessionId: reference.nativeSessionId, cwd, profilePath, fingerprint,
+        revision: digest(JSON.stringify([stamp(after), headerHash, ref.candidate.projectPath, configurationRevision])),
+        authorityRevision: digest(JSON.stringify([fingerprint, configurationRevision])),
+        ...(credentialEnvironmentKeys ? { credentialEnvironmentKeys } : {}), ...(resumeModel ? { resumeModel, resumeModelSource } : {}) };
+    } catch { return undefined; }
+  }
+
   private knownLocations(): Location[] {
-    const { env, homeDirectory: home } = this.options;
+    const roots = resolveAgentLocations(this.options);
     const locations: Location[] = [];
     const add = (sourceId: Location['sourceId'], label: string, root: string, path: string, kind: Kind, format: string, profile?: string, note?: string) => {
+      const app = sourceId === 'claude-code' ? 'claude' : sourceId === 'gemini-cli' ? 'gemini'
+        : sourceId.startsWith('antigravity') ? 'antigravity' : sourceId === 'hermes' ? 'hermes' : 'codex';
+      const problem = roots.problems?.[app];
       let available = false;
-      try { contained(root, path); available = statSync(path).isDirectory() || (kind === 'hermes' && statSync(path).isFile()); } catch { /* missing or unsafe */ }
-      let supported = kind !== 'binary' && kind !== 'unavailable';
+      if (!problem) try { contained(root, path); available = statSync(path).isDirectory() || (kind === 'hermes' && statSync(path).isFile()); } catch { /* missing or unsafe */ }
+      let supported = !problem && kind !== 'binary' && kind !== 'unavailable';
       if (kind === 'hermes' && !this.sqlite) { supported = false; note = 'Reading Hermes history needs Node.js 22.13 or newer.'; }
-      locations.push({ id: `loc-${digest(`${sourceId}:${profile ?? ''}:${path}`).slice(0, 20)}`, sourceId, label, root, path, kind, format, available, supported, ...(profile ? { profile } : {}), ...(note ? { note } : {}) });
+      locations.push({ id: `loc-${digest(`${sourceId}:${profile ?? ''}:${path}`).slice(0, 20)}`, sourceId, label, root, path, kind: problem ? 'unavailable' : kind, format, available, supported, ...(profile ? { profile } : {}), ...((problem ?? note) ? { note: problem ?? note } : {}) });
     };
-    const codex = env.CODEX_HOME || join(home, '.codex');
+    const codex = roots.codexHome;
     add('codex', 'Codex', codex, join(codex, 'sessions'), 'codex', 'JSONL');
     add('codex', 'Codex (archived)', codex, join(codex, 'archived_sessions'), 'codex', 'JSONL');
-    const claude = env.CLAUDE_CONFIG_DIR || join(home, '.claude');
+    const claude = roots.claudeHome;
     add('claude-code', 'Claude Code', claude, join(claude, 'projects'), 'claude', 'JSONL');
-    const hermes = env.HERMES_HOME || join(home, '.hermes');
-    add('hermes', 'Hermes Agent', hermes, join(hermes, 'state.db'), 'hermes', 'SQLite', 'default');
-    try {
+    const hermes = roots.hermes.selectedHome;
+    add('hermes', 'Hermes Agent', hermes, join(hermes, 'state.db'), 'hermes', 'SQLite', roots.hermes.namedProfile ?? 'default');
+    // An explicit named profile selects that profile only, never its siblings.
+    if (!roots.problems?.hermes && !roots.hermes.namedProfile) try {
       const profiles = join(hermes, 'profiles');
       contained(hermes, profiles);
       for (const entry of readdirSync(profiles, { withFileTypes: true }).slice(0, 100)) {
@@ -260,11 +602,11 @@ export class NativeImportService {
         add('hermes', 'Hermes Agent', hermes, join(profileRoot, 'state.db'), 'hermes', 'SQLite', entry.name);
       }
     } catch { /* no profiles */ }
-    const gemini = join(home, '.gemini');
+    const gemini = roots.geminiHome;
     add('gemini-cli', 'Gemini CLI', gemini, join(gemini, 'tmp'), 'gemini', 'JSON / JSONL');
-    const sandbox = join(home, '.cache', '.gemini');
-    if (existsSync(join(sandbox, 'tmp'))) add('gemini-cli', 'Gemini CLI (sandbox)', sandbox, join(sandbox, 'tmp'), 'gemini', 'JSON / JSONL');
-    const antigravity = join(gemini, 'antigravity');
+    const sandbox = roots.geminiSandboxHome;
+    if (!roots.problems?.gemini && existsSync(join(sandbox, 'tmp'))) add('gemini-cli', 'Gemini CLI (sandbox)', sandbox, join(sandbox, 'tmp'), 'gemini', 'JSON / JSONL');
+    const antigravity = roots.antigravityHome;
     add('antigravity', 'Antigravity', antigravity, join(antigravity, 'brain'), 'antigravity', 'JSONL');
     add('antigravity-ide', 'Antigravity IDE', antigravity, join(antigravity, 'conversations'), 'binary', 'Protocol Buffers', undefined, 'Conversations are detected, but this version cannot read their binary format.');
     locations.push({ id: 'loc-antigravity-cli', sourceId: 'antigravity-cli', label: 'Antigravity CLI', root: '', path: '', kind: 'unavailable', available: false, supported: false, format: 'Unknown', note: 'No verified history format or location is known yet.' });
@@ -282,7 +624,7 @@ export class NativeImportService {
     const latest = new Map<string, Ref>();
     const collect = (ref: Ref) => {
       // Codex sub-agent threads belong to the session that spawned them.
-      if (ref.spawn) return;
+      if (ref.spawn || ref.suggestionOnly) return;
       const key = `${ref.location.sourceId}:${ref.location.profile ?? ''}:${ref.candidate.nativeSessionId}`;
       const previous = latest.get(key);
       if (!previous || Date.parse(ref.candidate.updatedAt) > Date.parse(previous.candidate.updatedAt)) latest.set(key, ref);
@@ -388,13 +730,14 @@ export class NativeImportService {
     }
   }
 
-  private fileRef(location: Location, path: string): Ref {
+  private fileRef(location: Location, path: string, currentDirectory = false): Ref {
     contained(location.root, location.path);
     const canonical = contained(location.path, path), fileIdentity = identity(canonical);
     const large = fileIdentity.size > MAX_FILE_BYTES;
-    let meta: Row = {}, spawn: CodexThreadSpawn | undefined;
+    let meta: Row = {}, spawn: CodexThreadSpawn | undefined, suggestionOnly = false;
     if (location.kind !== 'binary') {
       const head = readBounded(location.path, path, HEADER_BYTES);
+      if (location.kind === 'codex') suggestionOnly = codexSuggestionHead(head, fileIdentity.size);
       if (location.kind === 'gemini' && path.endsWith('.json')) meta = jsonHeader(head);
       else {
         for (const line of head.split('\n').slice(0, 100)) {
@@ -427,18 +770,20 @@ export class NativeImportService {
     const antigravityId = location.kind === 'antigravity' ? basename(join(path, '..', '..', '..')) : undefined;
     // A Codex sub-agent thread names its root in `session_id`; its own id is the thread id.
     const nativeSessionId = (location.kind === 'codex' ? text(meta.id) : antigravityId) ?? text(meta.sessionId) ?? text(meta.session_id) ?? text(meta.id) ?? basename(path).replace(/\.(jsonl?|pb)$/, '');
-    const rawProject = text(meta.cwd) ?? text(meta.projectPath) ?? (location.kind === 'gemini' ? this.geminiProject(location, path) : undefined);
+    // Cold discovery stays header-only. Selected reads fill a revision-pinned metadata cache for later scans.
+    const rawProject = (location.kind === 'codex' ? this.codexWorkingDirectory(location, path, currentDirectory)?.cwd : undefined)
+      ?? literalProjectPath(meta.cwd) ?? literalProjectPath(meta.projectPath) ?? (location.kind === 'gemini' ? this.geminiProject(location, path) : undefined);
     const mutableTime = location.kind === 'gemini' ? Date.parse(isoDate(meta.lastUpdated, fileIdentity.mtime)) : fileIdentity.mtime;
     const candidate: ImportCandidate = {
       id: randomUUID(), sourceId: location.sourceId, locationId: location.id, sourceName: location.label, nativeSessionId,
       title: safeLabel(text(meta.title) ?? text(meta.summary) ?? `${location.label} · ${nativeSessionId.slice(0, 24)}`, 160),
       updatedAt: new Date(Math.max(fileIdentity.mtime, mutableTime)).toISOString(), format: location.format, supported: location.supported,
       ...(location.profile ? { profile: location.profile } : {}),
-      ...(rawProject ? { projectPath: safeText(rawProject, 2000) } : {}),
+      ...(rawProject ? { projectPath: rawProject } : {}),
       ...(location.note || large ? { note: large ? 'Larger than 25 MB: its latest activity can be observed, but it cannot be imported.' : location.note } : {}),
     };
     if (!same(fileIdentity, identity(contained(location.path, path)))) throw new Error('The session changed during the scan; scan again.');
-    return { location, path, candidate, identity: fileIdentity, titled: Boolean(text(meta.title) ?? text(meta.summary)), ...(spawn ? { spawn } : {}) };
+    return { location, path, candidate, identity: fileIdentity, titled: Boolean(text(meta.title) ?? text(meta.summary)), ...(spawn ? { spawn } : {}), ...(suggestionOnly ? { suggestionOnly } : {}) };
   }
 
   /** Gemini stores sessions by project hash; only verified markers map them to a folder. */
@@ -447,19 +792,21 @@ export class NativeImportService {
     try {
       const marker = join(projectFolder, '.project_root');
       if (identity(contained(location.root, marker)).size <= 8192) {
-        const project = readBounded(location.root, marker, 8192).trim();
-        if (isAbsolute(project)) return project;
+        const project = literalProjectPath(readBounded(location.root, marker, 8192).replace(/\r?\n$/, ''));
+        if (project && isAbsolute(project)) return project;
       }
     } catch { /* optional */ }
     const folderId = basename(projectFolder);
-    for (const root of [location.root, join(this.options.homeDirectory, '.gemini')]) {
+    const roots = resolveAgentLocations(this.options);
+    for (const root of [location.root, ...(!roots.problems?.gemini ? [roots.geminiHome] : [])]) {
       try {
         const registryPath = join(root, 'projects.json');
         if (identity(contained(root, registryPath)).size > 1024 * 1024) continue;
         const registry = JSON.parse(readBounded(root, registryPath, 1024 * 1024)) as Row;
         if (!registry.projects || typeof registry.projects !== 'object' || Array.isArray(registry.projects)) continue;
         for (const [project, slug] of Object.entries(registry.projects as Row)) {
-          if (isAbsolute(project) && (slug === folderId || digest(project) === folderId)) return project;
+          const literal = literalProjectPath(project);
+          if (literal && isAbsolute(literal) && (slug === folderId || digest(literal) === folderId)) return literal;
         }
       } catch { /* a hash alone never becomes a path */ }
     }
@@ -486,7 +833,7 @@ export class NativeImportService {
         const nativeSessionId = text(row[query.id]);
         if (!nativeSessionId) { diagnostic(location, 'Ignored a Hermes session without an id.'); continue; }
         const fileIdentity = identity(contained(location.root, location.path));
-        const project = text(row.cwd) ?? text(row.project_path) ?? text(row.git_repo_root);
+        const project = literalProjectPath(row.cwd) ?? literalProjectPath(row.project_path) ?? literalProjectPath(row.git_repo_root);
         yield {
           location, path: location.path, identity: fileIdentity, titled: Boolean(text(row.title)), rowFingerprint: digest(JSON.stringify(row)),
           candidate: {
@@ -507,6 +854,7 @@ export class NativeImportService {
   observation(scanId: string, candidateId: string): { reference: NativeObservationRef } & ObservedRead {
     this.threadFileMemo.clear();
     const picked = this.snapshots.get(scanId)?.refs.get(candidateId);
+    if (picked?.location.kind === 'codex' && this.fileRef(picked.location, picked.path).suggestionOnly) throw new Error('This app-generated suggestion session cannot be observed.');
     if (picked?.spawn) {
       // Observing a Codex sub-agent thread observes the session that spawned it.
       const root = this.codexRoot(picked.location, picked.path);
@@ -663,18 +1011,20 @@ export class NativeImportService {
         const info = statSync(path);
         if (!info.isFile()) { cache.files.delete(path); continue; }
         const previous = cache.files.get(path), ino = Number(info.ino);
-        cache.files.set(path, { mtime: info.mtimeMs, ino, ...(previous?.ino === ino && previous.header ? { header: previous.header } : {}) });
+        const stableHeader = previous?.ino === ino && (location.kind !== 'codex' || previous.mtime === info.mtimeMs && previous.size === info.size);
+        cache.files.set(path, { mtime: info.mtimeMs, ino, size: info.size, ...(stableHeader && previous?.header ? { header: previous.header } : {}) });
       } catch { cache.files.delete(path); }
     }
-    const recent = [...cache.files.entries()].filter(([, seen]) => seen.mtime > since).sort((a, b) => b[1].mtime - a[1].mtime).slice(0, limit);
+    const recent = [...cache.files.entries()].filter(([, seen]) => seen.mtime > since).sort((a, b) => b[1].mtime - a[1].mtime).slice(0, location.kind === 'codex' ? MAX_CANDIDATES : limit);
     const result = new Map<string, DiscoveredSession>();
     for (const [path, seen] of recent) {
       if (!seen.header) {
         try {
           const ref = this.fileRef(location, path);
-          seen.header = { nativeSessionId: ref.candidate.nativeSessionId, ...(ref.candidate.projectPath ? { projectPath: ref.candidate.projectPath } : {}), ...(ref.spawn ? { child: true } : {}) };
+          seen.header = { nativeSessionId: ref.candidate.nativeSessionId, ...(ref.candidate.projectPath ? { projectPath: ref.candidate.projectPath } : {}), ...(ref.spawn ? { child: true } : {}), ...(ref.suggestionOnly ? { suggestionOnly: true } : {}) };
         } catch { continue; }
       }
+      if (seen.header.suggestionOnly) continue;
       let reference: NativeObservationRef = { locationId: location.id, sourceId: location.sourceId, nativeSessionId: seen.header.nativeSessionId, path };
       let projectPath = seen.header.projectPath;
       if (seen.header.child) {
@@ -682,12 +1032,15 @@ export class NativeImportService {
         const root = this.codexRoot(location, path);
         if (!root) continue;
         reference = { ...reference, nativeSessionId: root.id, path: root.path };
-        projectPath = this.codexHeader(location, root.path)?.cwd ?? projectPath;
+        const rootRef = this.fileRef(location, root.path);
+        if (rootRef.suggestionOnly) continue;
+        projectPath = rootRef.candidate.projectPath ?? projectPath;
       }
       const key = reference.nativeSessionId, previous = result.get(key);
       if (!previous || previous.updatedAt < seen.mtime) result.set(key, { reference, updatedAt: Math.max(seen.mtime, previous?.updatedAt ?? 0), ...(projectPath ? { projectPath } : {}) });
+      if (result.size >= limit) break;
     }
-    return [...result.values()];
+    return [...result.values()].slice(0, limit);
   }
 
   private discoverHermes(location: Location, cache: DiscoveryCache, since: number, limit: number): DiscoveredSession[] {
@@ -743,7 +1096,7 @@ export class NativeImportService {
       return [canonical, info.dev, info.ino, info.size, info.mtimeNs, info.ctimeNs].map(String);
     };
     const stamps = [stamp(reference.path)];
-    if (location.kind === 'claude' || location.kind === 'codex') {
+    if (location.kind === 'claude' || location.kind === 'codex' || location.kind === 'antigravity') {
       for (const path of this.relatedFiles(location, reference)) { try { stamps.push(stamp(path)); } catch { /* removed meanwhile */ } }
     }
     if (location.kind === 'hermes') for (const suffix of ['-wal', '-journal', '-shm']) {
@@ -766,7 +1119,7 @@ export class NativeImportService {
         const row = db.prepare(`SELECT ${query.fields} FROM sessions WHERE ${quoted(query.id)} = ?`).get(reference.nativeSessionId) as Row | undefined;
         if (!row) throw new Error('The selected native session no longer exists.');
         const info = identity(contained(location.root, location.path));
-        const project = text(row.cwd) ?? text(row.project_path) ?? text(row.git_repo_root);
+        const project = literalProjectPath(row.cwd) ?? literalProjectPath(row.project_path) ?? literalProjectPath(row.git_repo_root);
         ref = { location, path: location.path, identity: info, titled: Boolean(text(row.title)), rowFingerprint: digest(JSON.stringify(row)),
           candidate: { id: randomUUID(), sourceId: location.sourceId, locationId: location.id, sourceName: location.label,
             nativeSessionId: reference.nativeSessionId, title: safeLabel(text(row.title) ?? `${location.label} · ${reference.nativeSessionId.slice(0, 24)}`, 160),
@@ -774,7 +1127,7 @@ export class NativeImportService {
             ...(project ? { projectPath: safeText(project, 2000) } : {}), ...(location.profile ? { profile: location.profile } : {}) } };
       } finally { db.close(); }
     } else {
-      ref = this.fileRef(location, reference.path);
+      ref = this.fileRef(location, reference.path, true);
       if (ref.candidate.nativeSessionId !== reference.nativeSessionId) throw new Error('The source file now belongs to another session.');
     }
     const scanId = randomUUID();
@@ -805,6 +1158,7 @@ export class NativeImportService {
         const context = {
           sourceId: ref.location.sourceId as NativeSourceId, nativeSessionId: ref.candidate.nativeSessionId,
           exportedAt: new Date(this.now()).toISOString(), importMode: mode,
+          ...(ref.location.kind === 'hermes' && withSteps && mode === 'linked' ? { allowEmptySession: true } : {}),
           ...(ref.titled ? { title: ref.candidate.title } : {}),
           ...((custom => custom ? { customTitle: custom } : {})(this.customTitle(ref))),
           ...(ref.location.profile ? { profile: ref.location.profile } : {}),
@@ -829,7 +1183,7 @@ export class NativeImportService {
             if (before.size > MAX_FILE_BYTES) throw new Error('The session is larger than the 25 MB read limit.');
             const content = readBounded(ref.location.path, ref.path, MAX_FILE_BYTES);
             if (!same(before, identity(contained(ref.location.path, ref.path)))) throw new Error('The session changed while reading; scan again.');
-            parsed = ref.location.kind === 'codex' ? parseCodex(content, context) : ref.location.kind === 'claude' ? parseClaude(content, context) : ref.location.kind === 'antigravity' ? parseAntigravity(content, context) : parseGemini(content, context);
+            parsed = ref.location.kind === 'codex' ? parseCodex(content, context) : ref.location.kind === 'claude' ? parseClaude(content, context) : ref.location.kind === 'antigravity' ? parseAntigravity(hydrateAntigravityTranscript(ref.location.path, ref.path, content), context) : parseGemini(content, context);
           }
         }
         for (const message of parsed.diagnostics) add(message);
@@ -837,7 +1191,7 @@ export class NativeImportService {
           const length = Buffer.byteLength(JSON.stringify(parsed.session));
           if (bytes + length > MAX_PREVIEW_BYTES) { add('The preview is larger than 10 MB; select fewer sessions.'); continue; }
           bytes += length;
-          result.sessions.push({ candidateId: id, session: parsed.session, ...(withSteps && parsed.steps ? { steps: parsed.steps } : {}), ...(withSteps && parsed.model ? { model: parsed.model } : {}), ...(withSteps && parsed.context ? { context: parsed.context } : {}) });
+          result.sessions.push({ candidateId: id, session: parsed.session, ...(withSteps && parsed.steps ? { steps: parsed.steps } : {}), ...(withSteps && parsed.model ? { model: parsed.model } : {}), ...(withSteps && parsed.modelAt ? { modelAt: parsed.modelAt } : {}), ...(withSteps && parsed.effort ? { effort: parsed.effort } : {}), ...(withSteps && parsed.effortAt ? { effortAt: parsed.effortAt } : {}), ...(withSteps && parsed.context ? { context: parsed.context } : {}), ...(withSteps && parsed.userInput ? { userInput: parsed.userInput } : {}), ...(withSteps && parsed.runningTaskIds?.length ? { runningTaskIds: parsed.runningTaskIds } : {}), ...(withSteps && parsed.runningTaskCallIds?.length ? { runningTaskCallIds: parsed.runningTaskCallIds } : {}) });
         }
       } catch (error) {
         add(error instanceof Error ? error.message : 'Unable to read this session.');
@@ -878,7 +1232,7 @@ export class NativeImportService {
     });
     number(head, 0);
     if (tail) number(tail, tailBase);
-    const parse = (text: string, extra: Partial<ParseContext> = {}) => location.kind === 'codex' ? parseCodex(text, { ...context, ...extra }) : location.kind === 'antigravity' ? parseAntigravity(text, { ...context, ...extra }) : parseClaude(text, { ...context, ...extra });
+    const parse = (text: string, extra: Partial<ParseContext> = {}) => location.kind === 'codex' ? parseCodex(text, { ...context, ...extra }) : location.kind === 'antigravity' ? parseAntigravity(hydrateAntigravityTranscript(location.path, path, text), { ...context, ...extra }) : parseClaude(text, { ...context, ...extra });
     const headTitle = titleFromHead && !context.title ? parse(head).session?.title : undefined;
     const parsed = parse(head + tail, headTitle ? { title: headTitle } : {});
     for (const step of parsed.steps ?? []) step.pos = step.pos.replace(/^(L|A:\d+:)(\d+)/, (match, prefix: string, index: string) => numbers[Number(index)] !== undefined ? `${prefix}${numbers[Number(index)]}` : match);
@@ -903,11 +1257,46 @@ export class NativeImportService {
   }
 
   /** A live read: the lead's steps merged with its sub-agents' steps (a failing sub-agent read never hides the lead). */
-  private observedRead(ref: Ref, entry: { session: PortableSession; steps?: TranscriptStep[]; model?: string; context?: TranscriptContext }): ObservedRead {
+  private observedRead(ref: Ref, entry: { session: PortableSession; steps?: TranscriptStep[]; model?: string; modelAt?: string; effort?: NativeParseResult['effort']; effortAt?: string; context?: TranscriptContext; userInput?: NativeParseResult['userInput']; runningTaskIds?: string[]; runningTaskCallIds?: string[] }): ObservedRead {
     const steps = entry.steps ?? [];
     let subagents: SubagentTranscript[];
     try { subagents = this.subagents(ref, steps, entry.session.startedAt); } catch { subagents = []; }
-    return { session: entry.session, steps: subagents.length ? mergeSubagentSteps(steps, subagents) : steps, ...(entry.model ? { model: entry.model } : {}), ...(entry.context ? { context: entry.context } : {}) };
+    const observedSteps = subagents.length ? mergeSubagentSteps(steps, subagents) : steps;
+    // A successful bounded parse can positively identify input that never became work:
+    // injected context, Claude meta/echo rows, or an empty prompt. Unknown step formats,
+    // assistant/tool output, attachments, errors and active child work remain visible.
+    const internalEmpty = ref.identity.size <= LIVE_FULL_BYTES
+      && entry.steps !== undefined && entry.session.messages.length > 0
+      && entry.session.messages.every(message => message.role === 'user')
+      && observedSteps.every(step => step.type === 'turn.end' || step.type === 'prompt'
+        && !step.attachments?.length && (!step.text.trim() || isInjectedContext(step.text)));
+    const activeTaskAt = this.antigravityActiveTaskAt(ref, entry.runningTaskIds);
+    const activeTaskCallIds = entry.runningTaskCallIds?.length ? entry.runningTaskCallIds : undefined;
+    return { internalEmpty, ...(ref.location.kind === 'codex' ? { internalSuggestion: ref.suggestionOnly === true } : {}), session: entry.session, steps: observedSteps, ...(entry.model ? { model: entry.model } : {}), ...(entry.modelAt ? { modelAt: entry.modelAt } : {}), ...(entry.effort ? { effort: entry.effort } : {}), ...(entry.effortAt ? { effortAt: entry.effortAt } : {}), ...(entry.context ? { context: entry.context } : {}), ...(entry.userInput ? { userInput: entry.userInput } : {}), ...(activeTaskAt ? { activeTaskAt } : {}), ...(activeTaskCallIds ? { activeTaskCallIds } : {}) };
+  }
+
+  private antigravityTasksFolder(transcriptPath: string): string | undefined {
+    const logsDir = dirname(transcriptPath);
+    return basename(logsDir) === 'logs' ? join(dirname(logsDir), 'tasks') : undefined;
+  }
+
+  private antigravityActiveTaskAt(ref: Ref, runningTaskIds: readonly string[] | undefined): string | undefined {
+    if (ref.location.kind !== 'antigravity' || !runningTaskIds?.length) return undefined;
+    const tasksDir = this.antigravityTasksFolder(ref.path);
+    if (!tasksDir || !existsSync(tasksDir)) return undefined;
+    try { contained(ref.location.path, tasksDir); } catch { return undefined; }
+    let latestMs = 0;
+    for (const taskId of runningTaskIds.slice(0, 50)) {
+      if (!/^task-\d+$/.test(taskId)) continue;
+      const logPath = join(tasksDir, `${taskId}.log`);
+      if (!existsSync(logPath)) continue;
+      try {
+        const canonical = contained(ref.location.path, logPath);
+        const info = statSync(canonical);
+        if (info.isFile() && info.mtimeMs > latestMs) latestMs = info.mtimeMs;
+      } catch { /* removed or unreadable meanwhile */ }
+    }
+    return latestMs > 0 ? new Date(latestMs).toISOString() : undefined;
   }
 
   /** Claude Code keeps a session's extras in a folder named after it: `<project>/<sessionId>/`. */
@@ -934,6 +1323,24 @@ export class NativeImportService {
       const files = this.codexDescendants(location, root.id, this.rolloutStart(reference.path, root)).map(item => item.path);
       const index = join(location.root, 'session_index.jsonl');
       if (existsSync(index)) files.push(index);
+      return files;
+    }
+    if (location.kind === 'antigravity') {
+      const files: string[] = [];
+      const full = join(dirname(reference.path), 'transcript_full.jsonl');
+      if (existsSync(full)) files.push(full);
+      const tasksDir = this.antigravityTasksFolder(reference.path);
+      if (tasksDir && existsSync(tasksDir)) {
+        try {
+          contained(location.path, tasksDir);
+          const taskLogs = readdirSync(tasksDir)
+            .map(name => ({ name, match: /^task-(\d+)\.log$/.exec(name) }))
+            .filter((entry): entry is { name: string; match: RegExpExecArray } => entry.match !== null)
+            .sort((a, b) => Number(b.match[1]) - Number(a.match[1]))
+            .slice(0, MAX_SUBAGENTS * 4);
+          for (const entry of taskLogs) files.push(join(tasksDir, entry.name));
+        } catch { /* outside history root */ }
+      }
       return files;
     }
     return [];
@@ -972,17 +1379,58 @@ export class NativeImportService {
   }
 
   /** The first record of a Codex rollout, read once per file (it never changes after it is written). */
+  /** Latest visible dated folder metadata in bounded windows, cached until the physical transcript changes. */
+  private codexWorkingDirectory(location: Location, path: string, readCurrent = true): { cwd: string; at: string; recent: boolean } | undefined {
+    const canonical = contained(location.path, path), before = statSync(canonical, { bigint: true });
+    if (!before.isFile() || before.size > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error('Unsupported native transcript.');
+    const stamp = (info: typeof before) => [info.dev, info.ino, info.size, info.mtimeNs, info.ctimeNs].map(String).join(':');
+    const key = stamp(before), cached = this.codexDirectories.get(canonical);
+    if (cached?.stamp === key) return cached.value;
+    if (!readCurrent) return undefined;
+    const fd = openSync(canonical, 'r');
+    const windows: Array<{ content: string; recent: boolean }> = [];
+    try {
+      if (stamp(fstatSync(fd, { bigint: true })) !== key) throw new Error('The source changed during metadata review.');
+      const size = Number(before.size);
+      const read = (position: number, bytes: number) => { const buffer = Buffer.alloc(bytes); return buffer.subarray(0, readSync(fd, buffer, 0, bytes, position)); };
+      if (size <= LIVE_FULL_BYTES) windows.push({ content: read(0, size).toString('utf8'), recent: true });
+      else {
+        // Match live parsing coverage without counting or reading the omitted middle of a growing rollout.
+        const head = read(0, LIVE_HEAD_BYTES), tail = read(size - LIVE_TAIL_BYTES, LIVE_TAIL_BYTES);
+        windows.push({ content: head.subarray(0, head.lastIndexOf(0x0a) + 1).toString('utf8'), recent: false },
+          { content: tail.subarray(tail.indexOf(0x0a) < 0 ? tail.length : tail.indexOf(0x0a) + 1).toString('utf8'), recent: true });
+      }
+      if (stamp(fstatSync(fd, { bigint: true })) !== key || stamp(statSync(contained(location.path, path), { bigint: true })) !== key) throw new Error('The source changed during metadata review.');
+    } finally { closeSync(fd); }
+    let value: { cwd: string; at: string; recent: boolean } | undefined;
+    for (const window of windows) for (const line of window.content.split('\n')) {
+      if (!line.includes('turn_context')) continue;
+      try {
+        if (jsonHeader(line, 0, []).type !== 'turn_context') continue;
+        const candidate = codexTurnWorkingDirectory(JSON.parse(line) as unknown);
+        if (candidate && (!value || candidate.at >= value.at)) value = { ...candidate, recent: window.recent };
+      } catch { /* A partial or malformed record never grants current-folder authority. */ }
+    }
+    this.codexDirectories.delete(canonical); this.codexDirectories.set(canonical, { stamp: key, ...(value ? { value } : {}) });
+    while (this.codexDirectories.size > MAX_CANDIDATES) this.codexDirectories.delete(this.codexDirectories.keys().next().value!);
+    return value;
+  }
+
   private codexHeader(location: Location, path: string): ThreadHeader | undefined {
     try {
-      const canonical = contained(location.path, path), info = statSync(canonical);
+      const canonical = contained(location.path, path), info = statSync(canonical, { bigint: true });
       if (!info.isFile()) return undefined;
-      const ino = Number(info.ino), cached = this.threadHeaders.get(path);
-      if (cached?.ino === ino) return cached;
+      const fileIdentity = stableFileIdentity(canonical, info), cached = this.threadHeaders.get(path);
+      if (cached?.fileIdentity === fileIdentity) return cached;
       const fd = openSync(canonical, 'r');
       let head: string;
       try {
-        const bytes = Buffer.alloc(Math.min(info.size, HEADER_BYTES));
+        const opened = fstatSync(fd, { bigint: true });
+        if (!opened.isFile() || stableFileIdentity(canonical, opened) !== fileIdentity) return undefined;
+        const bytes = Buffer.alloc(Number(opened.size < BigInt(HEADER_BYTES) ? opened.size : BigInt(HEADER_BYTES)));
         head = bytes.subarray(0, readSync(fd, bytes, 0, bytes.length, 0)).toString('utf8');
+        const currentFile = contained(location.path, path), current = statSync(currentFile, { bigint: true });
+        if (!current.isFile() || stableFileIdentity(currentFile, current) !== fileIdentity) return undefined;
       } finally { closeSync(fd); }
       const end = head.indexOf('\n');
       if (end < 0) return undefined;
@@ -990,8 +1438,8 @@ export class NativeImportService {
       const payload = (row?.payload && typeof row.payload === 'object' ? row.payload : {}) as Row;
       const id = text(payload.id);
       if (row?.type !== 'session_meta' || !id) return undefined;
-      const spawn = codexThreadSpawn(payload), cwd = text(payload.cwd), startMs = Date.parse(String(payload.timestamp ?? row.timestamp ?? ''));
-      const header: ThreadHeader = { ino, id: safeLabel(id, 200), ...(spawn ? { spawn } : {}), ...(cwd ? { cwd: safeText(cwd, 2000) } : {}), ...(Number.isFinite(startMs) ? { startMs } : {}) };
+      const spawn = codexThreadSpawn(payload), cwd = literalProjectPath(payload.cwd), startMs = Date.parse(String(payload.timestamp ?? row.timestamp ?? ''));
+      const header: ThreadHeader = { fileIdentity, id: safeLabel(id, 200), ...(spawn ? { spawn } : {}), ...(cwd ? { cwd: safeText(cwd, 2000) } : {}), ...(Number.isFinite(startMs) ? { startMs } : {}) };
       this.threadHeaders.set(path, header);
       if (this.threadHeaders.size > MAX_FILES) this.threadHeaders.delete(this.threadHeaders.keys().next().value!);
       return header;

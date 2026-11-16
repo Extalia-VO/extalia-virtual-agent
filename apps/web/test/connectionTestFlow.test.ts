@@ -7,6 +7,41 @@ import { connectionTestTarget, currentConnectionTest, finishConnectionTest, type
 import { TEST_MODEL_PLACEHOLDER, draftFromPreset, toConnectionTestInput } from '../src/setup/validation';
 
 describe('test-first connection setup', () => {
+  it.each(['en', 'id'] as const)('links connection validation errors to the affected controls (%s)', language => {
+    const t = MESSAGES[language];
+    const draft = draftFromPreset('openai');
+    const render = (showAllErrors: boolean) => renderToStaticMarkup(createElement(ConnectionForm, {
+      t, draft: { ...draft, name: '', orchestration: { ...draft.orchestration, maxDelegations: '21' } },
+      agents: {} as never, onChange: () => undefined, showAllErrors,
+    }));
+    expect(render(false).match(/<input[^>]+id="[^"]+-name"[^>]*>/)?.[0]).not.toContain('aria-describedby');
+    const html = render(true);
+    for (const field of ['name', 'model', 'maxDelegations']) {
+      const control = html.match(new RegExp(`<(?:input|button)[^>]+id="[^"]+-${field}"[^>]*>`))?.[0];
+      expect(control).toContain('aria-invalid="true"');
+      expect(control).toMatch(new RegExp(`aria-describedby="[^"]*-${field}-error`));
+    }
+  });
+
+  it('keeps credentials and endpoint identifiers out of browser text correction', () => {
+    const t = MESSAGES.en;
+    const render = (credentialMode: 'key' | 'env') => renderToStaticMarkup(createElement(ConnectionForm, {
+      t, draft: { ...draftFromPreset('openai'), credentialMode }, agents: {} as never, onChange: () => undefined,
+    }));
+    const keyHtml = render('key');
+    const key = keyHtml.match(/<input[^>]+id="[^"]+-apiKey"[^>]*>/)?.[0];
+    expect(key).toContain('type="password"');
+    expect(key).toContain('autoComplete="new-password"');
+    const endpoint = keyHtml.match(/<input[^>]+id="[^"]+-baseUrl"[^>]*>/)?.[0];
+    const env = render('env').match(/<input[^>]+id="[^"]+-envVariable"[^>]*>/)?.[0];
+    for (const control of [key, endpoint, env]) {
+      expect(control).toContain('autoCapitalize="off"');
+      expect(control).toContain('autoCorrect="off"');
+      expect(control).toContain('spellCheck="false"');
+    }
+    expect(env).toContain('maxLength="128"');
+  });
+
   it.each(['en', 'id'] as const)('offers an accessible, default-off cache switch only for the official Anthropic endpoint (%s)', language => {
     const t = MESSAGES[language];
     const render = (draft: ReturnType<typeof draftFromPreset>) => renderToStaticMarkup(createElement(ConnectionForm, {
@@ -38,6 +73,19 @@ describe('test-first connection setup', () => {
     expect(render('50000')).toMatch(/<input[^>]*type="number"[^>]*value="50000"/);
     expect(render('1')).toContain(t.connection.errors.inputTokenLimitInvalid);
     expect(render('1')).toMatch(/<input[^>]*type="number"[^>]*aria-invalid="true"/);
+  });
+
+  it.each(['en', 'id'] as const)('shows the explicit Caveman executable setting and validation (%s)', language => {
+    const t = MESSAGES[language];
+    const render = (mode: 'local' | 'caveman' | 'off') => renderToStaticMarkup(createElement(ConnectionForm, {
+      t, draft: { ...draftFromPreset('ollama'), contextOptimization: mode }, agents: {} as never, onChange: () => undefined, showAllErrors: true,
+    }));
+    expect(render('local')).toContain(t.connection.contextOptimization);
+    expect(render('local')).not.toContain(t.connection.cavemanExecutable);
+    expect(render('off')).not.toContain(t.connection.cavemanExecutable);
+    expect(render('caveman')).toContain(t.connection.cavemanExecutable);
+    expect(render('caveman')).toContain(t.connection.errors.cavemanExecutableInvalid);
+    expect(render('caveman')).toMatch(/<input[^>]*id="[^"]*-cavemanExecutable"[^>]*aria-invalid="true"/);
   });
 
   it('can discover models before a main model is selected', () => {

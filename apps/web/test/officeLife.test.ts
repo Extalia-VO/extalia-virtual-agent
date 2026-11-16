@@ -163,8 +163,10 @@ describe('board pick reply', () => {
     let now = 0, timers: (() => void)[] = [];
     const store = createCalloutStore(() => now, () => 0, run => { timers.push(run); });
     const pool = MESSAGES.en.characterCallouts;
-    expect(pool.length).toBeGreaterThanOrEqual(15);
-    expect(MESSAGES.id.characterCallouts.length).toBeGreaterThanOrEqual(15);
+    expect(pool.length).toBeGreaterThanOrEqual(32);
+    expect(MESSAGES.id.characterCallouts).toHaveLength(pool.length);
+    expect(new Set(pool).size).toBe(pool.length);
+    expect(new Set(MESSAGES.id.characterCallouts).size).toBe(pool.length);
     let previous = '';
     for (let i = 0; i < 30; i++) {
       const callout = store.say(i % 2 ? 'x' : 'y', pool);
@@ -178,6 +180,54 @@ describe('board pick reply', () => {
     for (const run of timers) run();
     timers = [];
     expect(store.version()).toBeGreaterThan(version);
+  });
+
+  it('varies repeated picks across the recent office history even with the same random draw', () => {
+    const store = createCalloutStore(() => 0, () => 0, () => undefined);
+    const pool = MESSAGES.en.characterCallouts;
+    const recent: string[] = [];
+    const own = new Map<string, string[]>();
+    for (let turn = 0; turn < 80; turn++) {
+      const character = `character-${turn % 3}`;
+      const reply = store.say(character, pool).text;
+      expect(recent.slice(-12)).not.toContain(reply);
+      expect(own.get(character)?.slice(-4) ?? []).not.toContain(reply);
+      recent.push(reply);
+      own.set(character, [...own.get(character) ?? [], reply]);
+    }
+  });
+
+  it('falls back safely for exhausted, tiny or duplicated greeting pools', () => {
+    expect(pickCallout([], ['a'], 0)).toBe('');
+    expect(pickCallout(['a', 'b'], ['a', 'b'], 0)).toBe('b');
+    const store = createCalloutStore(() => 0, () => 0, () => undefined);
+    const replies = Array.from({ length: 8 }, () => store.say('one', ['a', 'a', 'b']).text);
+    expect(replies).toEqual(['a', 'b', 'a', 'b', 'a', 'b', 'a', 'b']);
+    expect(store.say('one', ['only', 'only']).text).toBe('only');
+    expect(store.say('one', ['only', 'only']).text).toBe('only');
+  });
+
+  it('keeps a fresh reply when an older pick expires and notifies only for current expiry', () => {
+    let now = 0, notices = 0;
+    const timers: (() => void)[] = [];
+    const store = createCalloutStore(() => now, () => 0, run => { timers.push(run); });
+    const unsubscribe = store.subscribe(() => notices++);
+    const first = store.say('one', ['a', 'b']);
+    now = 500;
+    const second = store.say('one', ['a', 'b']);
+    expect(second.key).toBeGreaterThan(first.key);
+    expect(notices).toBe(2);
+    now = CALLOUT_MS;
+    timers[0]!();
+    expect(store.current('one')).toBe(second);
+    expect(notices).toBe(2);
+    now = 500 + CALLOUT_MS;
+    timers[1]!();
+    expect(store.current('one')).toBeUndefined();
+    expect(notices).toBe(3);
+    unsubscribe();
+    store.say('one', ['a', 'b']);
+    expect(notices).toBe(3);
   });
 });
 
@@ -233,7 +283,7 @@ describe('idle characters in the director', () => {
         expect(FACILITY_NAV_RESOURCE_IDS.has(visit.spotId)).toBe(false);
         if (visit.arrived) visited.add(visit.spotId);
         const mover = director.list.find(entry => entry.id === id)!;
-        if (visit.kind === 'chat' && visit.arrived && mover.motion.clip.startsWith('chat')) chatted = true;
+        if (visit.kind === 'chat' && visit.arrived && mover.motion.clip.includes('chat')) chatted = true;
       }
     });
     expect(visited.size).toBeGreaterThan(0);
@@ -253,6 +303,41 @@ describe('idle characters in the director', () => {
       expect(mover.seat?.seatId).toBe(seats[index]);
       expect(['typing', 'mouse', 'read-screen', 'thinking']).toContain(mover.motion.clip);
     }
+  });
+
+  it('moves both colleagues to a shared sofa, animates seated conversation and interrupts it for real work', () => {
+    let now = 0;
+    const director = new MovementDirector({ navigation, elevators: lifts }, () => now, null);
+    director.lifeScale = .3; director.preferKind = 'chat';
+    const ids = ['social-first:primary', 'social-second:primary'];
+    const allocations = ids.map((id, index) => allocation(id, `qa.station-${index + 1}`));
+    const agents = ids.map(make('idle'));
+    director.update({ allocations, agents, reducedMotion: false, gaitOf: () => gaitParameters() });
+    const runUntil = (condition: () => boolean, limit: number) => {
+      for (let frame = 0; frame < limit * 30 && !condition(); frame++) { now += 1000 / 30; director.tick(1 / 30); }
+      expect(condition()).toBe(true);
+    };
+    try {
+      runUntil(() => Boolean(director.lifeState(ids[0]!)?.visit?.partnerId), 300);
+      const visits = ids.map(id => director.lifeState(id)!.visit!);
+      expect(visits.map(visit => visit.partnerId)).toEqual([ids[1], ids[0]]);
+      expect(visits.every(visit => !navigation.seats.get(visit.spotId)!.standing)).toBe(true);
+      const before = ids.map(id => [...director.position(id)!]);
+      runUntil(() => ids.every((id, index) => Math.hypot(director.position(id)![0] - before[index]![0]!,
+        director.position(id)![2] - before[index]![2]!) > .25), 10);
+      for (const [index, id] of ids.entries()) {
+        const mover = director.list.find(mover => mover.id === id)!;
+        const target = mover.pending ?? mover.goal;
+        expect(target?.kind === 'seat' && target.seat.seatId).toBe(visits[index]!.spotId);
+      }
+      runUntil(() => ids.every(id => director.list.find(mover => mover.id === id)!.motion.clip.startsWith('seated-chat')), 150);
+      expect(new Set(director.list.map(mover => mover.motion.clip))).toEqual(new Set(['seated-chat-talk', 'seated-chat-listen']));
+      director.update({ allocations, agents: [make('working')(ids[0]!), agents[1]!], reducedMotion: false, gaitOf: () => gaitParameters() });
+      runUntil(() => ids.every(id => !director.lifeState(id)?.visit?.partnerId), 1);
+      const mover = director.list.find(mover => mover.id === ids[0])!;
+      const target = mover.pending ?? mover.goal;
+      expect(target?.kind === 'seat' && target.seat.seatId).toBe('qa.station-1');
+    } finally { director.dispose(); }
   });
 
   it('keeps everyone at the desk with reduced motion', () => {

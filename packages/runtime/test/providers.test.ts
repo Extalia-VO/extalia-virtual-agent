@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
-import { createProvider, replayableContent, toAnthropicMessages, toChatMessages, type FetchLike, type ModelMessage } from '../src/index.js';
+import { createProvider, toChatMessages } from '../src/index.js';
+import { describe, expect, it, vi } from 'vitest';
+import { replayableContent, toAnthropicMessages, type FetchLike, type ModelMessage } from '../src/index.js';
 
 function sse(events: unknown[], named = false): Response {
   const body = events.map(event => {
@@ -60,14 +61,25 @@ describe('OpenAI-compatible provider', () => {
     await expect(createProvider(connection(), 'bad', fetch).complete({ system: '', messages: [], tools: [] })).rejects.toThrow(/rejected the credentials: invalid api key/);
   });
 
-  it('lists models and asks OmniRoute not to add its memory when Extalia memory is used', async () => {
-    const { fetch, requests } = fakeFetch(() => Response.json({ data: [{ id: 'b' }, { id: 'a' }] }));
+  it('asks OmniRoute not to add its memory when Extalia memory is used', async () => {
+    const { fetch, requests } = fakeFetch(() => Response.json({ choices: [{ message: { content: 'OK' }, finish_reason: 'stop' }] }));
     const provider = createProvider(connection({ preset: 'omniroute', features: { memory: 'extalia', skills: 'provider' } }), undefined, fetch);
-    expect(await provider.listModels()).toEqual(['a', 'b']);
+    await provider.complete({ system: '', messages: [], tools: [] });
     expect((requests[0]?.init?.headers as Record<string, string>)['x-omniroute-no-memory']).toBe('true');
     const withProviderMemory = createProvider(connection({ preset: 'omniroute', features: { memory: 'provider', skills: 'provider' } }), undefined, fetch);
-    await withProviderMemory.listModels();
+    await withProviderMemory.complete({ system: '', messages: [], tools: [] });
     expect((requests[1]?.init?.headers as Record<string, string>)['x-omniroute-no-memory']).toBeUndefined();
+  });
+
+  it('delegates model discovery to its native port and never fetches a JavaScript catalog', async () => {
+    const fetch = vi.fn(async () => { throw new Error('Unexpected JavaScript HTTP'); });
+    const list = vi.fn(async () => ['a', 'b']);
+    const signal = new AbortController().signal;
+    const provider = createProvider(connection(), undefined, fetch, list);
+    expect(await provider.listModels(signal)).toEqual(['a', 'b']);
+    expect(list).toHaveBeenCalledWith(signal);
+    await expect(createProvider(connection(), undefined, fetch).listModels()).rejects.toThrow(/Native model discovery/);
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it('maps history including tool results', () => {

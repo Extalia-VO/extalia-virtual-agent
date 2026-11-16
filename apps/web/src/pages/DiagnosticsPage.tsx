@@ -20,7 +20,7 @@ export function DiagnosticsPage({ t, platform, hostState, updateStatus, onOpenWo
     if (!filesystem || picking) return;
     setPicking(true);
     try {
-      const selection = await filesystem.selectDirectory();
+      const selection = await filesystem.selectDirectory({ title: t.directoryPicker.folder });
       if (!selection) setFolder(t.diagnostics.cancelled);
       else setFolder(`${t.diagnostics.picked(selection.name)} ${selection.path ?? t.diagnostics.pathHidden}`);
     } catch (error) {

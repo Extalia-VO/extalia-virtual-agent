@@ -1,5 +1,8 @@
 /* Each section owns durable configuration; visited panels retain editor state. */
 .settings-page { min-width: 0; }
+.settings-learning-slot { min-width: 0; }
+.settings-learning-slot:empty { display: none; }
+.settings-learning-slot > .learning-countdown.is-embedded { max-height: min(200px, 25dvh); margin: 0 0 16px; }
 .settings-tabs {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
@@ -48,7 +51,9 @@
   outline: 2px solid var(--accent);
   outline-offset: 3px;
 }
-.settings-panel { display: grid; gap: 18px; min-width: 0; }
+.settings-panel { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; min-width: 0; }
+.settings-panel .settings-section { min-width: 0; grid-template-columns: minmax(0, 1fr); }
+.settings-panel .settings-section code { overflow-wrap: anywhere; }
 .settings-panel .settings {
   max-width: none;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));

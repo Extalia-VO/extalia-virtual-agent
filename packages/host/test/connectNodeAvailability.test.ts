@@ -27,7 +27,7 @@ describe('agent-app Node prerequisites', () => {
 
   function context(overrides: Partial<ConnectContext> = {}): ConnectContext {
     return {
-      platform: 'linux', env: { PATH: '', EXTALIA_HOME: extaliaHome }, homeDirectory, extaliaHome,
+      platform: process.platform, env: { PATH: '', EXTALIA_HOME: extaliaHome, HERMES_HOME: path.join(homeDirectory, '.hermes') }, homeDirectory, extaliaHome,
       findBinary: async () => undefined, managedClaudeSettings: [],
       fetch: async () => new Response(null, { status: 204 }), ...overrides,
     };
@@ -41,7 +41,8 @@ describe('agent-app Node prerequisites', () => {
     return { file, before };
   }
 
-  for (const platform of ['linux', 'darwin', 'win32']) {
+  // These tests write real temporary files; the CI OS matrix supplies all three native path/quoting modes.
+  for (const platform of [process.platform]) {
     it(`keeps Hermes preview/apply/test/status/undo independent of Node (${platform})`, async () => {
       const primary = await original('hermes');
       const profile = path.join(homeDirectory, '.hermes', 'profiles', 'team', 'config.yaml');
@@ -114,6 +115,10 @@ describe('agent-app Node prerequisites', () => {
   it('keeps other app diagnostics available when one config cannot be read as a file', async () => {
     const unreadable = path.join(homeDirectory, ...CONFIGS.codex);
     await mkdir(unreadable, { recursive: true });
+    // Native directory-read errors may omit the path; check the diagnostic and location separately.
+    const readError: unknown = await readFile(unreadable, 'utf8').catch((error: unknown) => error);
+    if (!(readError instanceof Error)) throw new Error('The directory fixture unexpectedly returned file contents.');
+    expect(readError.message).not.toBe('');
     const service = createConnectService(context());
     await service.apply('hermes');
     const states = await service.connections();
@@ -121,7 +126,8 @@ describe('agent-app Node prerequisites', () => {
     expect(states.find(state => state.app === 'hermes')).toMatchObject({ nodeStatus: 'not-required', connected: true });
     const codex = states.find(state => state.app === 'codex');
     expect(codex).toMatchObject({ installed: true, connected: false });
-    expect(codex?.warnings.some(warning => warning.includes(unreadable))).toBe(true);
+    expect(codex?.configPath).toBe(unreadable);
+    expect(codex?.warnings).toContain(readError.message);
     await expect(service.plan('codex')).rejects.toThrow();
   });
 

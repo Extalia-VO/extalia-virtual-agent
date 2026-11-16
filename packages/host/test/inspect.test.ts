@@ -262,7 +262,11 @@ describe.skipIf(!hasGit)('git status and diff', { timeout: PROCESS_TEST_TIMEOUT_
     await writeFile(path.join(root, 'README.md'), '# Changed\n');
 
     // Control: plain git really runs the configured programs.
-    await git(root, 'status', '--porcelain');
+    // The intentionally invalid process filter can fail Git 2.52's handshake;
+    // the markers below still prove that the configured programs executed.
+    await git(root, 'status', '--porcelain').catch((error: unknown) => {
+      expect(error).toMatchObject({ code: 128, stderr: expect.stringContaining('fatal: the remote end hung up unexpectedly') });
+    });
     await git(root, 'diff', 'HEAD').catch(() => '');
     expect(existsSync(marker('fsmonitor'))).toBe(true);
     expect(existsSync(marker('process'))).toBe(true);

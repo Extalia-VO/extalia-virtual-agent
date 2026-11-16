@@ -67,7 +67,16 @@ impl TempDir {
                 NEXT.fetch_add(1, Ordering::Relaxed)
             ));
             match fs::create_dir(&dir) {
-                Ok(()) => return Self(dir, isolation),
+                Ok(()) => {
+                    drop(
+                        extalia_core::skills::storage::initialize(
+                            &dir.join("data"),
+                            &ProfileId::parse("default").unwrap(),
+                        )
+                        .unwrap(),
+                    );
+                    return Self(dir, isolation);
+                }
                 Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
                 Err(error) => panic!("cannot create a temporary directory: {error}"),
             }
@@ -80,12 +89,9 @@ impl TempDir {
 
     /// Write a package into `profile`'s import inbox.
     fn inbox_package(&self, profile: &str, name: &str, files: &[(&str, &str)]) -> PathBuf {
-        let root = self
-            .data()
-            .join("profiles")
-            .join(profile)
-            .join("skill-imports")
-            .join(name);
+        let root =
+            extalia_core::skills::storage::inbox(&self.data(), &ProfileId::parse(profile).unwrap())
+                .join(name);
         write_files(&root, files);
         root
     }
@@ -435,7 +441,11 @@ fn import_reads_only_inside_the_inbox_and_refuses_the_builtin_origin() {
     {
         let outside = dir.0.join("outside");
         write_files(&outside, &[("SKILL.md", SKILL_MD)]);
-        let inbox = dir.data().join("profiles/default/skill-imports");
+        let inbox = dir.data().join(if cfg!(unix) {
+            "skills/imports"
+        } else {
+            "profiles/default/skill-imports"
+        });
         std::os::unix::fs::symlink(&outside, inbox.join("linked")).unwrap();
         fs::create_dir_all(inbox.join("nested")).unwrap();
         std::os::unix::fs::symlink(&dir.0, inbox.join("nested/up")).unwrap();
@@ -577,6 +587,16 @@ fn full_flow_approve_activate_read_rollback_revoke() {
         json!({ "revisionId": first, "approvalId": first_approval }),
     )
     .unwrap();
+    let active_details = op(
+        &mut session,
+        "skill.inspect",
+        json!({ "revisionId": first }),
+    )
+    .unwrap();
+    assert_eq!(
+        active_details["revision"]["activationApprovalId"],
+        first_approval
+    );
     assert_eq!(
         (
             activation["packageId"].clone(),
@@ -979,7 +999,7 @@ fn import_for_review(
 }
 
 #[test]
-fn medium_findings_are_validated_only_by_a_user_review() {
+fn medium_findings_require_review_and_separate_user_approval() {
     let dir = TempDir::new();
     let mut session = start(
         &dir,
@@ -1034,8 +1054,8 @@ fn medium_findings_are_validated_only_by_a_user_review() {
     .unwrap();
     assert_eq!(
         review,
-        json!({ "revisionId": revision, "decision": "accept", "state": "validated",
-            "stateReason": "review-accepted", "reviewId": 1 })
+        json!({ "revisionId": revision, "decision": "accept", "state": "awaiting_approval",
+            "stateReason": "manual-instruction-approval", "reviewId": 1 })
     );
     // Review on the wrong state.
     assert_eq!(
@@ -1052,7 +1072,8 @@ fn medium_findings_are_validated_only_by_a_user_review() {
         json!({ "revisionId": revision }),
     )
     .unwrap();
-    assert_eq!(details["revision"]["state"], "validated");
+    assert_eq!(details["revision"]["state"], "awaiting_approval");
+    assert_eq!(details["revision"]["active"], false);
     assert_eq!(details["approvals"], json!([]));
     let last = details["history"]
         .as_array()
@@ -1062,17 +1083,23 @@ fn medium_findings_are_validated_only_by_a_user_review() {
         .clone();
     assert_eq!(
         (last["fromState"].clone(), last["reason"].clone()),
-        (json!("review_required"), json!("review-accepted"))
+        (json!("validated"), json!("manual-instruction-approval"))
     );
-    // Still not approvable: evaluation and the policy decision come first.
-    assert_eq!(
-        op(
-            &mut session,
-            "skill.approve",
-            json!({ "revisionId": revision, "treeSha256": tree, "permissionDigest": digest, "principal": USER })
-        ),
-        refused("conflict", "wrong_state")
-    );
+    // The instruction-only route still needs a distinct, hash-bound local user approval.
+    let approval = op(
+        &mut session,
+        "skill.approve",
+        json!({ "revisionId": revision, "treeSha256": tree, "permissionDigest": digest, "principal": USER }),
+    ).unwrap();
+    assert!(approval["approvalId"].as_u64().is_some());
+    let approved = op(
+        &mut session,
+        "skill.inspect",
+        json!({ "revisionId": revision }),
+    )
+    .unwrap();
+    assert_eq!(approved["approvals"].as_array().unwrap().len(), 1);
+    assert_eq!(approved["revision"]["active"], false);
     close(session).close().unwrap();
     let principal: String = cell(&dir, "SELECT principal FROM skill_reviews");
     assert_eq!(principal, USER);
@@ -1249,7 +1276,11 @@ fn builtin_registrations_survive_a_restart_and_tampering_is_detected() {
 
     // Altered while no daemon ran: detected on start, recorded, never served.
     let object = data
-        .join("profiles/default/skills/objects")
+        .join(if cfg!(unix) {
+            "skills/objects"
+        } else {
+            "profiles/default/skills/objects"
+        })
         .join(&builtin[4..]);
     make_writable(&object);
     fs::write(object.join("SKILL.md"), "evil").unwrap();
@@ -1383,8 +1414,9 @@ fn scanner_reports_the_installed_inspector_without_running_it() {
     assert!(hello(&mut session).iter().any(|op| op == "skill.scanner"));
     assert_eq!(
         op(&mut session, "skill.scanner", json!({})).unwrap(),
-        json!({ "scannerId": "unavailable", "pinned": false, "policyVersion": POLICY_VERSION,
-            "status": "unavailable" })
+        json!({ "scannerId": "nvidia-skillspector", "pinned": false, "policyVersion": POLICY_VERSION,
+            "status": "unavailable", "version": extalia_daemon::skill_scanner::VERSION,
+            "normalizerVersion": extalia_daemon::skill_scanner::NORMALIZER })
     );
     assert_eq!(
         op(&mut session, "skill.scanner", json!({ "run": true })),
@@ -1428,4 +1460,145 @@ fn scanner_reports_the_installed_inspector_without_running_it() {
         op(&mut bare, "skill.scanner", json!({})),
         Err(("unknown_op".to_owned(), None))
     );
+}
+
+#[test]
+fn scanner_identity_verification_does_not_block_the_control_reader() {
+    let control_answered = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    struct SlowIdentity(std::sync::Arc<std::sync::atomic::AtomicBool>);
+    impl SkillInspector for SlowIdentity {
+        fn identity(&self) -> ScannerIdentity {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+            while !self.0.load(std::sync::atomic::Ordering::Acquire)
+                && std::time::Instant::now() < deadline
+            {
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+            ScannerIdentity {
+                id: "slow-fixture".into(),
+                pin: Some("fixture-pin".into()),
+                version: Some("1".into()),
+                normalizer_version: Some("1".into()),
+            }
+        }
+        fn inspect(&self, _: &InspectionRequest<'_>) -> InspectionOutcome {
+            panic!("metadata must not scan");
+        }
+    }
+    let dir = TempDir::new();
+    let missions = Missions::new(open(&dir), "default".into());
+    let skills = Skills::with_inspector(
+        &dir.data(),
+        "default",
+        Box::new(SlowIdentity(std::sync::Arc::clone(&control_answered))),
+    );
+    let mut session = Session::with_missions(missions).with_skills(skills);
+    let mut input = Vec::new();
+    for (op, params) in [
+        (
+            "hello",
+            json!({"clientVersion":"fixture","capabilities":["hello"]}),
+        ),
+        ("skill.scanner", json!({})),
+        ("health", json!({})),
+    ] {
+        let frame = wire::parse_frame(
+            &json!({"schemaVersion":1,"kind":"request","requestId":ID,"op":op,"params":params}),
+        )
+        .unwrap();
+        input.extend(wire::encode(&frame).unwrap());
+    }
+    struct ControlWriter<'a> {
+        bytes: &'a mut Vec<u8>,
+        gate: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    }
+    impl Write for ControlWriter<'_> {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            if bytes
+                .windows(b"\"op\":\"health\"".len())
+                .any(|part| part == b"\"op\":\"health\"")
+            {
+                self.gate.store(true, std::sync::atomic::Ordering::Release);
+            }
+            self.bytes.write(bytes)
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let mut output = Vec::new();
+    let writer = ControlWriter {
+        bytes: &mut output,
+        gate: control_answered,
+    };
+    extalia_daemon::session::serve(std::io::Cursor::new(input), writer, &mut session).unwrap();
+    let ops = FrameReader::new(MAX_FRAME_BYTES)
+        .push(&output)
+        .into_iter()
+        .map(|frame| frame.unwrap().to_value()["op"].as_str().unwrap().to_owned())
+        .collect::<Vec<_>>();
+    assert_eq!(ops, vec!["hello", "health", "skill.scanner"]);
+}
+
+#[test]
+fn market_source_provenance_is_durable_and_conflicts_are_rejected_over_wire() {
+    let dir = TempDir::new();
+    let mut session = start(&dir, open(&dir), "default", None);
+    dir.inbox_package("default", "market", &[("SKILL.md", SKILL_MD)]);
+    let first = format!("github:example/skills@{}#demo", "1".repeat(40));
+    let second = format!("github:example/skills@{}#demo", "2".repeat(40));
+    let imported = op(
+        &mut session,
+        "skill.import",
+        json!({"origin":"imported","path":"market","sourceRef":first}),
+    )
+    .unwrap();
+    let repeated = op(
+        &mut session,
+        "skill.import",
+        json!({"origin":"imported","path":"market","sourceRef":second}),
+    )
+    .unwrap();
+    assert_eq!(repeated["created"], false);
+    assert_eq!(
+        op(
+            &mut session,
+            "skill.import",
+            json!({"origin":"imported","path":"market","sourceRef":format!("github:other/skills@{}#demo","3".repeat(40))})
+        ),
+        refused("denied", "market_package_source_conflict")
+    );
+    close(session).close().unwrap();
+    let mut session = start(&dir, open(&dir), "default", None);
+    let details = op(
+        &mut session,
+        "skill.inspect",
+        json!({"revisionId":imported["revisionId"]}),
+    )
+    .unwrap();
+    assert_eq!(details["sourcesTotal"], 2);
+    assert_eq!(details["sourcesOmitted"], 0);
+    assert_eq!(details["sources"][0]["sourceRef"], first);
+    assert_eq!(details["sources"][1]["sourceRef"], second);
+    assert_eq!(details["revision"]["active"], false);
+    assert_eq!(details["revision"]["marketplaceSource"], true);
+    let list = op(&mut session, "skill.list", json!({})).unwrap();
+    let summary = list["revisions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["revisionId"] == imported["revisionId"])
+        .unwrap();
+    assert_eq!(summary["marketplaceSource"], true);
+    assert!(summary.get("sourceRef").is_none());
+    assert!(summary.get("sources").is_none());
+    let response =
+        json!({"schemaVersion":1,"kind":"response","requestId":ID,"op":"skill.list","result":list});
+    assert!(wire::parse_frame(&response).is_ok());
+    for invalid in [Value::Null, json!(0), json!("true"), json!([]), json!({})] {
+        let mut bad = response.clone();
+        bad["result"]["revisions"][0]["marketplaceSource"] = invalid;
+        assert!(wire::parse_frame(&bad).is_err());
+    }
+    close(session).close().unwrap();
 }

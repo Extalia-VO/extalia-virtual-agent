@@ -50,7 +50,8 @@ const sampleTemplate: OfficeTemplate = {
           subscriptions: [],
           workstations: [],
           seats: [
-            { id: 'seat-1', approachWaypointId: 'wp-s1', seat: [15, 0, 0], rotationY: 0 }
+            { id: 'seat-1', approachWaypointId: 'wp-s1', seat: [15, 0, 0], rotationY: 0 },
+            { id: 'seat-2', approachWaypointId: 'wp-s2', seat: [16, 0, 0], rotationY: 0 }
           ]
         },
         {
@@ -174,7 +175,7 @@ describe('reduceOffice (Opus 5.5 Specification)', () => {
     };
     state = reduceOffice(sampleTemplate, state, e5);
     expect(state.meetings).toHaveLength(0);
-    expect(state.presences[0]?.intent.kind).toBe('idle_at');
+    expect(state.presences[0]?.intent).toMatchObject({ kind: 'at_desk', slotId: 'ws-1' });
     expect(state.presences[1]?.intent.kind).toBe('idle_at');
 
     // 6. Agent stopped releases workstation slot
@@ -243,5 +244,61 @@ describe('reduceOffice (Opus 5.5 Specification)', () => {
     expect(route).not.toBeNull();
     expect(route?.nodeIds).toEqual(['wp-start', 'wp-mid', 'wp-end']);
     expect(route?.cost).toBe(10);
+  });
+});
+
+describe('meeting resource lifecycle', () => {
+  const event = (sessionId: string, id: string, body: ExtaliaEvent['body'], agentId = 'primary'): ExtaliaEvent => ({
+    v: 'extalia.v0', sessionId, id, body, agentId, at: '2026-10-08T12:00:00Z', source: { runtime: 'fixture', channel: 'stream' },
+  });
+  const meeting = event('s', 'meeting', { type: 'meeting.started', meetingId: 'sync', participants: ['primary', 'member'] });
+  const setup = () => [event('s', 'lead', { type: 'agent.created', name: 'Lead' }),
+    event('s', 'member', { type: 'subagent.spawned', subagentId: 'member' })]
+    .reduce((state, e) => reduceOffice(sampleTemplate, state, e), initialOfficeState(sampleTemplate));
+
+  it('uses distinct authored seats, keeps a workstation across round stops, and returns to the same desk', () => {
+    let state = reduceOffice(sampleTemplate, setup(), meeting);
+    expect(state.presences.map(p => p.intent)).toEqual([
+      { kind: 'in_meeting', meetingId: 'sync', roomId: 'room-meeting', seatId: 'seat-1' },
+      { kind: 'in_meeting', meetingId: 'sync', roomId: 'room-meeting', seatId: 'seat-2' },
+    ]);
+    state = reduceOffice(sampleTemplate, state, event('s', 'stopped', { type: 'agent.stopped' }, 'member'));
+    state = reduceOffice(sampleTemplate, state, event('s', 'working', { type: 'agent.state', state: 'working' }));
+    expect(state.presences.every(p => p.intent.kind === 'in_meeting')).toBe(true);
+    expect(state.slots[0]?.occupantAgentId).toBe('primary');
+    state = reduceOffice(sampleTemplate, state, event('s', 'done', { type: 'meeting.completed', meetingId: 'sync' }));
+    expect(state.presences.find(p => p.identity.agentId === 'primary')?.intent).toMatchObject({ kind: 'at_desk', slotId: 'ws-1' });
+    expect(state.presences.find(p => p.identity.agentId === 'primary')?.destinationWaypointId).toBe('wp-ws-1');
+    expect(reduceOffice(sampleTemplate, state, meeting).meetings).toHaveLength(0);
+  });
+
+  it('rejects unknown, duplicate, and over-capacity membership without changing ordinary work', () => {
+    const state = setup();
+    for (const participants of [['primary', 'unknown'], ['primary', 'primary'], ['primary', 'member', 'third']]) {
+      expect(reduceOffice(sampleTemplate, state, event('s', 'bad', { type: 'meeting.started', meetingId: 'bad', participants })).presences).toEqual(state.presences);
+    }
+  });
+
+  it('does not seat or release a same-id agent from a foreign session', () => {
+    let state = setup();
+    state = reduceOffice(sampleTemplate, state, event('foreign', 'foreign', { type: 'agent.created', name: 'Other' }));
+    state = reduceOffice(sampleTemplate, state, meeting);
+    expect(state.presences.find(p => p.sessionId === 'foreign')?.intent.kind).toBe('at_desk');
+    state = reduceOffice(sampleTemplate, state, event('foreign', 'foreign-done', { type: 'meeting.completed', meetingId: 'sync' }));
+    expect(state.meetings).toHaveLength(1);
+    state = reduceOffice(sampleTemplate, state, event('s', 'end', { type: 'session.ended' }));
+    expect(state.meetings).toHaveLength(0);
+    expect(state.presences.filter(p => p.sessionId === 's').every(p => p.intent.kind === 'off_duty')).toBe(true);
+    expect(state.presences.find(p => p.sessionId === 'foreign')?.intent.kind).toBe('at_desk');
+    expect(state.slots[0]?.state).toBe('AVAILABLE');
+  });
+
+  it('releases rooms on failure and cancellation and replays deterministically', () => {
+    for (const terminal of [{ type: 'turn.failed', error: 'Failed' }, { type: 'user.intervention', action: 'cancel' }] as ExtaliaEvent['body'][]) {
+      const events = [meeting, event('s', 'terminal', terminal)];
+      const replay = () => events.reduce((state, e) => reduceOffice(sampleTemplate, state, e), setup());
+      expect(replay().meetings).toHaveLength(0);
+      expect(replay()).toEqual(replay());
+    }
   });
 });

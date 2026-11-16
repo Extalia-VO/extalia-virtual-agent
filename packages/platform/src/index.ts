@@ -5,6 +5,9 @@ export * from './dataDirectory.js';
 export * from './knowledge.js';
 export * from './knowledgeEdit.js';
 export * from './knowledgeVault.js';
+export * from './vaultProfiles.js';
+export * from './learningSchedule.js';
+export * from './workspaceKnowledge.js';
 export * from './missions.js';
 export * from './promptOptions.js';
 export * from './missionPlan.js';
@@ -16,7 +19,25 @@ export * from './nativeMemory.js';
 export * from './modelGuide.js';
 export * from './observedCodex.js';
 export * from './observedCodexQueue.js';
+export * from './observedCodexNativeQueue.js';
+export * from './promptSuggestions.js';
 export * from './codexPermissionHook.js';
 export * from './promptQueue.js';
 export * from './observedReply.js';
 export * from './observedHermes.js';
+export * from './observedControl.js';
+export * from './observedInbox.js';
+export * from './observedUserInput.js';
+export * from './sessionMove.js';
+export * from './handover.js';
+export * from './skillMarket.js';
+export * from './observedWorkspaceLink.js';
+export * from './observedCliResume.js';
+export * from './observedMemory.js';
+
+export * from './handoverHarness.js';
+
+export * from './operatingProfiles.js';
+
+export * from './sessionBrowser.js';
+export * from './schedules.js';

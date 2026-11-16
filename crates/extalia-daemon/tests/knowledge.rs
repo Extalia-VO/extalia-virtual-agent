@@ -210,7 +210,10 @@ fn first_sync_creates_the_vault_and_status_reports_no_absolute_path() {
     assert_eq!(status["vaultRoot"], "vaults/default");
     assert_eq!(status["vaultPresent"], false);
     assert_eq!(status["generation"], 0);
-    assert_eq!(status["schemaVersion"], 1);
+    assert_eq!(
+        status["schemaVersion"],
+        extalia_core::knowledge::KnowledgeStore::LATEST
+    );
     assert!(status.get("lastSync").is_none());
     assert!(
         dir.data()
@@ -1104,6 +1107,112 @@ fn run_binary(args: &[&str], requests: &[Value]) -> Vec<Frame> {
 }
 
 #[test]
+fn default_profile_alias_rebuilds_cached_acl_on_introduction_change_and_removal() {
+    for custom in [false, true] {
+        let dir = TempDir::spawning();
+        dir.notes(
+            "default",
+            &[
+                (
+                    "Canonical.md",
+                    "---\nprofile: default\n---\n# Sentinel canonical\n",
+                ),
+                (
+                    "First.md",
+                    "---\nprofile: profile-main\n---\n# Sentinel first\n",
+                ),
+                (
+                    "Second.md",
+                    "---\nprofile: profile-next\n---\n# Sentinel second\n",
+                ),
+                (
+                    "Foreign.md",
+                    "---\nprofile: foreign\n---\n# Sentinel foreign\n",
+                ),
+            ],
+        );
+        let root = if custom {
+            let root = dir.0.join("custom-vault");
+            fs::rename(dir.vault("default"), &root).unwrap();
+            root
+        } else {
+            dir.vault("default")
+        };
+        fs::create_dir(root.join(".obsidian")).unwrap();
+        fs::write(root.join(".obsidian/preferences.json"), "unchanged").unwrap();
+        let request = |op: &str, params: Value| json!({ "schemaVersion": 1, "kind": "request", "requestId": ID, "op": op, "params": params });
+        let data = dir.data();
+        for (index, (alias, expected)) in [
+            (None, vec!["Canonical.md"]),
+            (Some("profile-main"), vec!["Canonical.md", "First.md"]),
+            (Some("profile-main"), vec!["Canonical.md", "First.md"]),
+            (Some("profile-next"), vec!["Canonical.md", "Second.md"]),
+            (None, vec!["Canonical.md"]),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let mut args = vec!["--data-dir", data.to_str().unwrap()];
+            if custom {
+                args.extend(["--vault-root", root.to_str().unwrap()]);
+            }
+            if let Some(alias) = alias {
+                args.extend(["--knowledge-profile-alias", alias]);
+            }
+            let mut requests = vec![request(
+                "hello",
+                json!({"clientVersion":"test","capabilities":["hello"]}),
+            )];
+            if index == 0 {
+                requests.push(request("knowledge.sync", json!({"mode":"incremental"})));
+            }
+            requests.push(request("knowledge.search", json!({"query":"sentinel"})));
+            let frames = run_binary(&args, &requests);
+            let response = frames.last().unwrap().to_value();
+            let mut paths = response["result"]["hits"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|hit| hit["path"].as_str().unwrap())
+                .collect::<Vec<_>>();
+            paths.sort();
+            assert_eq!(paths, expected);
+        }
+        assert_eq!(
+            fs::read_to_string(root.join("First.md")).unwrap(),
+            "---\nprofile: profile-main\n---\n# Sentinel first\n"
+        );
+        assert_eq!(
+            fs::read_to_string(root.join(".obsidian/preferences.json")).unwrap(),
+            "unchanged"
+        );
+    }
+}
+
+#[test]
+fn default_profile_alias_does_not_authorize_nondefault_scopes() {
+    let dir = TempDir::new();
+    dir.notes("default", &[("Default.md", "# Default\n")]);
+    let id = "vp-00000000-0000-0000-0000-000000000001";
+    dir.notes(
+        id,
+        &[
+            (
+                "Foreign.md",
+                "---\nprofile: profile-main\n---\n# Sentinel foreign\n",
+            ),
+            ("Own.md", "# Sentinel own\n"),
+        ],
+    );
+    let mut session = start_with(
+        Knowledge::new(&dir.data(), "default").with_default_profile_alias("profile-main"),
+    );
+    let result = op(&mut session, "knowledge.scoped", json!({"profileId":id,"vaultRoot":null,"op":"knowledge.search","params":{"query":"sentinel"}})).unwrap();
+    assert_eq!(result["result"]["hits"].as_array().unwrap().len(), 1);
+    assert_eq!(result["result"]["hits"][0]["path"], "Own.md");
+}
+
+#[test]
 fn the_binary_serves_one_profile_per_data_directory() {
     let dir = TempDir::spawning();
     dir.notes("work", &[("Plan.md", "# Plan\nwombat-strategy\n")]);
@@ -1151,4 +1260,352 @@ fn the_binary_serves_one_profile_per_data_directory() {
             "no absolute path: {frame}"
         );
     }
+}
+
+fn scoped(
+    session: &mut Session,
+    profile: &str,
+    root: Option<&Path>,
+    name: &str,
+    params: Value,
+) -> Answer {
+    op(session, "knowledge.scoped", json!({
+        "profileId": profile, "vaultRoot": root.map(|path| path.to_str().unwrap()), "op": name, "params": params,
+    })).map(|result| { assert_eq!(result["op"], name); result["result"].clone() })
+}
+
+#[test]
+fn scoped_profiles_isolate_indexes_and_preserve_default() {
+    let dir = TempDir::new();
+    let first = "vp-00000000-0000-4000-8000-000000000001";
+    let second = "vp-00000000-0000-4000-8000-000000000002";
+    dir.notes("default", &[("default.md", "# Default")]);
+    dir.notes(
+        first,
+        &[
+            ("first.md", "# First\n[[linked]]"),
+            ("linked.md", "# Linked"),
+        ],
+    );
+    dir.notes(second, &[("second.md", "# Second")]);
+    let mut session = start(&dir, "default");
+    assert!(
+        hello(&mut session)
+            .iter()
+            .any(|op| op == "knowledge.scoped")
+    );
+    op(&mut session, "knowledge.sync", json!({"mode":"rebuild"})).unwrap();
+    let a = scoped(&mut session, first, None, "knowledge.overview", json!({})).unwrap();
+    assert_eq!(a["totalNodes"], 2);
+    assert_eq!(a["totalEdges"], 1);
+    let b = scoped(&mut session, second, None, "knowledge.overview", json!({})).unwrap();
+    assert_eq!(b["totalNodes"], 1);
+    assert_eq!(b["nodes"][0]["path"], "second.md");
+    let default = op(&mut session, "knowledge.overview", json!({})).unwrap();
+    assert_eq!(default["totalNodes"], 1);
+    assert_eq!(default["nodes"][0]["path"], "default.md");
+}
+
+#[test]
+fn scoped_root_changes_rebuild_without_exposing_old_graph_or_fallback() {
+    let dir = TempDir::new();
+    let profile = "vp-00000000-0000-4000-8000-000000000003";
+    let first = dir.0.join("first");
+    let second = dir.0.join("second");
+    for root in [&first, &second] {
+        fs::create_dir(root).unwrap();
+        private(root);
+    }
+    fs::write(first.join("old.md"), "# Old").unwrap();
+    fs::write(second.join("new.md"), "# New").unwrap();
+    let mut session = start(&dir, "default");
+    let old = scoped(
+        &mut session,
+        profile,
+        Some(&first),
+        "knowledge.overview",
+        json!({}),
+    )
+    .unwrap();
+    assert_eq!(old["nodes"][0]["path"], "old.md");
+    let new = scoped(
+        &mut session,
+        profile,
+        Some(&second),
+        "knowledge.overview",
+        json!({}),
+    )
+    .unwrap();
+    assert_eq!(new["totalNodes"], 1);
+    assert_eq!(new["nodes"][0]["path"], "new.md");
+    let missing = dir.0.join("missing");
+    assert!(
+        scoped(
+            &mut session,
+            profile,
+            Some(&missing),
+            "knowledge.overview",
+            json!({})
+        )
+        .is_err()
+    );
+    assert!(!missing.exists());
+    let restored = scoped(
+        &mut session,
+        profile,
+        Some(&first),
+        "knowledge.overview",
+        json!({}),
+    )
+    .unwrap();
+    assert_eq!(restored["nodes"][0]["path"], "old.md");
+}
+
+#[test]
+fn scoped_cache_eviction_reopens_the_correct_profile() {
+    let dir = TempDir::new();
+    let mut session = start(&dir, "default");
+    for index in 0..10 {
+        let profile = format!("vp-00000000-0000-4000-8000-{index:012}");
+        dir.notes(&profile, &[("note.md", &format!("# Profile {index}"))]);
+        let result = scoped(
+            &mut session,
+            &profile,
+            None,
+            "knowledge.overview",
+            json!({}),
+        )
+        .unwrap();
+        assert_eq!(result["nodes"][0]["title"], format!("Profile {index}"));
+    }
+    let result = scoped(
+        &mut session,
+        "vp-00000000-0000-4000-8000-000000000000",
+        None,
+        "knowledge.overview",
+        json!({}),
+    )
+    .unwrap();
+    assert_eq!(result["nodes"][0]["title"], "Profile 0");
+}
+
+#[test]
+fn note_reads_recall_current_amendments_and_conflicts_without_promoting_authored_claims() {
+    let dir = TempDir::new();
+    let original = "---\naliases: [Original decision]\n---\n# Decision\n## Limits\nThe earlier value is provisional. ^limit\n";
+    dir.notes("default", &[
+        ("Design/Decision.md", original),
+        ("Learning/Update.md", "# New observation\nUpdates: [[Design/Decision.md#Limits|earlier limit]] — changed after a measured run\nUpdates: [[Design/Decision.md]] — repeat\n"),
+        ("Learning/Conflict.md", "---\nverification: verified\n---\n# Open disagreement\nContradicts: [[Original decision#^limit]] — another source differs\n"),
+        ("Learning/Ordinary.md", "# Context\nRelated: [[Design/Decision]]\n"),
+        ("Learning/Code.md", "# Example\n```\nUpdates: [[Design/Decision]]\n```\n"),
+        ("Learning/Hidden.md", "---\nprofile: different\n---\nUpdates: [[Design/Decision]]\n"),
+    ]);
+    let mut session = start(&dir, "default");
+    sync(&mut session, "incremental");
+    let note = op(
+        &mut session,
+        "knowledge.node",
+        json!({"path":"Design/Decision.md"}),
+    )
+    .unwrap();
+    assert_eq!(
+        note["body"],
+        "# Decision\n## Limits\nThe earlier value is provisional. ^limit\n"
+    );
+    assert_eq!(note["node"]["trustStatus"], "untrusted");
+    let updates = note["relatedUpdates"].as_array().unwrap();
+    assert_eq!(updates.len(), 2);
+    for update in updates {
+        assert_eq!(update["trustStatus"], "untrusted");
+        let source = op(
+            &mut session,
+            "knowledge.node",
+            json!({"path":update["path"]}),
+        )
+        .unwrap();
+        assert_eq!(update["sourceSha256"], source["node"]["sourceSha256"]);
+        assert_eq!(source["node"]["trustStatus"], "untrusted");
+    }
+    assert!(
+        updates
+            .iter()
+            .any(|item| item["relation"] == "updates" && item["path"] == "Learning/Update.md")
+    );
+    assert!(updates.iter().any(|item| item["relation"] == "contradicts" && item["path"] == "Learning/Conflict.md"));
+    assert_eq!(note["relatedUpdatesTruncated"], false);
+    let graph = op(
+        &mut session,
+        "knowledge.graph",
+        json!({"nodeId":note["node"]["nodeId"]}),
+    )
+    .unwrap();
+    assert!(
+        graph["edges"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|edge| edge["edgeType"] == "updates")
+    );
+    assert!(
+        graph["edges"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|edge| edge["edgeType"] == "contradicts")
+    );
+    assert_eq!(
+        fs::read_to_string(dir.vault("default").join("Design/Decision.md")).unwrap(),
+        original
+    );
+}
+
+#[test]
+fn recalled_sources_disappear_on_edit_delete_or_profile_exclusion_until_refreshed() {
+    let dir = TempDir::new();
+    dir.notes(
+        "default",
+        &[
+            ("Base.md", "# Initial\n"),
+            ("Update.md", "Updates: [[Base]] — first finding\n"),
+        ],
+    );
+    let mut session = start(&dir, "default");
+    sync(&mut session, "incremental");
+    let read =
+        |session: &mut Session| op(session, "knowledge.node", json!({"path":"Base.md"})).unwrap();
+    assert_eq!(
+        read(&mut session)["relatedUpdates"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    dir.notes(
+        "default",
+        &[(
+            "Update.md",
+            "Updates: [[Base]] — unindexed private replacement\n",
+        )],
+    );
+    let changed = read(&mut session);
+    assert_eq!(changed["relatedUpdates"], json!([]));
+    assert!(!changed.to_string().contains("private replacement"));
+    sync(&mut session, "incremental");
+    assert!(
+        read(&mut session)["relatedUpdates"][0]["excerpt"]
+            .as_str()
+            .unwrap()
+            .contains("replacement")
+    );
+    dir.notes(
+        "default",
+        &[(
+            "Update.md",
+            "---\nprofile: another\n---\nUpdates: [[Base]] — excluded finding\n",
+        )],
+    );
+    assert_eq!(read(&mut session)["relatedUpdates"], json!([]));
+    sync(&mut session, "incremental");
+    assert_eq!(read(&mut session)["relatedUpdates"], json!([]));
+    dir.notes(
+        "default",
+        &[("Update.md", "Updates: [[Base]] — visible again\n")],
+    );
+    sync(&mut session, "incremental");
+    assert_eq!(
+        read(&mut session)["relatedUpdates"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    fs::remove_file(dir.vault("default").join("Update.md")).unwrap();
+    assert_eq!(read(&mut session)["relatedUpdates"], json!([]));
+    dir.notes("default", &[("Base.md", "# Changed target\n")]);
+    let stale = read(&mut session);
+    assert_eq!(stale["bodyStatus"], "changed");
+    assert!(stale.get("relatedUpdates").is_none());
+}
+
+#[test]
+fn related_updates_are_bounded_and_isolated_across_default_scoped_and_restarted_reads() {
+    let dir = TempDir::new();
+    let first = "vp-00000000-0000-4000-8000-000000000011";
+    let second = "vp-00000000-0000-4000-8000-000000000012";
+    dir.notes(
+        "default",
+        &[
+            ("Base.md", "# Global\n"),
+            ("Global.md", "Updates: [[Base]] — global finding\n"),
+        ],
+    );
+    dir.notes(
+        first,
+        &[
+            ("Base.md", "# Isolated\n"),
+            ("Private.md", "Contradicts: [[Base]] — isolated finding\n"),
+        ],
+    );
+    dir.notes(second, &[("Base.md", "# Other\n")]);
+    for index in 0..40 {
+        dir.notes(
+            second,
+            &[(
+                &format!("Update{index:02}.md"),
+                "Updates: [[Base]] — bounded finding\n",
+            )],
+        );
+    }
+    {
+        let mut session = start(&dir, "default");
+        sync(&mut session, "incremental");
+        let global = op(&mut session, "knowledge.node", json!({"path":"Base.md"})).unwrap();
+        assert_eq!(ids(&global["relatedUpdates"], "path"), ["Global.md"]);
+        let a = scoped(
+            &mut session,
+            first,
+            None,
+            "knowledge.node",
+            json!({"path":"Base.md"}),
+        )
+        .unwrap();
+        assert_eq!(ids(&a["relatedUpdates"], "path"), ["Private.md"]);
+        assert_eq!(a["relatedUpdates"][0]["relation"], "contradicts");
+        let b = scoped(
+            &mut session,
+            second,
+            None,
+            "knowledge.node",
+            json!({"path":"Base.md"}),
+        )
+        .unwrap();
+        assert_eq!(b["relatedUpdates"].as_array().unwrap().len(), 8);
+        assert_eq!(b["relatedUpdatesTruncated"], true);
+        assert!(!b.to_string().contains("isolated finding"));
+    }
+    let mut restarted = start(&dir, "default");
+    let a = scoped(
+        &mut restarted,
+        first,
+        None,
+        "knowledge.node",
+        json!({"path":"Base.md"}),
+    )
+    .unwrap();
+    assert_eq!(ids(&a["relatedUpdates"], "path"), ["Private.md"]);
+    let root = dir.0.join("replacement-vault");
+    fs::create_dir(&root).unwrap();
+    private(&root);
+    fs::write(root.join("Base.md"), "# New selected vault\n").unwrap();
+    let rebound = scoped(
+        &mut restarted,
+        first,
+        Some(&root),
+        "knowledge.node",
+        json!({"path":"Base.md"}),
+    )
+    .unwrap();
+    assert_eq!(rebound["relatedUpdates"], json!([]));
+    assert!(!rebound.to_string().contains("isolated finding"));
 }

@@ -24,6 +24,10 @@ vi.mock('react', async original => ({
       hooks.effects.set(index, { dependencies, cleanup: cleanup || undefined });
     });
   },
+  useId: () => {
+    const index = hooks.index++;
+    return hooks.state[index] ??= `hook-${index}`;
+  },
   useRef: (initial: unknown) => {
     const index = hooks.index++;
     return hooks.state[index] ??= { current: initial };
@@ -38,9 +42,17 @@ vi.mock('react', async original => ({
 }));
 
 function mount(props: Parameters<typeof ConnectAgentAppsCard>[0]) {
+  let formKey: string | null | undefined;
   return () => {
     hooks.index = 0;
-    const tree = ConnectAgentAppsCard(props);
+    const form = ConnectAgentAppsCard(props);
+    if (formKey !== undefined && formKey !== form.key) {
+      for (const [index, effect] of hooks.effects) if (index >= hooks.index) { effect.cleanup?.(); hooks.effects.delete(index); }
+      hooks.state.length = hooks.index;
+    }
+    formKey = form.key;
+    const Form = form.type as (props: Parameters<typeof ConnectAgentAppsCard>[0]) => ReactNode;
+    const tree = Form(form.props);
     for (const effect of hooks.pending.splice(0)) effect();
     return tree;
   };

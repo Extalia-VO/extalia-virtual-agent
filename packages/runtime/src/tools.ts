@@ -44,6 +44,8 @@ export interface ToolOutcome {
 
 export interface ToolRunContext {
   signal: AbortSignal;
+  /** Host-only identity of this invocation, never serialized or chosen by a model. */
+  requestScope?: object;
   toolCallId: string;
   /** Emit additional protocol events (for example `command.output`). */
   emit(body: EventBody): void;

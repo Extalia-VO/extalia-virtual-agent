@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
-import { appendFile, mkdir, open, readFile, rename, rm } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { appendFile, lstat, mkdir, open, readFile, rename, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { PRIVATE_DIRECTORY_MODE, PRIVATE_FILE_MODE } from './paths.js';
@@ -50,6 +51,54 @@ export async function writeFileAtomic(file: string, data: string | Uint8Array, {
 
 export async function writeJsonAtomic(file: string, value: unknown, options?: WriteOptions): Promise<void> {
   await writeFileAtomic(file, `${JSON.stringify(value, null, 2)}\n`, options);
+}
+
+/**
+ * Opt-in publication barrier for a host-owned JSON journal. The caller serializes
+ * writes and owns the trusted parent directories; this is not hostile-directory
+ * CAS. POSIX acknowledgements include the file rename and newly created directory
+ * names created by this writer. Earlier ancestor creation by another owner must
+ * already be durably published; this is not a whole-profile creation barrier.
+ * Windows retains atomic-file/process-restart recovery, but Node cannot
+ * acknowledge directory-name flushing there, so power-loss durability is not
+ * promised. Keep this writer for the journal's lifetime, including failed writes.
+ */
+export function createDurableJsonWriter(file: string, options?: WriteOptions): (value: unknown) => Promise<void> {
+  const directory = path.resolve(path.dirname(file));
+  let durableParent = path.dirname(directory);
+  let identity: { dev: number; ino: number } | undefined;
+  const assertDirectory = async () => {
+    const current = await lstat(directory);
+    if (!current.isDirectory() || current.isSymbolicLink()
+      || identity && (current.dev !== identity.dev || current.ino !== identity.ino)) throw new Error('Journal directory changed during publication.');
+    identity ??= { dev: current.dev, ino: current.ino };
+  };
+  return async value => {
+    const firstCreated = await mkdir(directory, { recursive: true, mode: PRIVATE_DIRECTORY_MODE });
+    // A failed publication may leave these directories visible but unflushed.
+    // Retain the boundary so the next attempt still publishes the entire chain.
+    if (firstCreated) {
+      const parent = path.dirname(path.resolve(firstCreated));
+      if (path.relative(parent, durableParent).split(path.sep)[0] !== '..') durableParent = parent;
+    }
+    await assertDirectory();
+    await writeJsonAtomic(file, value, options);
+    if (process.platform !== 'win32') for (let current = directory;; current = path.dirname(current)) {
+      const before = await lstat(current);
+      if (!before.isDirectory() || before.isSymbolicLink()) throw new Error('Journal directory publication is unavailable.');
+      const handle = await open(current, constants.O_RDONLY | (constants.O_DIRECTORY ?? 0) | (constants.O_NOFOLLOW ?? 0));
+      try {
+        const opened = await handle.stat();
+        if (!opened.isDirectory() || before.dev !== opened.dev || before.ino !== opened.ino) throw new Error('Journal directory changed during publication.');
+        await handle.sync();
+        const after = await lstat(current);
+        if (!after.isDirectory() || after.isSymbolicLink() || after.dev !== opened.dev || after.ino !== opened.ino) throw new Error('Journal directory changed during publication.');
+      } finally { await handle.close(); }
+      if (current === durableParent) break;
+      if (path.dirname(current) === current) throw new Error('Journal directory publication is unavailable.');
+    }
+    await assertDirectory();
+  };
 }
 
 /** Append one line (no line breaks inside) to a file, creating it and its directory when needed. */

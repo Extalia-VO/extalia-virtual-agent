@@ -1,7 +1,7 @@
 import type { TaskTier } from '@extalia/core';
 import type { EventBody } from '@extalia/protocol';
 import { describe, expect, it } from 'vitest';
-import { createDelegationTool, runTurn, type AnyTool, type ModelProvider, type ModelRequest, type ModelResult } from '../src/index.js';
+import { checkRequestBudget, createDelegationTool, runTurn, type AnyTool, type ModelProvider, type ModelRequest, type ModelResult } from '../src/index.js';
 
 function provider(name: string, script: (request: ModelRequest) => Promise<ModelResult> | ModelResult, seen: { name: string; tools: string[] }[] = []): ModelProvider {
   return {
@@ -46,6 +46,62 @@ function harness(maxDelegations = 2, workerDelayMs = 0) {
 const context = { signal: new AbortController().signal, toolCallId: 'c', emit: () => undefined };
 
 describe('delegate_task', () => {
+  it('owns compaction and archive reads per worker, without inheriting the lead or another worker archive', async () => {
+    const owners: string[] = [], archived: string[] = [], fetched: string[] = [], denied: string[] = [];
+    let identity = 0;
+    const ownReferences = new Map<string, string>();
+    const source: AnyTool = { ...readTool, run: async () => ({ ok: true, output: `Source start. ${'bounded evidence '.repeat(1500)} Source end.` }) };
+    const leadArchive: AnyTool = { ...readTool, name: 'context_archive_read', access: 'memory', run: async () => { throw new Error('Lead archive must never be called by a worker.'); } };
+    const tool = createDelegationTool({
+      maxDelegations: 3, workerTools: [source, leadArchive], newId: () => `worker-${++identity}`,
+      workspace: { name: 'Fixture', root: '/projects/fixture' }, emit: () => undefined,
+      contextForWorker: (_member, agentId) => {
+        owners.push(agentId);
+        if (agentId === 'worker-3') return undefined;
+        const reference = (agentId === 'worker-1' ? 'a' : 'b').repeat(64);
+        ownReferences.set(agentId, reference);
+        const read: AnyTool = { ...leadArchive, parameters: { type: 'object', properties: { reference: { type: 'string' } }, required: ['reference'] },
+          run: async input => {
+            if (input.reference !== reference) { denied.push(agentId); return { ok: false, output: 'Archive belongs to another worker.' }; }
+            fetched.push(agentId); return { ok: true, output: `Owned evidence for ${agentId}.` };
+          } };
+        return { tools: [read], maxInputTokens: 2500, compaction: { triggerTokens: 2000, archive: async request => {
+          expect(request.messages.some(message => message.role === 'tool' && message.results[0]!.content.includes('bounded evidence '.repeat(100)))).toBe(true);
+          archived.push(agentId); return { reference };
+        } } };
+      },
+      providerFor: tier => {
+        const owner = tier === 'quick' ? 'worker-1' : tier === 'standard' ? 'worker-2' : 'worker-3';
+        let step = 0;
+        return provider(owner, request => {
+          expect(checkRequestBudget(request, 2500).reason).toBeUndefined();
+          if (owner === 'worker-3') {
+            expect(request.tools.some(tool => tool.name === 'context_archive_read')).toBe(false);
+            return { text: 'Memory disabled for this worker.', toolCalls: [], stop: 'end' };
+          }
+          if (step++ === 0) return { text: '', toolCalls: [{ id: 'source', name: 'read_file', input: { path: 'source.txt' } }], stop: 'tool_use' };
+          if (step === 2) {
+            const original = request.messages.find(message => message.role === 'tool');
+            expect(original?.role === 'tool' && original.results[0]!.content).toContain(ownReferences.get(owner));
+            return { text: '', toolCalls: [{ id: 'own', name: 'context_archive_read', input: { reference: ownReferences.get(owner) } }], stop: 'tool_use' };
+          }
+          if (step === 3) {
+            expect(request.messages.at(-1)).toMatchObject({ role: 'tool', results: [{ content: `Owned evidence for ${owner}.`, isError: false }] });
+            return { text: '', toolCalls: [{ id: 'other', name: 'context_archive_read', input: { reference: (owner === 'worker-1' ? 'b' : 'a').repeat(64) } }], stop: 'tool_use' };
+          }
+          expect(request.messages.at(-1)).toMatchObject({ role: 'tool', results: [{ isError: true, content: 'Archive belongs to another worker.' }] });
+          return { text: `Verified archive ownership for ${owner}.`, toolCalls: [], stop: 'end' };
+        });
+      },
+    });
+    expect((await tool.run({ task: 'Inspect A.', tier: 'quick' }, context)).ok).toBe(true);
+    expect((await tool.run({ task: 'Inspect B.', tier: 'standard' }, context)).ok).toBe(true);
+    expect((await tool.run({ task: 'Inspect C.', tier: 'complex' }, context)).ok).toBe(true);
+    expect(owners).toEqual(['worker-1', 'worker-2', 'worker-3']);
+    expect(archived).toEqual(['worker-1', 'worker-2']);
+    expect(fetched).toEqual(['worker-1', 'worker-2']); expect(denied).toEqual(['worker-1', 'worker-2']);
+  });
+
   it('runs a read-only worker on the tier model and returns its findings', async () => {
     const h = harness();
     const outcome = await h.tool.run({ task: 'Find where config loads', tier: 'quick' }, context);

@@ -1,3 +1,4 @@
+import { useFixedModelTransforms } from "../fixedModelTransforms";
 import { useEffect, useMemo, useSyncExternalStore, type ReactNode } from 'react';
 import type { Material, Mesh, MeshStandardMaterial, Object3D } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
@@ -85,6 +86,7 @@ export function WorkstationPart({ asset, children, position, modelScale, woodCol
   useEffect(() => { void load(); }, []);
   const source = library?.get(asset);
   const instance = useMemo(() => source ? createWorkstationInstance(source, woodColor) : null, [source, woodColor]);
+  useFixedModelTransforms(instance?.root);
   useEffect(() => () => { for (const material of instance?.owned ?? []) material.dispose(); }, [instance]);
   // The original must not be baked into a floor-wide batch before the replacement arrives.
   return <group name={`workstation-part-${asset}`} position={position ? [...position] : [0, 0, 0]} userData={{ officeDynamic: true, workstationAsset: asset, workstationAuthored: !!instance }}>

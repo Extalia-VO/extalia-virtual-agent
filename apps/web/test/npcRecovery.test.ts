@@ -4,6 +4,7 @@ import { FACILITY_NPCS } from '../src/office/scene/movement/facilityNpcs';
 import { FacilityNpcDirector } from '../src/office/scene/movement/facilityDirector';
 import { floorY, officeNavigation, planRoute, seatStageId } from '../src/office/scene/movement/navGraph';
 import { routeFrom, type ElevatorAccess, type MovementEnv } from '../src/office/scene/movement/mover';
+import { elevatorWaitingPosition } from '../src/office/scene/movement/elevatorMovement';
 
 const navigation = officeNavigation();
 const elevators: ElevatorAccess = { request() {}, waitingSlot: () => 0, canBoard: () => false, standingPosition: () => null,
@@ -65,10 +66,28 @@ describe('facility NPC shared movement recovery', () => {
       const mover = director.npcs[0]!.mover;
       mover.phase = 'waiting';
       mover.trip = { id: 'A', from: 1, to: 3, exit: [0, 12.8, 0], landing: [...mover.position], stage: 'approach', requested: true, exited: false };
+      const trip = mover.trip, landing = [...trip.landing] as Point3;
+      const waiting = elevatorWaitingPosition(landing, elevators.door(trip.id), 0);
+      let previous = [...mover.position], maxStep = 0;
+      for (let frame = 0; frame < 30 * 5; frame++) {
+        director.tick(1 / 30);
+        maxStep = Math.max(maxStep, Math.hypot(...mover.position.map((value, axis) => value - previous[axis]!)));
+        previous = [...mover.position];
+      }
+      expect(maxStep).toBeGreaterThan(0); expect(maxStep).toBeLessThan(.2);
+      expect(mover.position).toEqual(waiting);
+      expect(Math.hypot(mover.position[0] - landing[0], mover.position[2] - landing[2])).toBeCloseTo(1);
+      // Waiting must leave the shared landing/exit centreline clear for other bodies.
+      expect(Math.abs(mover.position[2] - landing[2])).toBeGreaterThanOrEqual(1);
       const position = [...mover.position];
-      for (let frame = 0; frame < 30 * 90; frame++) director.tick(1 / 30);
+      for (let frame = 0; frame < 30 * 90; frame++) {
+        director.tick(1 / 30);
+        expect(mover.position).toEqual(position);
+        expect(mover.phase).toBe('waiting'); expect(mover.trip).toBe(trip); expect(mover.recovery.attempts).toBe(0);
+      }
       expect(mover.phase).toBe('waiting');
       expect(mover.position).toEqual(position);
+      expect(mover.trip).toBe(trip);
       expect(mover.trip?.id).toBe('A');
       expect(mover.recovery.attempts).toBe(0);
       expect(release).not.toHaveBeenCalled();

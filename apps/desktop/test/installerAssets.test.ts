@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { installerCopy } from '../scripts/installer-copy.mjs';
-import { prepareInstallerFiles, verifyInstallerArtwork } from '../scripts/installer-assets.mjs';
+import beforePack, { configureDmgSupportLayout, prepareInstallerFiles, verifyInstallerArtwork } from '../scripts/installer-assets.mjs';
 import afterAllArtifactBuild from '../scripts/create-linux-installer.mjs';
 import { verifyLinuxInstaller } from '../scripts/linux-installer.mjs';
 
@@ -17,6 +17,25 @@ async function fixture() {
 }
 
 describe('English native installer media', () => {
+  it('keeps support metadata outside the canvas without copying or removing installer content', () => {
+    const original = [{ x: 224, y: 502, type: 'file' }, { x: 571, y: 502, type: 'link', path: '/Applications' }, { x: 790, y: 502, type: 'file', path: 'Installation Guide.txt' }];
+    const dmg = { window: { width: 900, height: 620 }, contents: [...original] };
+    configureDmgSupportLayout(dmg);
+    configureDmgSupportLayout(dmg); // Per-architecture packaging reuses its config object.
+    expect(dmg.contents.slice(0, 3)).toEqual(original);
+    const metadata = dmg.contents.slice(3);
+    expect(metadata.map(item => item.path)).toEqual(['.background.tiff', '.background.png', '.VolumeIcon.icns', '.DS_Store']);
+    expect(metadata.every(item => item.type === 'position' && item.x - 104 > dmg.window.width)).toBe(true);
+    expect(metadata).toHaveLength(4);
+  });
+  it('refuses layout collisions and keeps non-macOS packaging unchanged', async () => {
+    expect(() => configureDmgSupportLayout({ contents: [{ path: '.VolumeIcon.icns', x: 0, y: 0, type: 'file' }] })).toThrow('reserved');
+    const root = await fixture(), dmg = { contents: [{ x: 224, y: 502, type: 'file' }] };
+    await beforePack({ electronPlatformName: 'win32', packager: { projectDir: root, config: { dmg } } });
+    expect(dmg.contents).toHaveLength(1);
+    await beforePack({ electronPlatformName: 'darwin', packager: { projectDir: root, config: { dmg } } });
+    expect(dmg.contents).toHaveLength(5);
+  });
   it('verifies the committed standard/retina artwork and exact native bitmap dimensions', async () => {
     await expect(verifyInstallerArtwork()).resolves.toBeUndefined();
     const copy = await installerCopy();

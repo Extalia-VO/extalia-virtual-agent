@@ -28,7 +28,11 @@ const PRIVATE_FILE_MODE: u32 = 0o600;
 const PRIVATE_DIRECTORY_MODE: u32 = 0o700;
 
 /// Embedded schema versions; entry `i` produces `user_version` `i + 1`.
-const SCHEMA: &[&str] = &[include_str!("schema/0001_index.sql")];
+const SCHEMA: &[&str] = &[
+    include_str!("schema/0001_index.sql"),
+    include_str!("schema/0002_profile_alias.sql"),
+    include_str!("schema/0003_learning_relations.sql"),
+];
 
 /// Location of a profile's index.
 pub fn index_path(data_dir: &Path, profile: &ProfileId) -> PathBuf {
@@ -151,6 +155,30 @@ impl KnowledgeStore {
 
     pub fn profile(&self) -> &ProfileId {
         &self.profile
+    }
+
+    /// A parser change must re-read unchanged notes too; their file hashes alone cannot
+    /// reveal newly recognized edge labels. Persisted until the next successful sync.
+    pub fn parser_is_current(&self) -> Result<bool, KnowledgeError> {
+        let revision: u32 = self.conn.query_row(
+            "SELECT parser_revision FROM knowledge_index_state WHERE profile_id = ?1",
+            [self.profile.as_str()],
+            |row| row.get(0),
+        )?;
+        Ok(revision == 1)
+    }
+
+    /// The ACL identity used by the last successful sync, not a caller-selected scope.
+    pub fn profile_alias_matches(&self, alias: Option<&ProfileId>) -> Result<bool, KnowledgeError> {
+        if alias.is_some() && self.profile.as_str() != "default" {
+            return Err(KnowledgeError::WrongProfile);
+        }
+        let stored: Option<String> = self.conn.query_row(
+            "SELECT accepted_profile_alias FROM knowledge_index_state WHERE profile_id = ?1",
+            [self.profile.as_str()],
+            |row| row.get(0),
+        )?;
+        Ok(stored.as_deref() == alias.map(ProfileId::as_str))
     }
 
     /// The file's `user_version`.

@@ -4,6 +4,8 @@ import { errorMessage } from '../host/remote';
 import type { Messages } from '../i18n';
 import { Icon } from '../ui/Icon';
 import { Select } from '../ui/Select';
+import { SessionHandoverDialog } from '../chat/SessionHandoverDialog';
+import { ObservedHermesControls } from '../observe/ObservedHermesControls';
 
 const samePath = (a?: string, b?: string) => Boolean(a && b) && a!.replace(/[\\/]+$/, '') === b!.replace(/[\\/]+$/, '');
 
@@ -11,26 +13,45 @@ const samePath = (a?: string, b?: string) => Boolean(a && b) && a!.replace(/[\\/
  * Carry a conversation from another agent (or the library) into a new managed
  * session, for example when Codex or Claude Code ran out of quota.
  */
-export function ContinueInExtalia({ t, agents, state, source, projectPath, onContinued, onOpenSettings }: {
+export function ContinueInExtalia({ t, agents, state, source, projectPath, compact = false, onContinued, onOpenSettings, onState }: {
   t: Messages;
   agents: AgentHostApi;
   state: HostState;
   source: ContinueSource;
   /** The conversation's project folder, used to suggest a workspace. */
   projectPath?: string;
+  compact?: boolean;
   onContinued: (sessionId: string, workspaceId: string) => void;
   onOpenSettings: () => void;
+  onState: (state: HostState) => void;
 }) {
   const id = useId();
   // Hermes Agent workspaces need no connection; the conversation reaches Hermes with the first prompt.
-  const usable = state.workspaces.filter(workspace => workspace.runtimeId === 'hermes'
-    || (workspace.providerProfileId && state.connections.some(connection => connection.id === workspace.providerProfileId)));
+  const usable = state.workspaces.filter(workspace => workspace.mode !== 'observe' && (workspace.runtimeId === 'hermes'
+    || (workspace.providerProfileId && state.connections.some(connection => connection.id === workspace.providerProfileId))));
   const suggested = usable.find(workspace => samePath(workspace.projectLocation, projectPath)) ?? usable[0];
   const [open, setOpen] = useState(false);
   const [workspaceId, setWorkspaceId] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const chosen = usable.find(workspace => workspace.id === workspaceId) ?? suggested;
+  const observed = source.kind === 'observed' ? state.sessions.find(session => session.id === source.id && session.control === 'observed') : undefined;
+
+  // Existing observations use the reviewed canonical path; offline library imports retain their explicit snapshot workflow.
+  if (observed && agents.sessionContinuity && agents.previewHandover && agents.applyHandover) return <div className={`continue-panel${compact ? ' compact' : ''}`}>
+    <button type="button" className={compact ? 'icon-button small' : 'button'} aria-label={t.sessionHandover.title} title={t.sessionHandover.title} aria-haspopup="dialog" onClick={() => setOpen(true)}><Icon name="chat" />{!compact && t.sessionHandover.title}</button>
+    {open && <SessionHandoverDialog agents={agents} state={state} session={observed} t={t.sessionHandover} cliResumeMessages={t.observedCliResume} antigravityMessages={t.observedAntigravity} initialKind={observed.workspaceId ? (state.workflow === 'observe' ? 'observed' : 'native') : 'observed'}
+      workspaceLinkMessages={t.observedWorkspaceLink} onState={onState} onOpenSettings={() => { setOpen(false); onOpenSettings(); }}
+      destinationSetup={(destination, changed) => destination.observation?.sourceId === 'hermes' ? <ObservedHermesControls t={t} agents={agents} session={destination} settingsOnly onChanged={changed} /> : undefined}
+      onOpenDestination={id => { setOpen(false); onContinued(id, observed.workspaceId); }}
+      onClose={() => setOpen(false)} onApplied={receipt => {
+        if (receipt.state === 'native-ready' && receipt.targetSessionId) {
+          setOpen(false); onContinued(receipt.targetSessionId, observed.workspaceId);
+        }
+      }} />}
+  </div>;
+
+  if (state.workflow === 'observe') return null;
 
   const start = async () => {
     if (!chosen) return;
@@ -43,9 +64,9 @@ export function ContinueInExtalia({ t, agents, state, source, projectPath, onCon
   };
 
   return (
-    <div className="continue-panel">
-      <button type="button" className="button" aria-expanded={open} aria-controls={`${id}-panel`} onClick={() => setOpen(!open)}>
-        <Icon name="chat" />{t.handoff.continue}
+    <div className={`continue-panel${compact ? ' compact' : ''}`}>
+      <button type="button" className={compact ? 'icon-button small' : 'button'} aria-label={t.handoff.continue} title={t.handoff.continue} aria-expanded={open} aria-controls={`${id}-panel`} onClick={() => setOpen(!open)}>
+        <Icon name="chat" />{!compact && t.handoff.continue}
       </button>
       {open && (
         <div className="card continue-body" id={`${id}-panel`}>

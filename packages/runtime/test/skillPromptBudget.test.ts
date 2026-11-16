@@ -4,6 +4,15 @@ import { buildSystemPrompt } from '../src/prompt.js';
 const base = { workspace: { name: 'Example', root: '/projects/example' }, platform: { os: 'Linux', shell: 'sh' } };
 
 describe('bounded progressive skill prompt', () => {
+  it('treats zero matching procedures as valid and keeps discovery separate from task relevance', () => {
+    const system = buildSystemPrompt({ ...base, skills: [], automaticSkillLoading: true });
+    expect(system).toContain('do not require a skill when none fits');
+    expect(system).toContain('Category or keyword overlap alone is insufficient');
+    expect(system).toContain('background context do not expand your skill scope');
+    expect(system).toContain('omit snapshot and offset');
+    expect(system).toContain('Discovery does not authorize reading or applying a skill');
+    expect(system).toContain('continue without it');
+  });
   it('bounds escaped metadata for 1000 skills, reports omissions and never embeds instructions', () => {
     const skills = Array.from({ length: 1000 }, (_, i) => ({ name: `skill-${i}`, description: '<'.repeat(400), body: 'Instructions must stay out.' }));
     const system = buildSystemPrompt({ ...base, skills, skillCatalog: { omitted: 7, incomplete: true } });

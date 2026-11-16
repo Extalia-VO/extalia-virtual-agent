@@ -1,6 +1,7 @@
 import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { LearningSchedule } from '../src/learningSchedule.js';
 import { MemoryStore } from '../src/memory.js';
 import { NativeMemoryService } from '../src/nativeMemory.js';
 import { createAgentHost } from '../src/service.js';
@@ -101,6 +102,46 @@ describe('human-facing Native memory', () => {
     await closing; expect(closed).toBe(true); expect(service.isBusy()).toBe(false);
   });
 
+  it.each(['throw', 'reject'])('releases pending ownership when foreground preparation fails by %s', async mode => {
+    const directory = await temp();
+    const list = vi.fn();
+    class CheckedStore extends MemoryStore {
+      override async listPage(...args: Parameters<MemoryStore['listPage']>) {
+        list(); return super.listPage(...args);
+      }
+    }
+    const store = new CheckedStore(path.join(directory, 'memory'));
+    const idle = vi.fn();
+    const service = new NativeMemoryService({
+      store: () => store, checkOpen: () => undefined, onIdle: idle,
+      beforeForeground: () => {
+        expect(service.isBusy('a')).toBe(true);
+        if (mode === 'throw') throw new Error('Foreground preparation failed.');
+        return Promise.reject(new Error('Foreground preparation failed.'));
+      },
+    });
+    const listing = service.methods.nativeMemoryList('a');
+    expect(service.isBusy('a')).toBe(true);
+    await expect(listing).rejects.toThrow('Foreground preparation failed.');
+    expect(list).not.toHaveBeenCalled();
+    expect(service.isBusy()).toBe(false);
+    expect(idle).toHaveBeenCalledTimes(1);
+    await service.close();
+  });
+
+  it('validates workspace membership before preparing foreground work', async () => {
+    const beforeForeground = vi.fn();
+    const idle = vi.fn();
+    const service = new NativeMemoryService({
+      store: () => { throw new Error('Workspace unavailable.'); }, checkOpen: () => undefined, beforeForeground, onIdle: idle,
+    });
+    await expect(service.methods.nativeMemoryList('foreign-workspace')).rejects.toThrow('Workspace unavailable.');
+    expect(beforeForeground).not.toHaveBeenCalled();
+    expect(idle).not.toHaveBeenCalled();
+    expect(service.isBusy()).toBe(false);
+    await service.close();
+  });
+
   it('reserves workspace deletion before any await, without blocking other workspaces', async () => {
     const { service, api } = await setup(); const entered = gate(), release = gate();
     const removing = service.withWorkspaceDeletion('a', async () => { entered.resolve(); await release.promise; });
@@ -116,5 +157,88 @@ describe('human-facing Native memory', () => {
     expect(closed).toBe(true);
     expect(service.isBusy()).toBe(false);
     await expect(api.nativeMemoryList('a')).rejects.toThrow('closing');
+  });
+});
+
+describe('Native memory foreground scheduling', () => {
+  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-01-01T00:00:00Z')); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('restarts the full selected snooze after a quick memory write between timer callbacks', async () => {
+    const directory = await temp();
+    const store = new MemoryStore(path.join(directory, 'memory'));
+    const schedule = new LearningSchedule();
+    const service = new NativeMemoryService({
+      store: () => store, checkOpen: () => undefined,
+      beforeForeground: () => schedule.yieldForForeground(), onIdle: () => schedule.wake(),
+    });
+    const execute = vi.fn(async () => undefined);
+    schedule.schedule({ id: 'meeting', workspaceId: 'a', profileId: 'profile-a', profileName: 'Example', sessionId: 'session-a',
+      kind: 'knowledge-meeting', execute, validate: async () => true, ready: () => !service.isBusy(),
+    });
+    schedule.act({ id: 'meeting', revision: schedule.snapshot().revision, action: 'snooze' });
+    try {
+      await vi.advanceTimersByTimeAsync(550_123);
+      const writing = service.methods.nativeMemoryWrite('a', { name: 'example', content: 'Confirmed example.', expectedRevision: null });
+      expect(service.isBusy('a')).toBe(true);
+      expect(await writing).toMatchObject({ status: 'saved' });
+      expect(service.isBusy()).toBe(false);
+      expect(schedule.snapshot().jobs[0]).toMatchObject({ state: 'scheduled', waitingForIdle: false, dueAt: '2026-01-01T00:19:10.123Z' });
+      await vi.advanceTimersByTimeAsync(599_999);
+      expect(execute).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(execute).toHaveBeenCalledTimes(1);
+      expect(await store.read('example')).toBe('Confirmed example.');
+    } finally { await service.close(); await schedule.close(); }
+  });
+
+  it('drains an abort-ignoring executor before writing memory and retains admitted work during close', async () => {
+    const directory = await temp();
+    const finish = gate(), preparing = gate();
+    const events: string[] = [];
+    let signal: AbortSignal | undefined;
+    class CheckedStore extends MemoryStore {
+      override async write(...args: Parameters<MemoryStore['write']>) {
+        events.push('memory-write'); return super.write(...args);
+      }
+    }
+    const store = new CheckedStore(path.join(directory, 'memory'));
+    const schedule = new LearningSchedule();
+    const service = new NativeMemoryService({
+      store: () => store, checkOpen: () => undefined,
+      beforeForeground: async () => {
+        const yielding = schedule.yieldForForeground(); preparing.resolve(); await yielding;
+      },
+      onIdle: () => schedule.wake(),
+    });
+    schedule.schedule({ id: 'meeting', workspaceId: 'a', profileId: 'profile-a', profileName: 'Example', sessionId: 'session-a',
+      kind: 'knowledge-meeting', validate: async () => true, ready: () => !service.isBusy(),
+      execute: async value => {
+        signal = value; events.push('learning-started'); await finish.promise; events.push('learning-settled');
+      },
+    });
+    try {
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(events).toEqual(['learning-started']);
+      const writing = service.methods.nativeMemoryWrite('a', { name: 'example', content: 'Confirmed example.', expectedRevision: null });
+      expect(service.isBusy('a')).toBe(true);
+      await preparing.promise;
+      expect(signal?.aborted).toBe(true);
+      let closed = false;
+      const closing = service.close().then(() => { closed = true; });
+      await expect(service.methods.nativeMemoryList('a')).rejects.toThrow('closing');
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(events).toEqual(['learning-started']);
+      expect(closed).toBe(false);
+      expect(schedule.isBusy).toBe(true);
+      expect(service.isBusy('a')).toBe(true);
+      finish.resolve();
+      expect(await writing).toMatchObject({ status: 'saved' });
+      await closing;
+      expect(events).toEqual(['learning-started', 'learning-settled', 'memory-write']);
+      expect(await store.read('example')).toBe('Confirmed example.');
+      expect(service.isBusy()).toBe(false);
+      expect(schedule.snapshot().jobs[0]).toMatchObject({ state: 'cancelled', reason: 'busy' });
+    } finally { finish.resolve(); await service.close(); await schedule.close(); }
   });
 });

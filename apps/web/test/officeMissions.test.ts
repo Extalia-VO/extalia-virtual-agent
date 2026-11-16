@@ -15,7 +15,7 @@ import { popoverSummary } from '../src/office/overlay/popoverModel';
 import { agentStatusLabel, statusTone } from '../src/office/overlay/status';
 import { lookIdentity } from '../src/office/scene/avatars/appearance';
 import { allocateOfficeAgents } from '../src/office/scene/interior/seating';
-import { ADMISSION_SPACING_MS, MovementDirector, SETTLE_MS } from '../src/office/scene/movement/director';
+import { ADMISSION_BATCH_SIZE, ADMISSION_WAVE_MS, MovementDirector, SETTLE_MS } from '../src/office/scene/movement/director';
 import { officeNavigation } from '../src/office/scene/movement/navGraph';
 import { gaitParameters } from '../src/office/scene/avatars/gait';
 
@@ -209,7 +209,7 @@ describe('Office projection of native mission workers (v0.0.47, ADR 0016)', () =
     expect(officeHistoryIds([session({ running: false })], undefined, undefined, new Set(['s1']))).toEqual(['s1']);
   });
 
-  it('admits a 12-task mission through the spawn queue (at most about three per second) without dropping any worker', async () => {
+  it('admits a 12-task mission in waves of at most two without dropping any worker', async () => {
     const agents = createMockPlatform({ seed: 'ready', host: 'bridge' }).capabilities.agents!;
     let state = await agents.getState();
     for (let i = 0; i < 100 && !state.sessions.some(item => item.control === 'managed' && !item.runtime && !item.running && item.workspaceId === state.workspaces[0]!.id); i++) {
@@ -245,12 +245,13 @@ describe('Office projection of native mission workers (v0.0.47, ADR 0016)', () =
     expect([...seenStates]).toEqual(expect.arrayContaining(['queued', 'running', 'completed']));
     expect(peak.length).toBeGreaterThanOrEqual(8);
 
-    // The director admits the burst of arrivals through the spawn queue: spaced, never more than three per second.
+    // Runtime workers are already active; their visual bodies enter in bounded waves.
     let now = 0;
     const director = new MovementDirector({ navigation: officeNavigation(), elevators: { request() {}, waitingSlot: () => 0, canBoard: () => false, standingPosition: () => null, confirmBoarded: () => false, canExit: () => false, confirmExited: () => false, release() {}, door: () => ({ x: 0, z: 0 }) } }, () => now);
     const lead: OfficeAgent = { id: `${summary.id}:primary`, sessionId: summary.id, agentId: 'primary', displayName: 'Lead', control: 'managed', status: 'delegating', running: true };
     const gaitOf = () => gaitParameters();
     director.update({ allocations: allocateOfficeAgents([lead]), agents: [lead], reducedMotion: false, gaitOf });
+    director.tick(0);
     now = SETTLE_MS + 1;
     const crowd = [lead, ...peak];
     director.update({ allocations: allocateOfficeAgents(crowd, allocateOfficeAgents([lead])), agents: crowd, reducedMotion: false, gaitOf });
@@ -262,9 +263,8 @@ describe('Office projection of native mission workers (v0.0.47, ADR 0016)', () =
     }
     expect(appeared.size).toBe(peak.length);
     const times = [...appeared.values()].sort((a, b) => a - b);
-    for (let index = 1; index < times.length; index++) expect(times[index]! - times[index - 1]!).toBeGreaterThanOrEqual(ADMISSION_SPACING_MS - 40);
-    // Appearance times are sampled at 30 fps, so a 340 ms spacing can read as 333 ms; allow one frame of quantization.
+    // Allow one frame of observation quantization around the wave boundary.
     const frame = 1000 / 30;
-    for (const time of times) expect(times.filter(other => other >= time && other < time + 1000 - frame).length).toBeLessThanOrEqual(3);
+    for (const time of times) expect(times.filter(other => other >= time && other < time + ADMISSION_WAVE_MS - frame).length).toBeLessThanOrEqual(ADMISSION_BATCH_SIZE);
   }, 90_000);
 });

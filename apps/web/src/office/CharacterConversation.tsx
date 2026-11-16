@@ -1,22 +1,32 @@
+import { ObservedInputCards } from '../observe/ObservedInputCards';
+import { SessionHandoverDialog } from '../chat/SessionHandoverDialog';
+import { ObservedWorkspaceLinkButton } from '../observe/ObservedWorkspaceLinkDialog';
+import { useObservedInputs } from '../observe/ObservedInputProvider';
 import { ObservedCodexControls } from '../observe/ObservedCodexControls';
 import { ObservedCodexQueueControls } from '../observe/ObservedCodexQueueControls';
 import { ObservedCodexPromptComposer } from '../observe/ObservedCodexPromptComposer';
+import { supportsObservedPromptQueue } from '../observe/observedCodexPromptModel';
+import { ObservedCodexNativeQueue } from '../observe/ObservedCodexNativeQueue';
 import { ObservedCodexPermissionControls } from '../observe/ObservedCodexPermissionControls';
 import { ObservedReplyControls } from '../observe/ObservedReplyControls';
 import { ObservedHermesControls } from '../observe/ObservedHermesControls';
+import { ConversationToolsTabs } from '../observe/ConversationToolsTabs';
+import { ObservedSessionControl, ObservedSessionTools } from '../observe/ObservedSessionControl';
+import { observedSessionControlFor, type ObservedSessionControlView } from '../observe/observedSessionControlModel';
 import type { CharacterAppearance } from '@extalia/core';
 import type { AgentHostApi, ApprovalDecisionInput, HostState, SessionSummary } from '@extalia/platform';
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { errorMessage } from '../host/remote';
 import type { Messages } from '../i18n';
 import { Composer, type ComposerSend } from '../chat/Composer';
-import { PromptQueueControls } from '../chat/PromptQueueControls';
+import { PromptSuggestions } from '../chat/PromptSuggestions';
 import { attachmentPreviewLoader, sendPromptWithAttachments, uploadAttachments } from '../chat/attachments';
 import { projectActivity } from '../chat/transcript';
 import { characterTranscript } from './characterHistory';
 import { TranscriptView } from '../chat/TranscriptView';
 import { MessageFileProvider } from '../chat/MessageFilePreview';
 import { projectChangedFiles } from '../chat/changedFiles';
+import { sessionFileRoots } from '../chat/sessionFileScopes';
 import { ChangedFilesView } from '../chat/ChangedFilesView';
 import { useSessionEvents } from '../chat/useSessionEvents';
 import type { OfficeAgent } from './presence';
@@ -26,8 +36,14 @@ import type { StaffRole } from './scene/avatars/outfitCatalog';
 import type { LookIdentity } from './scene/avatars/appearance';
 import { ActivityTimeline } from './console/ActivityTimeline';
 import { characterEvents, characterTimeline, shortcutFor, teamRoster } from './console/timeline';
+
+const noSubscription = () => () => undefined;
+const emptyControlView: ObservedSessionControlView = { phase: 'loading', draft: '', selected: '', busy: false };
+const getEmptyControlView = () => emptyControlView;
 import { modelChoicesKey, sessionRuntime } from '../chat/sessionRuntime';
 import { WorkspaceRuntimeNotice } from '../chat/WorkspaceRuntimeNotice';
+import { SessionWorkspaceReview } from '../chat/SessionWorkspaceReview';
+import { useWorkspaceReviewRecovery } from '../chat/workspaceReviewRecovery';
 import './characterConversationLayout.css';
 
 const TOOLS_MEDIA = '(min-width: 1100px)';
@@ -55,6 +71,11 @@ export interface CharacterAppearanceControls {
 }
 
 export type ConversationTab = 'messages' | 'activity' | 'files';
+export interface CharacterConversationToolsState {
+  available: boolean;
+  open: boolean;
+  wide: boolean;
+}
 
 /**
  * Conversation controls for a character's native Extalia session, shown in the
@@ -62,7 +83,7 @@ export type ConversationTab = 'messages' | 'activity' | 'files';
  * observed execution stays in its source app; Codex has a separate text sender. Tabs stay mounted, so switching
  * keeps the scroll position; the composer stays mounted, so it keeps the draft.
  */
-export function CharacterConversation({ t, language, agents, state, session, agent, onState, appearance, tab: controlledTab, onTab, readOnlyReason, onLocate, following = false, onToggleFollow, onSelectCharacter }: {
+export function CharacterConversation({ t, language, agents, state, session, agent, onState, appearance, tab: controlledTab, onTab, readOnlyReason, onLocate, following = false, onToggleFollow, onSelectCharacter, onToolsStateChange, onHandoverReady, onOpenSettings }: {
   t: Messages;
   language: string;
   agents: AgentHostApi;
@@ -84,8 +105,17 @@ export function CharacterConversation({ t, language, agents, state, session, age
   onToggleFollow?: (() => void) | undefined;
   /** Select another character, e.g. a worker from the team list. */
   onSelectCharacter?: ((characterId: string) => void) | undefined;
+  /** Let the containing dialog size itself to the tools' actual layout state. */
+  onToolsStateChange?: ((state: CharacterConversationToolsState) => void) | undefined;
+  onHandoverReady?: ((session: SessionSummary) => void) | undefined;
+  onOpenSettings?: (() => void) | undefined;
 }) {
+  const workspaceReview = useWorkspaceReviewRecovery({ agents, session, onState });
+  const inputContext = useObservedInputs();
+  const inputEntry = inputContext?.view.entries[session.id];
+  const inlineQuestions = inputEntry?.phase === 'ready' || inputEntry?.phase === 'private' || !!inputEntry?.requests.some(request => request.origin === 'codex-native');
   const [editing, setEditing] = useState(false);
+  const [handoverOpen, setHandoverOpen] = useState(false);
   const [ownTab, setOwnTab] = useState<ConversationTab>('messages');
   const tab = controlledTab ?? ownTab;
   const tabRef = useRef(onTab);
@@ -98,8 +128,24 @@ export function CharacterConversation({ t, language, agents, state, session, age
   const isWorker = agent.agentId !== 'primary';
   const wide = useSyncExternalStore(subscribeToolsMedia, wideToolsSnapshot, () => true);
   const [toolsChoice, setToolsChoice] = useState<{ wide: boolean; open: boolean }>();
+  const sessionControl = session.control;
+  const sessionId = session.id;
+  const controlModel = useMemo(() => sessionControl === 'observed' ? observedSessionControlFor(agents, sessionId) : undefined, [agents, sessionControl, sessionId]);
+  const controlView = useSyncExternalStore(controlModel?.subscribe ?? noSubscription, controlModel?.getSnapshot ?? getEmptyControlView, getEmptyControlView);
+  const controlHub = !!agents.observedControlStatus && !!agents.dispatchObservedControl && controlView.phase !== 'unsupported';
+  const simpleObservedInput = session.control === 'observed' && !supportsObservedPromptQueue(session.observation?.sourceId) && controlHub;
   const hasTools = !isWorker && !readOnlyReason;
-  const toolsOpen = hasTools && (toolsChoice?.wide === wide ? toolsChoice.open : wide);
+  const toolsOpen = hasTools && (toolsChoice?.wide === wide ? toolsChoice.open : wide && !simpleObservedInput);
+  const toolsStateChange = useRef(onToolsStateChange);
+  const toolsState = useRef<CharacterConversationToolsState>({ available: hasTools, open: toolsOpen, wide });
+  useLayoutEffect(() => { toolsStateChange.current = onToolsStateChange; }, [onToolsStateChange]);
+  useLayoutEffect(() => {
+    toolsState.current = { available: hasTools, open: toolsOpen, wide };
+    toolsStateChange.current?.(toolsState.current);
+  }, [hasTools, toolsOpen, wide]);
+  useLayoutEffect(() => () => {
+    toolsStateChange.current?.({ available: false, open: false, wide: toolsState.current.wide });
+  }, []);
   const toolsToggle = useRef<HTMLButtonElement>(null);
   const toolsClose = useRef<HTMLButtonElement>(null);
   const closeTools = () => {
@@ -108,13 +154,14 @@ export function CharacterConversation({ t, language, agents, state, session, age
   };
   useLayoutEffect(() => { if (toolsOpen && !wide) toolsClose.current?.focus({ preventScroll: true }); }, [toolsOpen, wide]);
   const readOnly = session.control === 'observed' || isWorker || Boolean(readOnlyReason);
-  const items = useMemo(() => characterTranscript(events, agent), [events, agent]);
+  const fileRoots = useMemo(() => sessionFileRoots(events, session.workspaceFileScopes), [events, session.workspaceFileScopes]);
+  const items = useMemo(() => characterTranscript(events, agent, fileRoots), [events, agent, fileRoots]);
   const activity = useMemo(() => projectActivity(events), [events]);
   const timeline = useMemo(() => characterTimeline(events, agent), [events, agent]);
   const team = useMemo(() => isWorker ? [] : teamRoster(events, session.id), [events, session.id, isWorker]);
-  const workspaceRoot = session.observation?.projectPath ?? state.workspaces.find(item => item.id === session.workspaceId)?.projectLocation;
+  const workspaceRoot = session.observation?.projectPath ?? session.projectLocation ?? state.workspaces.find(item => item.id === session.workspaceId)?.projectLocation;
   // A lead answers for its whole team's edits; a worker shows its own.
-  const files = useMemo(() => projectChangedFiles(isWorker ? characterEvents(events, agent) : events, workspaceRoot), [events, agent, isWorker, workspaceRoot]);
+  const files = useMemo(() => projectChangedFiles(isWorker ? characterEvents(events, agent) : events, workspaceRoot, fileRoots), [events, agent, isWorker, workspaceRoot, fileRoots]);
 
   // Messages follow new output only while the reader is at the bottom.
   const scroller = useRef<HTMLDivElement>(null);
@@ -135,7 +182,7 @@ export function CharacterConversation({ t, language, agents, state, session, age
       if (action === 'message') {
         setOwnTab('messages'); tabRef.current?.('messages'); setEditing(false);
         // The composer may only be enabled after the tab switch renders, so try now and on the next two frames.
-        const focus = () => (document.querySelector<HTMLTextAreaElement>('.observed-codex-prompt textarea') ?? document.getElementById('composer-input'))?.focus();
+        const focus = () => (document.querySelector<HTMLTextAreaElement>('.observed-session-control textarea:not([readonly]), .observed-codex-prompt textarea') ?? document.getElementById('composer-input'))?.focus();
         focus(); requestAnimationFrame(() => { focus(); requestAnimationFrame(focus); });
       }
       else if (action === 'activity') { setOwnTab('activity'); tabRef.current?.('activity'); setEditing(false); }
@@ -177,9 +224,11 @@ export function CharacterConversation({ t, language, agents, state, session, age
   }
 
   const refreshState = () => { void agents.getState().then(onState).catch(() => undefined); };
-  const send = ({ text, attachments, patch, learnSkill }: ComposerSend) => readOnly ? Promise.resolve(false) : guard(async () => {
-    const ids = await uploadAttachments(agents, session.id, attachments, patch);
-    await sendPromptWithAttachments(agents, session.id, text, ids, learnSkill);
+  const send = ({ text, attachments, patch, learnSkill }: ComposerSend) => readOnly || workspaceReview.required ? Promise.resolve(false) : guard(async () => {
+    try {
+      const ids = await uploadAttachments(agents, session.id, attachments, patch);
+      await sendPromptWithAttachments(agents, session.id, text, ids, learnSkill);
+    } catch (failure) { await workspaceReview.recover(failure); throw failure; }
     refreshState();
   });
   const decide = async (approvalId: string, decision: ApprovalDecisionInput) => {
@@ -198,6 +247,8 @@ export function CharacterConversation({ t, language, agents, state, session, age
           {(['messages', 'activity', 'files'] as const).map(id => <button key={id} id={`${panelId(id)}-tab`} type="button" role="tab" aria-selected={tab === id && !editing} aria-controls={panelId(id)}
             onClick={() => { setTab(id); setEditing(false); }}>{c[id]}{id === 'activity' && team.length > 0 && <span className="badge">{team.length}</span>}{id === 'files' && files.length > 0 && <span className="badge">{files.length}</span>}</button>)}
         </div>
+        {!isWorker && !readOnlyReason && agents.previewHandover && <button type="button" className="button small" onClick={() => setHandoverOpen(true)}>{t.sessionHandover.title}</button>}
+        {!isWorker && !readOnlyReason && session.control === 'observed' && <ObservedWorkspaceLinkButton agents={agents} session={session} state={state} t={t} onState={onState} />}
         {hasTools && <button ref={toolsToggle} type="button" className="button small character-tools-toggle" aria-expanded={toolsOpen} aria-controls={`${ids}-tools`}
           aria-label={toolsOpen ? c.hideTools : c.showTools} title={toolsOpen ? c.hideTools : c.showTools}
           onClick={() => { if (toolsOpen) closeTools(); else setToolsChoice({ wide, open: true }); }}><Icon name="settings" />{c.tools}</button>}
@@ -218,7 +269,7 @@ export function CharacterConversation({ t, language, agents, state, session, age
         onScroll={event => { const element = event.currentTarget; stick.current = element.scrollHeight - element.scrollTop - element.clientHeight < 80; }}>
         {!loading && items.length === 0
           ? <div className="chat-empty"><Icon name="chat" className="empty-icon" /><h3>{t.chat.emptyTitle}</h3><p className="muted">{workspace ? t.chat.emptyLead(workspace.name) : t.chat.noWorkspace}</p></div>
-          : <MessageFileProvider key={session.id} t={t} agents={agents} workspaces={state.workspaces} workspaceId={session.workspaceId} projectPath={session.observation?.projectPath ?? workspace?.projectLocation}>
+          : <MessageFileProvider key={session.id} t={t} agents={agents} workspaces={state.workspaces} workspaceId={session.workspaceId} projectPath={session.observation?.projectPath ?? session.projectLocation ?? workspace?.projectLocation}>
               <TranscriptView t={t} items={items} language={language} onDecide={decide} previewAttachment={previewAttachment} approvalsEnabled={!readOnly} />
             </MessageFileProvider>}
       </div>
@@ -231,49 +282,65 @@ export function CharacterConversation({ t, language, agents, state, session, age
         </MessageFileProvider>
       </div>
       <footer className="chat-footer">
+        {!isWorker && !readOnlyReason && session.control === 'observed' && <ObservedInputCards t={t} sessionId={session.id} />}
         <p className={`chat-status ${running ? 'busy' : ''} ${waiting ? 'waiting' : ''}`} role="status" aria-live="polite">
           {running && !waiting && <span className="pulse" aria-hidden="true" />}{waiting && <Icon name="shield" />}{status}
         </p>
+        {!readOnly && <SessionWorkspaceReview t={t} agents={agents} state={state} session={session} required={workspaceReview.required} onReviewed={next => {
+          workspaceReview.clear(); setError(null); onState(next);
+          requestAnimationFrame(() => scroller.current?.closest('.character-conversation')?.querySelector<HTMLTextAreaElement>('textarea:not(:disabled)')?.focus());
+        }} />}
         {error && <p className="form-error" role="alert"><Icon name="alert" />{error}</p>}
-        {!isWorker && !readOnlyReason && session.control === 'observed' && session.observation?.sourceId === 'codex' &&
-          <ObservedCodexPromptComposer key={session.id} t={t} agents={agents} session={session} />}
+        {!isWorker && !readOnlyReason && session.control === 'observed' && supportsObservedPromptQueue(session.observation?.sourceId) &&
+          <ObservedCodexPromptComposer key={session.id} t={t} agents={agents} session={session} showNativeQueue={false} />}
+        {!isWorker && !readOnlyReason && session.control === 'observed' && !supportsObservedPromptQueue(session.observation?.sourceId) && controlHub &&
+          <ObservedSessionControl key={`control:${session.id}`} t={t} agents={agents} session={session} compact onOpenTools={() => setToolsChoice({ wide, open: true })} />}
         {!readOnly && <Composer t={t} agents={agents} session={session} workspaceId={session.workspaceId}
-          hermes={sessionRuntime(workspace, session) === 'hermes'} modelScopeKey={modelChoicesKey(state, workspace, session)} running={running} waiting={waiting} readOnly={false} stopping={activity.stopping}
+          hermes={sessionRuntime(workspace, session) === 'hermes'} modelScopeKey={modelChoicesKey(state, workspace, session)} running={running} waiting={waiting} readOnly={false} stopping={activity.stopping} sendBlocked={workspaceReview.required}
           onSend={send} onStop={() => { void guard(async () => { await agents.cancel(session.id); refreshState(); }); }} onSessionChanged={refreshState} />}
+        {!isWorker && !readOnlyReason && session.control === 'observed' && !supportsObservedPromptQueue(session.observation?.sourceId) &&
+          <PromptSuggestions t={t} agents={agents} session={session} copyOnly />}
 
       </footer>
       </div>
-      {hasTools && <aside id={`${ids}-tools`} className="character-conversation-tools" hidden={!toolsOpen} aria-labelledby={`${ids}-tools-title`}
+      {hasTools && <aside id={`${ids}-tools`} className="character-conversation-tools" inert={!toolsOpen || undefined} aria-hidden={!toolsOpen || undefined} aria-labelledby={`${ids}-tools-title`}
         data-conversation-drawer={!wide && toolsOpen ? 'true' : undefined}>
         <header className="character-tools-head"><h3 id={`${ids}-tools-title`}>{c.tools}</h3>
           <button ref={toolsClose} type="button" className="icon-button small" data-conversation-tools-close aria-label={c.hideTools} title={c.hideTools} onClick={closeTools}><Icon name="close" /></button>
         </header>
         <div className="character-tools-content">
-        {!isWorker && !readOnlyReason && (session.control === 'managed' || session.observation?.sourceId === 'codex') &&
-          <PromptQueueControls key={`queue:${session.id}`} t={t} agents={agents} session={session} />}
-        {!isWorker && !readOnlyReason && session.control === 'observed' && session.observation?.sourceId === 'codex' &&
-          <details className="observed-codex-office"><summary>{t.observedCodexPrompt.settings}</summary>
-            <ObservedCodexQueueControls key={session.id} t={t} agents={agents} session={session} settingsOnly />
-          </details>}
-        {!isWorker && !readOnlyReason && session.control === 'observed' && session.observation?.sourceId === 'codex' &&
-          <details className="observed-codex-office"><summary>{t.observedCodexPermission.title}</summary>
-            <ObservedCodexPermissionControls key={session.id} t={t} agents={agents} session={session} />
-          </details>}
-        {!isWorker && !readOnlyReason && session.control === 'observed' && session.observation?.sourceId === 'codex' &&
-          <details className="observed-codex-office"><summary>{t.observedCodex.title}</summary>
-            <ObservedCodexControls key={session.id} t={t} agents={agents} session={session} />
-          </details>}
-        {!isWorker && !readOnlyReason && session.control === 'observed' &&
-          session.observation?.sourceId === 'hermes' && <details className="observed-codex-office"><summary>{t.observedHermes.title}</summary>
-            <ObservedHermesControls key={session.id} t={t} agents={agents} session={session} />
-          </details>}
-        {!isWorker && !readOnlyReason && session.control === 'observed' &&
-          <details className="observed-codex-office"><summary>{t.observedReply.title}</summary>
-            <ObservedReplyControls key={session.id} t={t} agents={agents} session={session} />
-          </details>}
+        {toolsOpen && simpleObservedInput && <ObservedSessionTools key={`tools:${session.id}`} t={t} agents={agents} session={session}
+          nativeControls={session.observation?.sourceId === 'hermes' ? <ObservedHermesControls key={session.id} t={t} agents={agents} session={session} settingsOnly /> : undefined} />}
+        {session.control === 'observed' && session.observation?.sourceId === 'codex' && <>
+          <ObservedCodexNativeQueue key={`source-queue:${session.id}`} t={t} agents={agents} session={session} disabled={!toolsOpen} />
+          <ConversationToolsTabs key={`codex-tools:${session.id}`} label={c.tools} items={[
+            { id: 'connection', label: c.toolTabs.connection, render: () => <ObservedCodexQueueControls t={t} agents={agents} session={session} settingsOnly /> },
+            { id: 'permissions', label: c.toolTabs.permissions, render: () => <ObservedCodexPermissionControls t={t} agents={agents} session={session} /> },
+            { id: 'session', label: c.toolTabs.session, render: () => <ObservedCodexControls t={t} agents={agents} session={session} showQuestions={!inlineQuestions} /> },
+            ...(!controlHub ? [{ id: 'pairing', label: c.toolTabs.pairing, render: () => <ObservedReplyControls t={t} agents={agents} session={session} /> }] : []),
+          ]} />
+        </>}
+        {session.control === 'observed' && session.observation?.sourceId === 'antigravity' && <>
+          <ObservedCodexNativeQueue key={`source-queue:${session.id}`} t={t} agents={agents} session={session} disabled={!toolsOpen} />
+        </>}
+        {session.control === 'observed' && !simpleObservedInput && session.observation?.sourceId !== 'codex' && <ConversationToolsTabs label={c.tools} items={[
+          ...(session.observation?.sourceId === 'hermes' ? [{ id: 'session', label: c.toolTabs.session, render: () => <ObservedHermesControls t={t} agents={agents} session={session} settingsOnly={controlHub} /> }] : []),
+          ...(!controlHub ? [{ id: 'pairing', label: c.toolTabs.pairing, render: () => <ObservedReplyControls t={t} agents={agents} session={session} /> }] : []),
+        ]} />}
         {workspace && !readOnly && <WorkspaceRuntimeNotice t={t} state={state} workspace={workspace} session={session} />}
         </div>
       </aside>}
+      {handoverOpen && !isWorker && !readOnlyReason && <SessionHandoverDialog agents={agents} state={state} session={session} t={t.sessionHandover} cliResumeMessages={t.observedCliResume} antigravityMessages={t.observedAntigravity}
+        workspaceLinkMessages={t.observedWorkspaceLink} onState={onState} onOpenSettings={onOpenSettings}
+        destinationSetup={(destination, changed) => destination.observation?.sourceId === 'hermes' ? <ObservedHermesControls t={t} agents={agents} session={destination} settingsOnly onChanged={changed} /> : undefined}
+        onOpenDestination={onHandoverReady ? id => { void guard(async () => { const next = await agents.getState(); onState(next); const destination = next.sessions.find(item => item.id === id); if (destination) { setHandoverOpen(false); onHandoverReady(destination); } }); } : undefined}
+        onClose={() => setHandoverOpen(false)} onApplied={receipt => {
+          if (receipt.state === 'native-ready') void guard(async () => {
+            const next = await agents.getState(); setHandoverOpen(false); onState(next);
+            const destination = next.sessions.find(item => item.id === receipt.targetSessionId);
+            if (destination && destination.id !== session.id) onHandoverReady?.(destination);
+          });
+        }} />}
     </section>
   );
 }

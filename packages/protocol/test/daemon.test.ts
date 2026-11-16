@@ -12,9 +12,10 @@ import framingFixtures from './fixtures/daemon/framing.json' with { type: 'json'
 import routingFixtures from './fixtures/daemon/skill-routing.json' with { type: 'json' };
 import preparationFixtures from './fixtures/daemon/preparation.json' with { type: 'json' };
 import planningFixtures from './fixtures/daemon/planning.json' with { type: 'json' };
+import candidateFixtures from './fixtures/daemon/skill-candidates.json' with { type: 'json' };
 
 interface Case { name: string; valid: boolean; value: unknown; code?: string }
-const cases = [...(frameFixtures as { cases: Case[] }).cases, ...(planningFixtures as { cases: Case[] }).cases, ...(preparationFixtures as { cases: Case[] }).cases, ...(routingFixtures as { cases: Case[] }).cases];
+const cases = [...(frameFixtures as { cases: Case[] }).cases, ...(planningFixtures as { cases: Case[] }).cases, ...(preparationFixtures as { cases: Case[] }).cases, ...(routingFixtures as { cases: Case[] }).cases, ...(candidateFixtures as { cases: Case[] }).cases];
 const valid = cases.filter(item => item.valid).map(item => [item.name, item.value as DaemonFrame] as const);
 const hex = (text: string) => new Uint8Array(text.match(/../g)?.map(byte => parseInt(byte, 16)) ?? []);
 const requestId = '00000000-0000-4000-8000-000000000100';
@@ -92,6 +93,34 @@ describe('length-prefixed framing', () => {
 describe('skill registry operations', () => {
   const revisionId = `skr_${'a'.repeat(64)}`;
   const sha = 'b'.repeat(64);
+  it('accepts optional exact-revision marketplace metadata and rejects non-boolean values', () => {
+    const fixture = valid.find(([, frame]) => frame.kind === 'response' && frame.op === 'skill.list')![1];
+    expect(parseDaemonFrame(fixture).ok).toBe(true);
+    for (const marketplaceSource of [false, true]) {
+      const frame = JSON.parse(JSON.stringify(fixture)) as DaemonFrame;
+      if (frame.kind !== 'response' || frame.op !== 'skill.list') throw new Error('Missing list fixture.');
+      frame.result.revisions[0]!.marketplaceSource = marketplaceSource;
+      expect(parseDaemonFrame(frame).ok).toBe(true);
+    }
+    for (const marketplaceSource of [null, 0, 'true', {}, []]) {
+      const frame = JSON.parse(JSON.stringify(fixture));
+      frame.result.revisions[0].marketplaceSource = marketplaceSource;
+      expect(parseDaemonFrame(frame)).toMatchObject({ ok: false, code: 'invalid_frame' });
+    }
+  });
+  it('accepts an optional positive active-approval ID and rejects invalid IDs', () => {
+    const fixture = valid.find(([, frame]) => frame.kind === 'response' && frame.op === 'skill.list')![1];
+    for (const activationApprovalId of [1, Number.MAX_SAFE_INTEGER]) {
+      const frame = JSON.parse(JSON.stringify(fixture));
+      frame.result.revisions[0].activationApprovalId = activationApprovalId;
+      expect(parseDaemonFrame(frame).ok).toBe(true);
+    }
+    for (const activationApprovalId of [null, 0, -1, 1.5, '1', {}, [], Number.MAX_SAFE_INTEGER + 1]) {
+      const frame = JSON.parse(JSON.stringify(fixture));
+      frame.result.revisions[0].activationApprovalId = activationApprovalId;
+      expect(parseDaemonFrame(frame)).toMatchObject({ ok: false, code: 'invalid_frame' });
+    }
+  });
   it('are part of the operation list and never accept the builtin origin', () => {
     for (const op of DAEMON_SKILL_OPS) expect(DAEMON_OPS).toContain(op);
     expect(SKILL_IMPORT_ORIGINS).not.toContain('builtin');

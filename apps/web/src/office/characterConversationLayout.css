@@ -1,11 +1,13 @@
 /* The transcript and tools own separate scroll areas; closing tools keeps their state mounted. */
 .session-dialog .character-conversation.character-conversation-layout,
 .character-conversation.character-conversation-layout {
-  position: relative; display: flex; flex-direction: row; align-items: stretch; gap: 16px;
+  --character-tools-width: 330px;
+  position: relative; display: flex; flex-direction: row; align-items: stretch; gap: 0;
   flex: 1; min-height: 0; min-width: 0; overflow: hidden;
 }
 .character-conversation-layout .character-conversation-main {
   display: flex; flex: 1; flex-direction: column; gap: 8px; min-height: 0; min-width: 0;
+  transition: opacity 180ms ease;
 }
 .character-conversation-layout .character-actions { flex: none; flex-wrap: wrap; }
 .character-conversation-layout .character-tabs { min-width: 0; }
@@ -19,10 +21,25 @@
 }
 .character-conversation-layout .chat-status { margin: 0; font-size: 12px; }
 .character-conversation-layout .character-conversation-tools {
-  display: flex; flex-direction: column; flex: 0 0 330px; width: 330px; min-width: 0; min-height: 0;
-  border-left: 1px solid var(--line); padding-left: 16px; background: var(--surface-solid);
+  display: flex; flex-direction: column; flex: 0 0 0; width: 0; min-width: 0; min-height: 0;
+  box-sizing: border-box; overflow: hidden; margin-left: 0;
+  border-left: 0 solid var(--line); padding-left: 0; background: var(--surface-solid);
+  opacity: 0; transform: translateX(16px); visibility: hidden; pointer-events: none;
+  transition: flex-basis 220ms ease, width 220ms ease, margin-left 220ms ease,
+    padding-left 220ms ease, border-left-width 220ms ease, opacity 180ms ease,
+    transform 220ms ease, visibility 0s linear 220ms;
 }
-.character-conversation-layout .character-conversation-tools[hidden] { display: none; }
+.character-conversation-layout[data-tools-open] .character-conversation-tools {
+  flex-basis: var(--character-tools-width); width: var(--character-tools-width);
+  margin-left: 16px; padding-left: 16px; border-left-width: 1px;
+  opacity: 1; transform: translateX(0); visibility: visible; pointer-events: auto;
+  transition-delay: 0s;
+}
+/* Keep form controls steady while the containing rail gives space back to chat. */
+.character-conversation-layout .character-tools-head,
+.character-conversation-layout .character-tools-content {
+  box-sizing: border-box; width: calc(var(--character-tools-width) - 17px);
+}
 .character-conversation-layout .character-tools-head { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 8px; padding-bottom: 10px; }
 .character-conversation-layout .character-tools-head h3 { margin: 0; font-size: 13px; }
 .character-conversation-layout .character-tools-content { display: flex; flex-direction: column; gap: 12px; min-height: 0; overflow: auto; overscroll-behavior: contain; padding-right: 4px; scrollbar-gutter: stable; }
@@ -31,12 +48,21 @@
 .character-conversation-layout .character-tools-content .prompt-queue-body { max-height: none; overflow: visible; }
 .character-conversation-layout .character-tools-content .observed-codex-office { margin: 0; }
 @media (max-width: 1099px) {
-  .character-conversation-layout .character-conversation-tools {
+  .character-conversation-layout .character-conversation-tools,
+  .character-conversation-layout[data-tools-open] .character-conversation-tools {
     position: absolute; z-index: 4; inset: 0 0 0 auto; width: min(380px, 100%); max-width: 100%;
-    box-sizing: border-box; padding: 12px; border: 1px solid var(--line); border-radius: 12px;
+    margin-left: 0; padding: 12px; border: 1px solid var(--line); border-radius: 12px;
     box-shadow: -18px 0 40px rgb(0 0 0 / 15%);
   }
+  .character-conversation-layout .character-conversation-tools { transform: translateX(calc(100% + 1px)); }
+  .character-conversation-layout[data-tools-open] .character-conversation-tools { transform: translateX(0); }
+  .character-conversation-layout .character-tools-head,
+  .character-conversation-layout .character-tools-content { width: 100%; }
   .character-conversation-layout[data-tools-open] .character-conversation-main { opacity: .45; }
   .character-conversation-layout .character-tools-toggle { font-size: 12px; }
 }
 .character-conversation-layout .character-conversation-main > .chat-footer .composer textarea { max-height: 160px; overflow-y: auto; }
+@media (prefers-reduced-motion: reduce) {
+  .character-conversation-layout .character-conversation-tools,
+  .character-conversation-layout .character-conversation-main { transition: none; }
+}

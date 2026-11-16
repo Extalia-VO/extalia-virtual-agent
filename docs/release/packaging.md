@@ -71,11 +71,21 @@ stays English independently of the app language.
   replacing an existing app requires confirmation and a running copy is refused.
   Successful installation relaunches the installed app. Opening without installing
   restarts normal app boot, with no temporary installer profile carried over.
+  The initial Finder icon view reserves only those three visible items. Generated
+  `.background.tiff`, `.background.png`, `.VolumeIcon.icns` and `.DS_Store`
+  support icons receive positions outside the 900×620 artwork, so enabling
+  Finder's hidden-file display does not place them over the title. Their bytes
+  remain available for the background, disk icon and layout; no Finder preference
+  is changed. This is an initial icon-view layout, not removal from a manually
+  sorted/list view. Rebuild the DMG to apply it to an existing installer.
 - **Windows:** an English assisted NSIS wizard includes a welcome page, destination
   selection, desktop/Start menu shortcuts and an explicit finish/launch choice.
   Existing profile preservation and updater behavior remain in place.
 - **Linux x64:** the release also contains `Extalia-VERSION-linux-x64-setup.run`,
-  an offline per-user wizard using Zenity, KDialog or terminal prompts. Run it with
+  an offline per-user wizard using native Zenity/KDialog folder choosers or terminal
+  prompts. The terminal offers the default destination or an editable path.
+  An existing empty user-owned destination is accepted; failed installation
+  restores it, including unexpected files added before commit. Run it with
   `bash Extalia-VERSION-linux-x64-setup.run`; `--cli` forces terminal mode and
   `--yes` installs without prompting or launching. It installs the bundled
   AppImage, icon and application-menu entry without sudo, rejects unsafe/overlapping
@@ -84,12 +94,18 @@ stays English independently of the app language.
   AppImage runtime dependencies still apply. Downloaded updater payloads need a
   private, verified handoff receipt before the managed AppImage can be replaced;
   manual setup accepts verified updater replacements and preserves profile data.
+  The `.run` has no uninstall command; removal remains manual. Debian package
+  installation/removal follows the distribution package manager.
 
 `pnpm --filter @extalia/desktop build` copies the local photographs and bundles
 installer-only code. `pnpm --filter @extalia/desktop installer:art` regenerates the
 committed PNG/BMP/SVG artwork in an isolated Electron profile. The `beforePack`
 hook verifies the artwork/copy/identity/photo hashes and generates English NSIS
-and guide files. The Linux post-build hook creates the self-contained `.run` from
+and guide files. On macOS it also adds metadata-only DMG positions after config
+validation, before artifact signing or update hashes are computed. This uses the
+pinned dmg-builder 26.15.3 adapter's `position` support, which its enclosing JSON
+schema does not expose; dependency upgrades must reverify native DMG metadata.
+The Linux post-build hook creates the self-contained `.run` from
 its matching AppImage; release validation verifies that relationship before upload.
 
 For visual review, build Desktop, then run
@@ -100,6 +116,18 @@ preview status. Native installation is tested with substituted operations and
 temporary directories; native Windows/Linux desktop validation belongs on their
 respective release runners. These features do not change signing, notarization,
 architecture checks or release publication gates.
+
+Local audit v0.4.292 (2026-11-12): the real isolated macOS Electron installer
+preview and Desktop startup smoke pass, including installer photographs, keyboard
+controls, reduced motion, preserved preview-only installation, all floor views
+and no renderer/model errors. Four browser cases check actual folder components
+with synthetic native pickers or authenticated-host browsing in EN/light desktop
+and ID/dark phone views. Full repository checks pass (9,312 TypeScript tests,
+58 prerequisite skips; 576 Rust tests and builds); sixteen additional
+picker regressions pass. Linux shell/PTY installation and rollback tests run in
+temporary macOS homes with mocked Zenity/KDialog, and Windows evidence covers NSIS
+configuration/templates. This does not certify a native Windows/Linux GUI install
+or a new DMG release; no real user profile or installed app was changed.
 
 ## macOS release modes
 
@@ -145,14 +173,17 @@ developer. Removing that warning requires a Developer ID signed and notarized bu
 
 ## Shared public scene assets
 
-The 2026-10-31 snapshot of `apps/web/public-assets/models.json` registers **106
-models**, totaling **417,978,116 GLB bytes** (about 399 MiB before packaging
-compression): 17 project-authored scene models, 12 retained body/hair exports,
-32 fitted outfits/wardrobe pieces and 45 campus vehicles. Declared-license counts
-are MIT 17, RenderHub Extended Use 23, CC-BY-4.0 57, CC-BY-NC-SA-4.0 4,
-CC-BY-NC-4.0 1 and Sketchfab Standard 4. No unverified-license vehicle is currently
-registered. These classifications and validation are technical inventory records,
-not a blanket grant of commercial or redistribution rights.
+The **v0.4.288** snapshot of `apps/web/public-assets/models.json`, reconciled on
+2026-11-12, registers **133 models**, totaling **152,104,948 GLB bytes** (about
+145 MiB before packaging compression): 18 project-authored scene models,
+12 retained body/hair exports, 8 additional detailed hairs, 32 fitted
+outfits/wardrobe pieces, 45 campus vehicles and 18 plants/trees. Declared-license
+counts are MIT 18, RenderHub Extended Use 49, CC-BY-4.0 57, CC-BY-NC-SA-4.0 4,
+CC-BY-NC-4.0 1 and Sketchfab Standard 4. These classifications and validation are
+technical inventory records, not a blanket grant of commercial or redistribution
+rights. The earlier 2026-10-31 inventory (106 models / 417,978,116 bytes) preceded
+later greenery additions and texture/vehicle optimizations; it is not the current
+package-size estimate. Asset bytes do not measure decoded memory or startup time.
 
 Two physical body files serve the four existing appearance variants; ten detailed
 hair exports retain the original fallback. Fitted original garments and staff
@@ -209,7 +240,11 @@ display/temp variables survive. The scripts first assert that none of `cargo`, `
   machine's platform package, installs them with `npm install -g` into a temporary prefix, runs
   `extalia version` and `extalia doctor` (Node by absolute path; the installed launcher with
   Node as the only command on `PATH`), resolves the platform package from the installed CLI
-  and requires its daemon to answer `hello`.
+  and requires its daemon to answer `hello`. Paired scanner packages additionally
+  verify the installed daemon/bundle binding and full payload inventory; their cold
+  handshake budget is 90 seconds, while daemon-only packages retain 15 seconds.
+  npm per-file notices are suppressed so large scanner inventories cannot overflow
+  the smoke runner's bounded log buffer.
 
 Enforcement: CI's `package-smoke` job runs both on Linux for every pull request; the release
 workflow runs the Desktop smoke on macOS, Windows and Linux and the CLI smoke on Linux. A red
@@ -221,3 +256,46 @@ Local check (macOS arm64):
 CSC_IDENTITY_AUTO_DISCOVERY=false pnpm --filter @extalia/desktop dist:dir
 pnpm --filter @extalia/desktop smoke:packaged
 ```
+
+
+## Bundled SkillSpector inspection
+
+The verified scanner target is macOS 14+ ARM64. Its daemon and Python bundle are
+one release pair. Other targets explicitly report scanner execution unavailable;
+they must not substitute system Python or install dependencies on first use.
+
+Build the scanner with the pinned source, runtime and wheel hashes described in
+[the bundle guide](../../tooling/skillspector/README.md), then stage the daemon:
+
+```sh
+node tooling/build-daemon.mjs --target darwin-arm64 \
+  --scanner-bundle /absolute/output/skillspector --require-scanner \
+  --out /absolute/output/daemon-artifacts
+node apps/cli/npm/generate.mjs --binaries /absolute/output/daemon-artifacts \
+  --out /absolute/output/npm --cli --require-scanner-target darwin-arm64
+```
+
+Native scanner files must be signed **before** the final manifest is generated
+and its digest compiled into the Rust daemon. The `scanner-binding.json` staging
+record binds the daemon hash to the complete scanner manifest. Desktop copies the
+bundle to `Contents/Resources/skillspector`, beside `daemon/extalia-daemon`; the
+CLI platform package places `skillspector` beside `bin`. Both assembly paths
+verify the pair. After this explicit staging, invoke electron-builder directly; the
+convenience `dist` scripts rebuild daemons without a scanner argument and refuse to
+replace an already paired artifact. Desktop verifies copied payload hashes/signatures before and
+after app signing and narrowly excludes that scanner directory from re-signing.
+The daemon trusts its compiled manifest digest, never a pairing record alone.
+
+Local ad-hoc bundles support preview installers. A notarized release is refused
+unless scanner native files already have Developer ID signatures with the selected
+identity. Supplying only app-signing credentials does not upgrade an ad-hoc scanner
+bundle. Release CI currently builds this scanner pair on native macOS ARM64; no
+Windows/Linux scanner readiness is implied by the daemon build matrix.
+
+Validate the final packaged pair with a temporary profile: benign import and
+explicit learning must produce complete inspection and await user approval;
+activation before approval must fail. After explicit approval and activation,
+verified reads must work. Malicious, incomplete and modified packages must remain
+unavailable. The scanner uses bundled Python with provider credentials removed,
+LLM analysis disabled and network/process-launch denial. Ordinary repository tests
+cover contracts without downloading runtimes or scanning a real user profile.

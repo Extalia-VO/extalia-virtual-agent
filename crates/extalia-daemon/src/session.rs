@@ -31,11 +31,12 @@ use extalia_core::security::permissions;
 use extalia_core::time::now_millis;
 
 use crate::knowledge::{self, Knowledge};
+use crate::learning::{self, Learning};
 use crate::missions::{self, Missions};
 use crate::skills::{self, Skills};
 use crate::wire::{
     self, ErrorCode, ErrorFrame, Frame, FrameReader, HealthStatus, KnowledgeRequest,
-    MAX_FRAME_BYTES, Op, Rejection, RequestParams, Response, ResponseResult,
+    MAX_FRAME_BYTES, Op, Rejection, RequestParams, Response, ResponseResult, SkillRequest,
 };
 
 /// Operations this daemon implements, advertised in the `hello` result.
@@ -73,15 +74,33 @@ struct KnowledgeJob {
 }
 
 #[derive(Debug)]
+struct SkillJob {
+    request_id: String,
+    request: SkillRequest,
+    deadline: Option<Instant>,
+}
+
+#[derive(Debug)]
+struct LearningJob {
+    request_id: String,
+    request: serde_json::Value,
+    deadline: Option<Instant>,
+}
+
+#[derive(Debug)]
 pub struct Session {
     started: Instant,
     handshaken: bool,
     missions: Option<Arc<Mutex<Missions>>>,
     skills: Option<Skills>,
+    skill_jobs: Option<mpsc::SyncSender<SkillJob>>,
+    skill_query_jobs: Option<mpsc::SyncSender<SkillJob>>,
     /// The knowledge index when requests run inline; taken by [`serve`]'s knowledge thread.
     knowledge: Option<Knowledge>,
     /// The queue of [`serve`]'s knowledge thread while it owns the index.
     knowledge_jobs: Option<Sender<KnowledgeJob>>,
+    learning: Option<Learning>,
+    learning_jobs: Option<mpsc::SyncSender<LearningJob>>,
 }
 
 impl Default for Session {
@@ -97,8 +116,12 @@ impl Session {
             handshaken: false,
             missions: None,
             skills: None,
+            skill_jobs: None,
+            skill_query_jobs: None,
             knowledge: None,
             knowledge_jobs: None,
+            learning: None,
+            learning_jobs: None,
         }
     }
 
@@ -121,6 +144,15 @@ impl Session {
     /// data directory but not the core store; without one they stay unadvertised.
     pub fn with_knowledge(mut self, knowledge: Knowledge) -> Self {
         self.knowledge = Some(knowledge);
+        self
+    }
+
+    pub fn with_learning(mut self, learning: Learning) -> Self {
+        // Handle-relative publication is currently supported on Unix only.
+        // Do not advertise a curator that cannot persist its permitted artifacts.
+        if cfg!(unix) {
+            self.learning = Some(learning);
+        }
         self
     }
 
@@ -190,14 +222,21 @@ impl Session {
                                 .iter()
                                 .chain(self.missions.iter().flat_map(|_| &missions::CAPABILITIES))
                                 .chain(
-                                    self.missions
-                                        .iter()
-                                        .zip(&self.skills)
-                                        .flat_map(|_| &skills::CAPABILITIES),
+                                    (self.missions.is_some()
+                                        && (self.skills.is_some() || self.skill_jobs.is_some()))
+                                    .then_some(&skills::CAPABILITIES)
+                                    .into_iter()
+                                    .flatten(),
                                 )
                                 .chain(
                                     self.serves_knowledge()
                                         .then_some(&knowledge::CAPABILITIES)
+                                        .into_iter()
+                                        .flatten(),
+                                )
+                                .chain(
+                                    (self.learning.is_some() || self.learning_jobs.is_some())
+                                        .then_some(&learning::CAPABILITIES)
                                         .into_iter()
                                         .flatten(),
                                 )
@@ -250,15 +289,83 @@ impl Session {
                         },
                         None => Err((ErrorCode::UnknownOp, None)),
                     },
-                    RequestParams::Skill(ref request) => match (&self.missions, &mut self.skills) {
-                        (Some(missions), Some(skills)) => match missions.lock() {
-                            Ok(mut missions) if missions.available() => {
-                                skills.handle(missions.store_mut(), request)
+                    RequestParams::Skill(ref skill_request) => {
+                        let jobs = if matches!(
+                            skill_request,
+                            SkillRequest::Import { .. } | SkillRequest::Rescan { .. }
+                        ) {
+                            self.skill_jobs.as_ref()
+                        } else {
+                            self.skill_query_jobs.as_ref()
+                        };
+                        if let Some(jobs) = jobs {
+                            let job = SkillJob {
+                                request_id: request.request_id,
+                                request: skill_request.clone(),
+                                deadline: request
+                                    .deadline_ms
+                                    .map(|ms| Instant::now() + Duration::from_millis(ms)),
+                            };
+                            return match jobs.try_send(job) {
+                                Ok(()) => Reply::none(),
+                                Err(mpsc::TrySendError::Full(job)) => Reply {
+                                    frame: Some(error(
+                                        Some(job.request_id),
+                                        ErrorCode::CapacityExceeded,
+                                    )),
+                                    end: false,
+                                },
+                                Err(mpsc::TrySendError::Disconnected(job)) => Reply {
+                                    frame: Some(error(
+                                        Some(job.request_id),
+                                        ErrorCode::StorageFailure,
+                                    )),
+                                    end: false,
+                                },
+                            };
+                        }
+                        match (&self.missions, &mut self.skills) {
+                            (Some(missions), Some(skills)) => match missions.lock() {
+                                Ok(mut missions) if missions.available() => {
+                                    skills.handle(missions.store_mut(), skill_request)
+                                }
+                                _ => Err((ErrorCode::StorageFailure, None)),
+                            },
+                            _ => Err((ErrorCode::UnknownOp, None)),
+                        }
+                    }
+                    RequestParams::Learning(learning_request) => {
+                        match (&mut self.learning, &self.learning_jobs) {
+                            (Some(learning), _) => learning.handle(&learning_request),
+                            (None, Some(jobs)) => {
+                                let job = LearningJob {
+                                    request_id: request.request_id,
+                                    request: learning_request,
+                                    deadline: request
+                                        .deadline_ms
+                                        .map(|ms| Instant::now() + Duration::from_millis(ms)),
+                                };
+                                return match jobs.try_send(job) {
+                                    Ok(()) => Reply::none(),
+                                    Err(mpsc::TrySendError::Full(job)) => Reply {
+                                        frame: Some(error(
+                                            Some(job.request_id),
+                                            ErrorCode::CapacityExceeded,
+                                        )),
+                                        end: false,
+                                    },
+                                    Err(mpsc::TrySendError::Disconnected(job)) => Reply {
+                                        frame: Some(error(
+                                            Some(job.request_id),
+                                            ErrorCode::Internal,
+                                        )),
+                                        end: false,
+                                    },
+                                };
                             }
-                            _ => Err((ErrorCode::StorageFailure, None)),
-                        },
-                        _ => Err((ErrorCode::UnknownOp, None)),
-                    },
+                            _ => Err((ErrorCode::UnknownOp, None)),
+                        }
+                    }
                     RequestParams::Knowledge(knowledge_request) => {
                         match (&mut self.knowledge, &self.knowledge_jobs) {
                             (Some(knowledge), _) => knowledge.handle(&knowledge_request),
@@ -431,7 +538,156 @@ fn run_reaper(missions: Arc<Mutex<Missions>>, stop: Receiver<()>) {
     }
 }
 
+// A separate bounded local-work owner keeps file hashing/rendering and curator work
+// off the control reader. Queue saturation refuses admission without blocking health.
 fn serve_connection<R: Read, W: Write + Send>(
+    input: R,
+    output: &Mutex<W>,
+    session: &mut Session,
+    stop: &Sender<()>,
+) -> io::Result<Exit> {
+    let Some(mut learning) = session.learning.take() else {
+        return serve_with_skills(input, output, session, stop);
+    };
+    let (jobs, queue) = mpsc::sync_channel::<LearningJob>(32);
+    session.learning_jobs = Some(jobs);
+    let outcome = thread::scope(|scope| {
+        let worker = thread::Builder::new()
+            .name("learning".into())
+            .spawn_scoped(scope, || {
+                let mut output_error = None;
+                for job in queue {
+                    let result = if job.deadline.is_some_and(|d| Instant::now() >= d) {
+                        Err((ErrorCode::DeadlineExceeded, None))
+                    } else {
+                        learning.handle(&job.request)
+                    };
+                    // Drain admitted writes even when the peer has closed its output pipe.
+                    if output_error.is_none()
+                        && let Err(error) = write_frame(output, &answer(job.request_id, result))
+                    {
+                        output_error = Some(error);
+                    }
+                }
+                output_error.map_or(Ok(()), Err)
+            });
+        let worker = match worker {
+            Ok(w) => w,
+            Err(e) => {
+                session.learning_jobs = None;
+                return Err(e);
+            }
+        };
+        let outcome = serve_with_skills(input, output, session, stop);
+        session.learning_jobs = None;
+        let worker = worker
+            .join()
+            .map_err(|_| io::Error::other("the learning worker failed"))?;
+        let exit = outcome?;
+        worker?;
+        Ok(exit)
+    });
+    session.learning_jobs = None;
+    // Dropping the connection owner cleans every prepared draft and staged candidate.
+    // Outstanding provider effects remain a host-owned physical lifetime, not settlement.
+    session.learning = None;
+    drop(learning);
+    outcome
+}
+
+// Scans run on one bounded owner. The store is locked only for preparation and
+// completion; health and mission lease renewal remain independent of Python.
+fn serve_with_skills<R: Read, W: Write + Send>(
+    input: R,
+    output: &Mutex<W>,
+    session: &mut Session,
+    stop: &Sender<()>,
+) -> io::Result<Exit> {
+    let Some(mut skills) = session.skills.clone() else {
+        return serve_with_knowledge(input, output, session, stop);
+    };
+    let Some(missions) = session.missions.as_ref().map(Arc::clone) else {
+        session.skills = Some(skills);
+        return serve_with_knowledge(input, output, session, stop);
+    };
+    let (jobs, queue) = mpsc::sync_channel::<SkillJob>(32);
+    let (queries, query_queue) = mpsc::sync_channel::<SkillJob>(32);
+    let mut query_skills = skills.clone();
+    session.skill_jobs = Some(jobs);
+    session.skill_query_jobs = Some(queries);
+    let outcome = thread::scope(|scope| {
+        let worker = thread::Builder::new()
+            .name("skill-inspector".into())
+            .spawn_scoped(scope, || {
+                run_skill_queue(&mut skills, queue, &missions, output)
+            });
+        let worker = match worker {
+            Ok(worker) => worker,
+            Err(error) => {
+                session.skill_jobs = None;
+                session.skill_query_jobs = None;
+                return Err(error);
+            }
+        };
+        let queries = thread::Builder::new()
+            .name("skill-registry".into())
+            .spawn_scoped(scope, || {
+                run_skill_queue(&mut query_skills, query_queue, &missions, output)
+            });
+        let queries = match queries {
+            Ok(queries) => queries,
+            Err(error) => {
+                session.skill_jobs = None;
+                session.skill_query_jobs = None;
+                worker
+                    .join()
+                    .map_err(|_| io::Error::other("the skill inspector owner failed"))??;
+                return Err(error);
+            }
+        };
+        let outcome = serve_with_knowledge(input, output, session, stop);
+        session.skill_jobs = None;
+        session.skill_query_jobs = None;
+        let inspected = worker
+            .join()
+            .map_err(|_| io::Error::other("the skill inspector owner failed"));
+        let queried = queries
+            .join()
+            .map_err(|_| io::Error::other("the skill registry owner failed"));
+        inspected??;
+        queried??;
+        outcome
+    });
+    session.skill_jobs = None;
+    session.skill_query_jobs = None;
+    outcome
+}
+fn run_skill_queue<W: Write>(
+    skills: &mut Skills,
+    queue: Receiver<SkillJob>,
+    missions: &Arc<Mutex<Missions>>,
+    output: &Mutex<W>,
+) -> io::Result<()> {
+    let mut output_error = None;
+    for job in queue {
+        let result = if job
+            .deadline
+            .is_some_and(|deadline| Instant::now() >= deadline)
+        {
+            Err((ErrorCode::DeadlineExceeded, None))
+        } else {
+            skills.handle_shared(missions, &job.request, job.deadline)
+        };
+        if output_error.is_none()
+            && let Err(error) = write_frame(output, &answer(job.request_id, result))
+        {
+            output_error = Some(error);
+        }
+    }
+    output_error.map_or(Ok(()), Err)
+}
+
+fn serve_with_knowledge<R: Read, W: Write + Send>(
     input: R,
     output: &Mutex<W>,
     session: &mut Session,

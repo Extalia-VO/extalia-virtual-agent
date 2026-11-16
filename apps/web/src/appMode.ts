@@ -1,8 +1,9 @@
 import type { PageId } from './i18n';
+import { profileClientStateStorage } from './profileClientState';
 
 export type Workflow = 'managed' | 'observe';
 
-/** Per-device landing memory: only the last-used workspace. The page is never remembered. */
+/** Profile-backed landing memory: only the last-used workspace. The page is never remembered. */
 export const LANDING_STORAGE_KEY = 'extalia.landing.v2';
 /** v0.0.19 and earlier stored `{ mode, workspaceId }` here; read once to carry the workspace over, then removed. */
 export const LEGACY_MODE_STORAGE_KEY = 'extalia.mode.v1';
@@ -10,11 +11,10 @@ export const LEGACY_MODE_STORAGE_KEY = 'extalia.mode.v1';
 export interface LandingMemory { workspaceId?: string }
 
 /**
- * Whether Chat exists in this host. The observe workflow without any workspace
- * has no chat.
+ * Observe is a focused workflow even when project folders have been mapped.
  */
 export function chatAvailable(input: { agents: boolean; workflow: Workflow; hasWorkspaces: boolean }): boolean {
-  return input.agents && !(input.workflow === 'observe' && !input.hasWorkspaces);
+  return input.agents && input.workflow === 'managed';
 }
 
 export interface NavigationInput {
@@ -37,11 +37,15 @@ export function navigationGroups({ agents, workflow, canChat }: NavigationInput)
     { section: 'activity', pages: ['logs'] },
     { section: 'app', pages: ['settings', 'diagnostics'] },
   ];
+  if (workflow === 'observe') return [
+    { section: 'work', pages: ['office', 'observe'] },
+    { section: 'activity', pages: ['history', 'import', 'logs'] },
+    { section: 'app', pages: ['settings', 'diagnostics'] },
+  ];
   const work: PageId[] = ['office'];
-  if (workflow === 'observe') work.push('observe');
   if (chatAvailable({ agents, workflow, hasWorkspaces: canChat })) work.push('chat');
-  if (canChat) work.push('missions');
-  if (workflow === 'managed') work.push('observe');
+  if (canChat) work.push('missions', 'schedules');
+  work.push('observe');
   // Files and Git read a workspace's project folder, so they need one.
   if (canChat) work.push('files', 'git');
   return [
@@ -85,10 +89,10 @@ export function parseLandingMemory(raw: string | null): LandingMemory {
 }
 
 type LandingStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
-const deviceStorage = (): LandingStorage | undefined => (typeof localStorage !== 'undefined' ? localStorage : undefined);
+const deviceStorage = (): LandingStorage => profileClientStateStorage;
 
 /**
- * Per-device storage; every access is guarded (private mode, blocked storage, tests).
+ * Host-backed storage, or device storage without a host; every access is guarded.
  * The legacy mode record is migrated once: its workspace is kept, its mode dropped,
  * and only that one key is removed, so other interface preferences stay intact.
  */

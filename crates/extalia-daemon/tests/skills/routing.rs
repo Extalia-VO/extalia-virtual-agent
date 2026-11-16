@@ -222,7 +222,11 @@ fn unavailable_scanner_and_tampered_staged_sources_do_not_mutate_registry() {
     let mut session = start(&dir, store, "default", Some(FakeInspector(Severity::None)));
     let object = dir
         .data()
-        .join("profiles/default/skills/objects")
+        .join(if cfg!(unix) {
+            "skills/objects"
+        } else {
+            "profiles/default/skills/objects"
+        })
         .join(revision.strip_prefix("skr_").unwrap())
         .join("SKILL.md");
     make_writable(&object);

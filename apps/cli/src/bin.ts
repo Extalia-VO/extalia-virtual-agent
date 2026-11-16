@@ -67,6 +67,7 @@ const code = await run(process.argv.slice(2), {
     webRoot: path.join(path.dirname(binPath), 'web'),
     ...(relaunchToken ? { token: relaunchToken } : {}),
     createAgentHost,
+    cliResumeArchiveReader: path.join(path.dirname(binPath), 'continuity-reader.mjs'),
     // The optional `@extalia/daemon-<platform>-<arch>` package beside this bundle, or a workspace build in development.
     daemonBinary: { packageFrom: binPath, repoRoot: path.resolve(path.dirname(binPath), '../../..') },
     updater: updater(),

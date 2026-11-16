@@ -1,12 +1,15 @@
+import { executableLaunchPlan } from './npmCommand.js';
 import { spawn } from 'node:child_process';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { lstat, realpath } from 'node:fs/promises';
 import path from 'node:path';
+import { EFFORTS, redact } from '@extalia/core';
+import { isModelId } from '@extalia/platform';
 import type {
   ObservedCodexApprovalAnswerInput, ObservedCodexApprovalDecision, ObservedCodexApprovalRequest,
   ObservedCodexAnswerInput, ObservedCodexInputRequest, ObservedCodexMessageInput,
   ObservedCodexCommandAction, ObservedCodexFileChange, ObservedCodexPermissions,
-  ObservedCodexQuestion, ObservedCodexStatus,
+  ObservedCodexQuestion, ObservedCodexStatus, ObservedCodexSettingsInput, PromptSuggestionsStatus,
 } from '@extalia/platform';
 
 const MAX_FRAME = 1024 * 1024;
@@ -20,6 +23,22 @@ const boundedText = (value: unknown, max = 16_384): value is string =>
   typeof value === 'string' && value.length > 0 && value.length <= max;
 const nativeId = (value: unknown): value is NativeId => boundedText(value, 256) || typeof value === 'number' && Number.isSafeInteger(value);
 const idKey = (id: NativeId): string => `${typeof id}:${id}`;
+const SETTINGS_PROBE = 'extalia/observed/settings/capabilityProbe';
+const settingText = (value: unknown, max: number): value is string => boundedText(value, max) && !/[\s\p{Cc}\p{Cf}]/u.test(value);
+
+/** Only the verified native dispatch inventory is retained; raw diagnostics stay private. */
+export class CodexObservedRpcError extends Error {
+  readonly supportsThreadSettingsUpdate: boolean;
+  constructor(value: unknown) {
+    super('Codex rejected the request.');
+    const error = object(value);
+    const prefix = `Invalid request: unknown variant \`${SETTINGS_PROBE}\`, expected one of `;
+    const message = error?.message;
+    const methods = error?.code === -32600 && typeof message === 'string' && message.length <= 32_768 && message.startsWith(prefix)
+      ? message.slice(prefix.length).split(', ') : [];
+    this.supportsThreadSettingsUpdate = methods.length > 0 && methods.every(method => /^`[A-Za-z][A-Za-z0-9_/-]{0,199}`$/.test(method)) && methods.includes('`thread/settings/update`');
+  }
+}
 
 export interface CodexObservedRpc {
   request(method: string, params: ObjectValue): Promise<unknown>;
@@ -42,12 +61,15 @@ export interface CodexObservedControlOptions {
   bin: string;
   env?: NodeJS.ProcessEnv;
   onChange?: () => void;
+  /** A newly verified native work phase, rather than repeated activity updates. */
+  onActivity?: () => void;
   rpcFactory?: CodexObservedRpcFactory;
 }
 
 /** One owned byte proxy to an existing Unix WebSocket server; never an engine. */
 export const createCodexObservedRpc: CodexObservedRpcFactory = async (options) => {
-  const child = spawn(options.bin, ['app-server', 'proxy', '--sock', options.socketPath], {
+  const launch = await executableLaunchPlan(options.bin, ['app-server', 'proxy', '--sock', options.socketPath], { env: options.env });
+  const child = spawn(launch.command, launch.args, {
     env: options.env, stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true,
   });
   const key = randomBytes(16).toString('base64');
@@ -133,7 +155,7 @@ export const createCodexObservedRpc: CodexObservedRpcFactory = async (options) =
     const entry = pending.get(idKey(message.id));
     if (!entry) return;
     pending.delete(idKey(message.id)); clearTimeout(entry.timer);
-    if ('error' in message) entry.reject(new Error('Codex rejected the request.'));
+    if ('error' in message) entry.reject(new CodexObservedRpcError(message.error));
     else if ('result' in message) entry.resolve(message.result);
     else { entry.reject(new Error('Invalid Codex response.')); throw new Error('Invalid Codex response.'); }
   };
@@ -294,6 +316,19 @@ export class CodexObservedControl {
   private ready = false;
   private busy = false;
   private turnRevision = 0;
+  private model?: string;
+  private effort?: string;
+  private settingsRevision = 0;
+  private settingsSupported = false;
+  private settingsDelivery?: ObservedCodexStatus['settingsDelivery'];
+  private activityNotified = false;
+  private activityNotifiedTurnId?: string;
+  private completedTurnId?: string;
+  private completionTurnId?: string;
+  private predictionTurnId?: string;
+  private suggestionsPrivate = false;
+  private prediction?: { anchor: string; generation: number; turnId: string; state: 'pending' | 'ready' | 'unavailable' | 'unsupported'; prompts: string[] };
+  private predictionTimer?: NodeJS.Timeout;
   // Cleanup uncertainty survives generation changes and removal of the RPC handle.
   private cleanupFailed = false;
   constructor(private readonly options: CodexObservedControlOptions) {}
@@ -303,12 +338,62 @@ export class CodexObservedControl {
     return {
       sessionId: this.options.sessionId, state: this.state, connectionId: this.connectionId,
       threadId: connected ? this.options.threadId : undefined, activeTurnId: this.activeTurnId,
+      model: connected ? this.model : undefined, effort: connected ? this.effort : undefined,
+      settingsRevision: connected ? this.settingsRevision : undefined,
+      canSetSettings: connected && this.settingsSupported && this.settingsDelivery !== 'unknown' && !this.busy && !!this.model,
+      settingsDelivery: connected ? this.settingsDelivery : undefined,
       canSend: connected && !this.busy && (this.activity === 'idle' || !!this.activeTurnId) && !this.hasBlockingRequest(), canAnswer: connected && [...this.requests.values()].some((request) => request.view.state === 'pending'),
       requests: structuredClone([...this.requests.values()].map((request) => request.view)),
       approvals: structuredClone([...this.approvals.values()].map((request) => request.view)),
       canApprove: connected && [...this.approvals.values()].some((request) => request.view.state === 'pending' && request.view.turnId === this.activeTurnId && request.generation === this.generation),
       problem: this.problem, delivery: this.delivery,
     };
+  }
+  /** Predictions belong only to this attachment and a positively completed turn. */
+  suggestions(): PromptSuggestionsStatus {
+    if (this.suggestionsPrivate) return { sessionId: this.options.sessionId, state: 'private', prompts: [], origin: 'harness', canRequest: false };
+    const anchor = this.connectionId && this.completedTurnId ? `${this.connectionId}:${this.completedTurnId}` : undefined;
+    const available = this.state === 'connected' && this.activity === 'idle' && !this.activeTurnId && !!anchor;
+    const prediction = available && this.prediction?.anchor === anchor ? this.prediction : undefined;
+    return {
+      sessionId: this.options.sessionId, ...(available ? { anchor } : {}),
+      state: prediction?.state ?? 'unavailable', prompts: prediction ? [...prediction.prompts] : [],
+      origin: 'harness', canRequest: available && !prediction && this.predictionTurnId !== this.completedTurnId,
+    };
+  }
+  setSuggestionsPrivacy(value: boolean): void {
+    if (this.suggestionsPrivate === value) return;
+    this.suggestionsPrivate = value;
+    if (value) this.clearPrediction(false);
+    this.changed();
+  }
+  private clearPrediction(clearCompleted = true): void {
+    clearTimeout(this.predictionTimer); this.predictionTimer = undefined; this.prediction = undefined;
+    if (clearCompleted) { this.completedTurnId = undefined; this.predictionTurnId = undefined; }
+  }
+  async requestSuggestions(anchor: string): Promise<PromptSuggestionsStatus> {
+    const status = this.suggestions();
+    if (anchor !== status.anchor || !status.canRequest || !this.rpc || !this.completedTurnId) return status;
+    const generation = this.generation;
+    const rpc = this.rpc;
+    const prediction: NonNullable<CodexObservedControl['prediction']> = { anchor, generation, turnId: this.completedTurnId, state: 'pending', prompts: [] };
+    this.prediction = prediction; this.predictionTurnId = prediction.turnId;
+    // A server may acknowledge the request without ever publishing a result.
+    this.predictionTimer = setTimeout(() => {
+      if (this.prediction !== prediction) return;
+      prediction.state = 'unavailable'; this.predictionTimer = undefined; this.changed();
+    }, RPC_TIMEOUT);
+    this.predictionTimer.unref(); this.changed();
+    try {
+      await this.revalidate(generation);
+      if (this.prediction !== prediction || this.suggestions().anchor !== anchor) return this.suggestions();
+      await rpc.request('thread/prediction/request', { threadId: this.options.threadId, sourceTurnId: prediction.turnId });
+    } catch {
+      if (this.prediction === prediction && generation === this.generation && prediction.state === 'pending') {
+        clearTimeout(this.predictionTimer); this.predictionTimer = undefined; prediction.state = 'unsupported'; this.changed();
+      }
+    }
+    return this.suggestions();
   }
   private hasBlockingRequest(): boolean {
     return this.approvals.size > 0 || this.unsupported.size > 0 || [...this.requests.values()].some((request) => request.blocking);
@@ -317,6 +402,14 @@ export class CodexObservedControl {
     this.requests.clear(); this.approvals.clear(); this.unsupported.clear(); this.fileChanges.clear();
   }
   private changed(): void { this.options.onChange?.(); }
+  private reportActivity(turnId?: string): void {
+    if (turnId && this.activityNotifiedTurnId && turnId !== this.activityNotifiedTurnId) this.activityNotified = false;
+    if (turnId) this.activityNotifiedTurnId = turnId;
+    if (this.activityNotified) return;
+    this.activityNotified = true;
+    this.options.onActivity?.();
+  }
+  private resetActivityReport(): void { this.activityNotified = false; this.activityNotifiedTurnId = undefined; }
   private failCleanup(): void {
     this.cleanupFailed = true; this.invalidate('unavailable', CLEANUP_PROBLEM);
   }
@@ -325,9 +418,12 @@ export class CodexObservedControl {
   }
   private invalidate(state: ObservedCodexStatus['state'], problem?: string): void {
     ++this.generation; this.ready = false;
+    this.resetActivityReport();
+    this.clearPrediction(); this.completionTurnId = undefined;
     this.state = this.cleanupFailed ? 'unavailable' : state;
     this.problem = this.cleanupFailed ? CLEANUP_PROBLEM : problem;
     this.connectionId = undefined; this.activeTurnId = undefined; this.activity = 'unknown'; this.clearTurnRequests(); this.seenRequests.clear(); this.staged = [];
+    this.model = undefined; this.effort = undefined; this.settingsRevision = 0; this.settingsSupported = false; this.settingsDelivery = undefined;
     if (this.delivery === 'submitted') this.delivery = 'unknown';
     this.changed();
   }
@@ -348,6 +444,7 @@ export class CodexObservedControl {
         bin: this.options.bin, env: this.options.env, socketPath: pin.path,
         onMessage: (message) => {
           if (generation !== this.generation) return;
+          if (this.suggestionsPrivate && object(message)?.method === 'thread/prediction/updated') return;
           if (this.ready) this.message(message);
           else if (this.staged.length < 128) this.staged.push(message);
           else { this.invalidate('unavailable', 'Codex sent too many attachment events.'); this.stopRpc(); }
@@ -370,10 +467,19 @@ export class CodexObservedControl {
       const loaded = object(await rpc.request('thread/loaded/list', { limit: 100 }));
       if (generation !== this.generation) throw new Error('Connection superseded.');
       if (!loaded || !Array.isArray(loaded.data) || loaded.data.length > 100 || !loaded.data.every((id) => boundedText(id, 256)) || !loaded.data.includes(this.options.threadId)) throw new Error('Invalid thread inventory.');
-      this.verifyThread(await rpc.request('thread/read', { threadId: this.options.threadId, includeTurns: false }));
-      await this.revalidate(generation);
-      const resumed = this.verifyThread(await rpc.request('thread/resume', { threadId: this.options.threadId, excludeTurns: true }));
+      // An unknown method cannot invoke a handler. Only an explicit method inventory
+      // from this exact server establishes setter support; versions never do.
+      try { await rpc.request(SETTINGS_PROBE, {}); }
+      catch (error) { this.settingsSupported = error instanceof CodexObservedRpcError && error.supportsThreadSettingsUpdate; }
       if (generation !== this.generation) throw new Error('Connection superseded.');
+      const initial = this.verifyThread(await rpc.request('thread/read', { threadId: this.options.threadId, includeTurns: false }));
+      if (generation !== this.generation) throw new Error('Connection superseded.');
+      this.captureSettings(initial);
+      await this.revalidate(generation);
+      const resumedResponse = await rpc.request('thread/resume', { threadId: this.options.threadId, excludeTurns: true });
+      const resumed = this.verifyThread(resumedResponse);
+      if (generation !== this.generation) throw new Error('Connection superseded.');
+      this.captureSettings('model' in resumed ? resumed : object(resumedResponse)!);
       this.activity = object(resumed.status)?.type === 'idle' ? 'idle' : 'unknown';
       const turns = resumed.turns;
       if (Array.isArray(turns)) {
@@ -406,7 +512,9 @@ export class CodexObservedControl {
         if (!this.activeTurnId) throw new Error('The active Codex turn could not be verified.');
         this.activity = 'active';
       }
+      this.completionTurnId = this.activeTurnId;
       this.state = 'connected'; this.connectionId = randomUUID(); this.ready = true;
+      if (this.activity === 'active') this.reportActivity(this.activeTurnId);
       const staged = this.staged; this.staged = [];
       for (const message of staged) this.message(message);
       this.changed();
@@ -442,6 +550,63 @@ export class CodexObservedControl {
     if (this.state !== 'connected' || id !== this.connectionId || !this.rpc) throw new Error('Stale Codex connection.');
     return { rpc: this.rpc, generation: this.generation };
   }
+  private captureSettings(value: ObjectValue, notification = false): void {
+    const model = isModelId(value.model) ? value.model : undefined;
+    const sourceEffort = notification ? value.effort : value.reasoningEffort;
+    const effort = settingText(sourceEffort, 64) ? sourceEffort : undefined;
+    if (model !== this.model || effort !== this.effort) {
+      this.model = model; this.effort = effort; ++this.settingsRevision;
+      this.changed();
+    }
+  }
+  async updateSettings(input: ObservedCodexSettingsInput): Promise<ObservedCodexStatus> {
+    const value = object(input);
+    if (!value || Object.keys(value).some(key => !['connectionId', 'settingsRevision', 'model', 'effort'].includes(key)) ||
+        !Number.isSafeInteger(input.settingsRevision) || input.settingsRevision < 0 ||
+        input.model === undefined && input.effort === undefined ||
+        input.model !== undefined && !isModelId(input.model) || input.effort !== undefined && !(EFFORTS as readonly unknown[]).includes(input.effort)) throw new Error('Choose valid Codex model or effort settings.');
+    input = { connectionId: input.connectionId, settingsRevision: input.settingsRevision, model: input.model, effort: input.effort };
+    const { rpc, generation } = this.requireConnection(input.connectionId);
+    if (!this.status().canSetSettings || this.busy) throw new Error('Native Codex settings updates are unavailable.');
+    if (input.settingsRevision !== this.settingsRevision) throw new Error('Codex settings changed. Refresh before updating.');
+    this.busy = true; this.changed();
+    let dispatched = false;
+    try {
+      await this.revalidate(generation);
+      const loaded = object(await rpc.request('thread/loaded/list', { limit: 100 }));
+      if (generation !== this.generation) throw new Error('Stale Codex connection.');
+      if (!loaded || !Array.isArray(loaded.data) || loaded.data.length > 100 || !loaded.data.every(id => boundedText(id, 256)) || !loaded.data.includes(this.options.threadId)) throw new Error('The observed Codex thread is no longer loaded.');
+      const beforeRead = this.settingsRevision;
+      const fresh = this.verifyThread(await rpc.request('thread/read', { threadId: this.options.threadId, includeTurns: false }));
+      if (generation !== this.generation) throw new Error('Stale Codex connection.');
+      if (!['idle', 'active'].includes(String(object(fresh.status)?.type))) throw new Error('The observed Codex thread is no longer loaded.');
+      if (beforeRead !== this.settingsRevision) throw new Error('Codex settings changed. Refresh before updating.');
+      this.captureSettings(fresh);
+      if (!this.model || input.settingsRevision !== this.settingsRevision) throw new Error('Codex settings changed. Refresh before updating.');
+      await this.revalidate(generation);
+      if (input.settingsRevision !== this.settingsRevision) throw new Error('Codex settings changed. Refresh before updating.');
+      dispatched = true;
+      await rpc.request('thread/settings/update', {
+        threadId: this.options.threadId,
+        ...(input.model !== undefined ? { model: input.model } : {}),
+        ...(input.effort !== undefined ? { effort: input.effort } : {}),
+      });
+      await this.revalidate(generation);
+      const beforeReceipt = this.settingsRevision;
+      const receipt = this.verifyThread(await rpc.request('thread/read', { threadId: this.options.threadId, includeTurns: false }));
+      if (generation !== this.generation) throw new Error('Stale Codex connection.');
+      if (beforeReceipt === this.settingsRevision) this.captureSettings(receipt);
+      if (input.model !== undefined && this.model !== input.model || input.effort !== undefined && this.effort !== input.effort) throw new Error('Codex did not confirm the requested settings. Refresh before retrying.');
+      this.settingsDelivery = 'confirmed';
+    } catch (error) {
+      if (dispatched && generation === this.generation) {
+        this.settingsDelivery = 'unknown';
+        this.problem = 'Codex settings delivery could not be confirmed. Reconnect before updating settings again.';
+      }
+      throw error;
+    } finally { this.busy = false; this.changed(); }
+    return this.status();
+  }
   async send(input: ObservedCodexMessageInput): Promise<ObservedCodexStatus> {
     const { rpc, generation } = this.requireConnection(input.connectionId);
     if (!this.status().canSend || !boundedText(input.text, 65_536) || !input.text.trim()) throw new Error('A bounded message is required.');
@@ -456,11 +621,15 @@ export class CodexObservedControl {
       } else {
         const thread = this.verifyThread(await rpc.request('thread/read', { threadId: this.options.threadId, includeTurns: false }));
         if (object(thread.status)?.type !== 'idle' || this.activeTurnId || generation !== this.generation) throw new Error('Codex is no longer idle.');
+        this.captureSettings(thread);
         await this.revalidate(generation);
         if (this.activeTurnId) throw new Error('Codex is no longer idle.');
         const revision = this.turnRevision;
+        this.clearPrediction();
         const response = object(await rpc.request('turn/start', params)); const turn = object(response?.turn);
-        if (generation === this.generation && revision === this.turnRevision && boundedText(turn?.id, 256) && turn.status === 'inProgress') { this.activeTurnId = turn.id; this.activity = 'active'; }
+        if (generation === this.generation && revision === this.turnRevision && boundedText(turn?.id, 256) && turn.status === 'inProgress') {
+          this.activeTurnId = turn.id; this.completionTurnId = turn.id; this.activity = 'active'; this.reportActivity(turn.id);
+        }
       }
       if (generation !== this.generation) throw new Error('Codex delivery is unknown after disconnect.');
       this.delivery = 'submitted';
@@ -526,6 +695,34 @@ export class CodexObservedControl {
   private message(value: unknown): void {
     const message = object(value); const params = object(message?.params);
     if (!message || !params || params.threadId !== this.options.threadId) return;
+    if (message.method === 'thread/settings/updated') {
+      const settings = object(params.threadSettings);
+      if (settings) { this.captureSettings(settings, true); this.changed(); }
+      return;
+    }
+    if (message.method === 'thread/prediction/updated') {
+      if (this.suggestionsPrivate) return;
+      let prediction = this.prediction;
+      const result = object(params.result);
+      if (!prediction) {
+        // The attached native app may have requested its own prediction first.
+        // Only a source turn already verified by this attachment may supply it.
+        if (!this.ready || this.state !== 'connected' || this.activity !== 'idle' || this.activeTurnId ||
+            !this.connectionId || !this.completedTurnId || params.sourceTurnId !== this.completedTurnId ||
+            this.predictionTurnId === this.completedTurnId || !['completed', 'failed'].includes(String(result?.type))) return;
+        prediction = { anchor: `${this.connectionId}:${this.completedTurnId}`, generation: this.generation, turnId: this.completedTurnId, state: 'pending', prompts: [] };
+        this.prediction = prediction; this.predictionTurnId = prediction.turnId;
+      }
+      if (prediction.state !== 'pending' || prediction.generation !== this.generation ||
+          params.sourceTurnId !== prediction.turnId || this.suggestions().anchor !== prediction.anchor) return;
+      clearTimeout(this.predictionTimer); this.predictionTimer = undefined;
+      const text = typeof result?.text === 'string' ? result.text.trim() : '';
+      const valid = result?.type === 'completed' && text.length > 0 && text.length <= 240 && !/[\p{Cc}\p{Zl}\p{Zp}]/u.test(text);
+      const redacted = valid ? redact(text).trim() : '';
+      const prompt = redacted.length <= 240 ? redacted : '';
+      prediction.prompts = prompt ? [prompt] : [];
+      prediction.state = prompt ? 'ready' : 'unavailable'; this.changed(); return;
+    }
     if (message.method === 'serverRequest/resolved' && nativeId(params.requestId)) {
       for (const [id, request] of this.requests) {
         if (idKey(request.nativeId) === idKey(params.requestId)) { this.requests.delete(id); this.delivery = 'resolved'; this.changed(); }
@@ -542,11 +739,12 @@ export class CodexObservedControl {
     if (message.method === 'thread/status/changed') {
       const type = object(params.status)?.type;
       if (type === 'idle') {
-        ++this.turnRevision; this.activity = 'idle'; this.activeTurnId = undefined; this.clearTurnRequests();
-      } else if (type === 'active') this.activity = 'active';
+        ++this.turnRevision; this.activity = 'idle'; this.activeTurnId = undefined; this.clearTurnRequests(); this.resetActivityReport();
+      } else if (type === 'active') { this.activity = 'active'; this.reportActivity(this.activeTurnId); }
       else if (type === 'notLoaded' || type === 'systemError') {
-        ++this.turnRevision; this.activity = 'unknown'; this.activeTurnId = undefined; this.clearTurnRequests();
+        ++this.turnRevision; this.activity = 'unknown'; this.activeTurnId = undefined; this.completionTurnId = undefined; this.clearTurnRequests(); this.resetActivityReport();
       }
+      if (type === 'active' || type === 'notLoaded' || type === 'systemError') this.clearPrediction();
       this.changed(); return;
     }
     if ((message.method === 'item/started' || message.method === 'item/fileChange/patchUpdated') && params.turnId === this.activeTurnId) {
@@ -580,12 +778,17 @@ export class CodexObservedControl {
     const turn = object(params.turn);
     if (message.method === 'turn/started' && boundedText(turn?.id, 256)) {
       ++this.turnRevision;
+      this.clearPrediction();
       if (this.activeTurnId !== turn.id) this.clearTurnRequests();
-      this.activeTurnId = turn.id; this.activity = 'active'; this.changed(); return;
+      this.activeTurnId = turn.id; this.completionTurnId = turn.id; this.activity = 'active'; this.reportActivity(turn.id); this.changed(); return;
     }
-    if (message.method === 'turn/completed' && turn?.id === this.activeTurnId) {
+    if (message.method === 'turn/completed' && boundedText(turn?.id, 256) && turn.id === this.completionTurnId) {
       ++this.turnRevision;
+      this.clearPrediction();
+      if (turn.status === 'completed') this.completedTurnId = turn.id;
+      this.completionTurnId = undefined;
       this.activeTurnId = undefined; this.activity = 'idle'; this.clearTurnRequests();
+      this.resetActivityReport();
       if (this.delivery === 'submitted') this.delivery = 'unknown';
       this.changed(); return;
     }

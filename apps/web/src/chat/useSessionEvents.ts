@@ -1,8 +1,7 @@
 import type { AgentHostApi } from '@extalia/platform';
 import type { ExtaliaEvent } from '@extalia/protocol';
 import { useEffect, useState } from 'react';
-import { errorMessage } from '../host/remote';
-import { mergeEvents } from './transcript';
+import { sessionEventFeed } from './sessionEventFeed';
 
 interface Loaded { sessionId: string; events: ExtaliaEvent[]; error: string | null; loading: boolean }
 
@@ -12,28 +11,7 @@ export function useSessionEvents(agents: AgentHostApi, sessionId: string | undef
 
   useEffect(() => {
     if (!sessionId) return;
-    let active = true;
-    let history: ExtaliaEvent[] | null = null;
-    let early: ExtaliaEvent[] = [];
-    const unsubscribe = agents.subscribe(event => {
-      if (!active || event.sessionId !== sessionId) return;
-      if (history === null) { early.push(event); return; }
-      setLoaded(current => current.sessionId === sessionId ? { ...current, events: mergeEvents(current.events, [event]) } : current);
-    });
-    agents.sessionEvents(sessionId).then(
-      events => {
-        if (!active) return;
-        history = mergeEvents(events, early);
-        early = [];
-        setLoaded({ sessionId, events: history, error: null, loading: false });
-      },
-      error => {
-        if (!active) return;
-        history = early;
-        setLoaded({ sessionId, events: early, error: errorMessage(error), loading: false });
-      },
-    );
-    return () => { active = false; unsubscribe(); };
+    return sessionEventFeed(agents, sessionId, value => setLoaded({ sessionId, ...value }));
   }, [agents, sessionId]);
 
   if (!sessionId) return { events: [], error: null, loading: false };

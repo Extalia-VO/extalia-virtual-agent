@@ -6,11 +6,13 @@ pub mod control;
 pub mod knowledge;
 pub mod learning;
 pub mod mission;
+pub mod observed_memory;
 pub mod planning;
 pub mod preparation;
 pub mod security;
 mod sha256;
 pub mod skills;
 pub mod time;
+pub mod work_memory;
 
 pub use adapters::sqlite::{CoreStore, StoreError};

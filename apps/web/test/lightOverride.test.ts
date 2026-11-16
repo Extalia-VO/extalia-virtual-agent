@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { DAYLIGHT_INTERIOR_LEVEL, LIGHT_OVERRIDE_STORAGE_KEY, loadLightOverride, resolveInteriorLights, saveLightOverride } from '../src/office/scene/environment/lightOverride';
-import { createBudgetController, createRenderFrameSampler, RECOVERY_WINDOWS, RENDER_BUDGET_LEVELS, budgetPixelRatio, resetRenderFrameSampler, sampleRenderFrame, updateBudget } from '../src/office/scene/environment/renderBudget';
+import {
+  createBudgetController, createRenderFrameSampler, detectInitialRenderBudgetLevel, getRenderBudget,
+  getRenderBudgetLevel, INITIAL_RENDER_BUDGET_LEVEL, LIGHTWEIGHT_RENDER_BUDGET_LEVEL, MAX_RETRY_WINDOWS,
+  PROBE_WINDOWS, RECOVERY_WINDOWS, PROBE_SAMPLE_WINDOWS, RENDER_BUDGET_LEVELS, SLOW_WINDOWS, TARGET_FPS,
+  budgetPixelRatio, effectiveBudgetFps, resetBudgetController, resetRenderFrameSampler, sampleRenderFrame,
+  setRenderBudgetLevel, updateBudget,
+} from '../src/office/scene/environment/renderBudget';
 
 function memoryStorage(initial: Record<string, string> = {}) {
   const values = new Map(Object.entries(initial));
@@ -47,97 +53,185 @@ describe('lights override', () => {
 });
 
 describe('adaptive render budget', () => {
-  it('downgrades after one slow visible frame window', () => {
-    const sampler = createRenderFrameSampler(0);
-    const controller = createBudgetController();
-    let now = 100;
-    sampleRenderFrame(sampler, now, true);
-    let windows = 0;
-    for (let i = 0; i < 20 && controller.level === 0; i++) {
-      now += 600; // foreground stalls at ~1.7 fps; these intervals must not be discarded
-      const fps = sampleRenderFrame(sampler, now, true);
-      if (fps !== null) {
-        windows++;
-        updateBudget(controller, { fps });
-      }
-    }
-    expect(windows).toBe(1);
-    expect(controller.level).toBe(1);
+  const feed = (controller: ReturnType<typeof createBudgetController>, fps: number, count: number) => {
+    for (let i = 0; i < count; i++) updateBudget(controller, { fps, rawFps: fps });
+  };
+  it('keeps resolution trials independent of lights, shadows and traffic and never uses a 480p tier', () => {
+    expect(TARGET_FPS).toBe(60);
+    expect(RENDER_BUDGET_LEVELS.map(budget => budget.resolutionHeight)).toEqual([2160, 1440, 1080, 900, 720]);
+    expect(getRenderBudgetLevel()).toBe(INITIAL_RENDER_BUDGET_LEVEL);
+    expect(getRenderBudget().resolutionHeight).toBe(1080);
+    const resources = RENDER_BUDGET_LEVELS.map(({ resolutionHeight: _height, ...rest }) => rest);
+    resources.forEach(resource => expect(resource).toEqual(resources[INITIAL_RENDER_BUDGET_LEVEL]));
+    expect(resources[0]).toMatchObject({ liveBeams: 6, shadowMapSize: 1024, shadowRefreshSeconds: .5, trafficCars: 10 });
   });
-
-  it('resets timing on hide/resume so hidden duration cannot trigger a downgrade', () => {
-    const sampler = createRenderFrameSampler(0);
+  it('rolls back an ineffective CPU-bound reduction and blocks further cuts during cooldown', () => {
     const controller = createBudgetController();
-    sampleRenderFrame(sampler, 100, true);
-    sampleRenderFrame(sampler, 200, true);
-    resetRenderFrameSampler(sampler);
-    expect(sampleRenderFrame(sampler, 60_000, false)).toBeNull();
-    // The first resumed frame starts a fresh clock; subsequent healthy frames are
-    // measured normally, regardless of the minute spent hidden.
-    expect(sampleRenderFrame(sampler, 60_016, true)).toBeNull();
-    let windows = 0;
-    for (let i = 0; i < 300; i++) {
-      const fps = sampleRenderFrame(sampler, 60_032 + i * 16, true);
-      if (fps !== null) {
-        windows++;
-        updateBudget(controller, { fps });
-      }
+    feed(controller, 25, SLOW_WINDOWS);
+    expect(controller).toMatchObject({ level: 3, decision: 'probe-down', baselineMs: 40 });
+    feed(controller, 25, PROBE_SAMPLE_WINDOWS);
+    expect(controller).toMatchObject({ level: 2, decision: 'no-response', baselineMs: 40, candidateMs: 40 });
+    const minimum = controller.level;
+    for (let i = 0; i < MAX_RETRY_WINDOWS - 1; i++) {
+      updateBudget(controller, { fps: 25, rawFps: 25 });
+      // Restoration trials are allowed; further resolution cuts are not.
+      expect(controller.level).toBeLessThanOrEqual(minimum);
     }
-    expect(windows).toBeGreaterThan(0);
     expect(controller.level).toBe(0);
   });
-
-  it('ignores one hitch in an otherwise smooth window but not a sustained slowdown', () => {
-    const sampler = createRenderFrameSampler(0);
-    let now = 1000;
-    sampleRenderFrame(sampler, now, true);
-    const windowFps = (frameMs: (i: number) => number) => {
-      for (let i = 0; i < 400; i++) {
-        now += frameMs(i);
-        const fps = sampleRenderFrame(sampler, now, true);
-        if (fps !== null) return fps;
-      }
-      return null;
-    };
-    // 300 ms compile stall followed by 60 fps frames.
-    expect(windowFps(i => (i === 0 ? 300 : 1000 / 60))).toBeGreaterThan(55);
-    // 30 ms frames throughout (33 fps) stay slow.
-    expect(windowFps(() => 30)).toBeLessThan(40);
-  });
-
-  it('steps down at once below 40 fps (frame time over 25 ms), after two marginal windows, and back up carefully', () => {
+  it('skips resolution tiers that produce the same native drawing buffer', () => {
+    const ratio = (level: number) => budgetPixelRatio(RENDER_BUDGET_LEVELS[level]!, 1, 1502, 864);
     const controller = createBudgetController();
-    expect(updateBudget(controller, { fps: 30 })).toBe(1);
-    expect(updateBudget(controller, { fps: 42 })).toBe(1);
-    expect(updateBudget(controller, { fps: 42 })).toBe(2);
-    expect(updateBudget(controller, { fps: 50 })).toBe(2);
-    for (let i = 0; i < RECOVERY_WINDOWS - 1; i++) expect(updateBudget(controller, { fps: 60 })).toBe(2);
-    expect(updateBudget(controller, { fps: 60 })).toBe(1);
-    // One slow second interrupts recovery.
-    for (let i = 0; i < RECOVERY_WINDOWS - 1; i++) updateBudget(controller, { fps: 60 });
-    updateBudget(controller, { fps: 50 });
-    expect(updateBudget(controller, { fps: 60 })).toBe(1);
+    for (let i = 0; i < SLOW_WINDOWS; i++) updateBudget(controller, { fps: 40 }, ratio);
+    expect(controller.probe?.from).toBe(2);
+    expect(controller.level).toBe(4);
+    const small = createBudgetController();
+    for (let i = 0; i < PROBE_WINDOWS; i++) updateBudget(small, { fps: 40 }, () => 1);
+    expect(small.probe).toBeUndefined();
+    expect(small.level).toBe(INITIAL_RENDER_BUDGET_LEVEL);
   });
-
-  it('stays at the lowest level and does not retry a level that failed twice', () => {
+  it.each([28, 29.5])('retains a warmed, material GPU response at %s fps', fps => {
+    const controller = createBudgetController(); feed(controller, 25, SLOW_WINDOWS);
+    feed(controller, fps, PROBE_SAMPLE_WINDOWS);
+    expect(controller).toMatchObject({ level: 3, decision: 'retained' });
+    expect(controller.baselineMs! - controller.candidateMs!).toBeGreaterThanOrEqual(4);
+  });
+  it.each([[25, 26], [1000 / 18, 1000 / 16.5]])('requires both relative and absolute savings (fps %s → %s)', (before, after) => {
+    const controller = createBudgetController(); feed(controller, before!, SLOW_WINDOWS);
+    feed(controller, after!, PROBE_SAMPLE_WINDOWS);
+    expect(controller).toMatchObject({ level: 2, decision: 'no-response' });
+  });
+  it('does not compare transient spikes or unstable baseline/candidate windows as GPU gains', () => {
     const controller = createBudgetController();
-    for (let i = 0; i < 20; i++) updateBudget(controller, { fps: 10 });
-    expect(controller.level).toBe(RENDER_BUDGET_LEVELS.length - 1);
-    const settled = createBudgetController();
-    for (let round = 0; round < 2; round++) {
-      updateBudget(settled, { fps: 20 });
-      for (let i = 0; i < RECOVERY_WINDOWS; i++) updateBudget(settled, { fps: 60 });
+    for (let i = 0; i < 10; i++) { feed(controller, 60, 2); feed(controller, 15, 1); }
+    expect(controller.level).toBeLessThanOrEqual(2); expect(controller.probe?.direction).not.toBe('down');
+    resetBudgetController(controller, 2); feed(controller, 25, SLOW_WINDOWS);
+    for (const fps of [50, 15, 50]) feed(controller, fps, 1);
+    expect(controller).toMatchObject({ level: 2, decision: 'unstable' });
+  });
+  it('restores quality below 60 fps when extra pixels cost no meaningful throughput', () => {
+    const controller = createBudgetController(); controller.level = 4;
+    controller.downAfter = 500; // previous no-response result
+    const visited = [controller.level];
+    for (let i = 0; i < 4 * (PROBE_WINDOWS + PROBE_SAMPLE_WINDOWS); i++) {
+      updateBudget(controller, { fps: 24, rawFps: 24 });
+      if (controller.level !== visited.at(-1)) visited.push(controller.level);
     }
-    // Level 0 failed twice, so recovering from a later slowdown settles at level 1, never 0.
-    updateBudget(settled, { fps: 20 });
-    for (let i = 0; i < 2 * RECOVERY_WINDOWS; i++) updateBudget(settled, { fps: 60 });
-    expect(settled.level).toBe(1);
+    expect(visited).toEqual([4, 3, 2, 1, 0]); expect(controller.decision).toBe('restored');
+  });
+  it('rejects a costly restoration and retries only after bounded foreground cooldown', () => {
+    const controller = createBudgetController(); controller.level = 4;
+    feed(controller, 40, PROBE_WINDOWS); expect(controller.level).toBe(3);
+    feed(controller, 25, PROBE_SAMPLE_WINDOWS); expect(controller).toMatchObject({ level: 4, decision: 'restore-costly' });
+    feed(controller, 40, MAX_RETRY_WINDOWS - 1); expect(controller.level).toBe(4);
+    feed(controller, 40, 1); expect(controller).toMatchObject({ level: 3, decision: 'probe-up' });
+  });
+  it.each([60, 90, 120, 144])('allows %s fps throughput and recovers sharper levels without a frame cap', fps => {
+    const controller = createBudgetController();
+    feed(controller, fps, 2 * (RECOVERY_WINDOWS + PROBE_SAMPLE_WINDOWS));
+    expect(controller.level).toBe(0);
+    expect(effectiveBudgetFps({ fps, rawFps: fps })).toBe(fps);
+    feed(controller, fps, 100); expect(controller.level).toBe(0);
+  });
+  it('aborts unproven reductions/restorations and clears stale measurements on invalidation', () => {
+    const controller = createBudgetController(); feed(controller, 25, SLOW_WINDOWS);
+    feed(controller, 40, 1); expect(controller.probe?.samples).toHaveLength(1);
+    expect(resetBudgetController(controller)).toBe(2);
+    expect(controller).toMatchObject({ level: 2, decision: 'invalidated', windows: 0, history: [], baselineMs: null, candidateMs: null });
+    expect(controller.probe).toBeUndefined();
+    feed(controller, 60, RECOVERY_WINDOWS); expect(controller.level).toBe(1);
+    expect(resetBudgetController(controller)).toBe(2);
+  });
+  it('uses raw throughput for decisions and ignores invalid samples without advancing clocks', () => {
+    expect(effectiveBudgetFps({ fps: 90, rawFps: 25 })).toBe(25);
+    const controller = createBudgetController();
+    for (let i = 0; i < SLOW_WINDOWS; i++) updateBudget(controller, { fps: 90, rawFps: 25 });
+    expect(controller.level).toBe(3);
+    const snapshot = structuredClone(controller);
+    for (const fps of [NaN, Infinity, -Infinity, 0, -1]) updateBudget(controller, { fps, rawFps: 25 });
+    expect(controller).toEqual(snapshot);
+    for (const rawFps of [undefined, null, NaN, Infinity, -1]) expect(effectiveBudgetFps({ fps: 120, rawFps })).toBe(120);
+  });
+  it('keeps valid shared levels and clamps ordinary level requests', () => {
+    const previous = getRenderBudgetLevel();
+    try {
+      setRenderBudgetLevel(-1); expect(getRenderBudgetLevel()).toBe(0);
+      for (const invalid of [NaN, Infinity, -Infinity]) { setRenderBudgetLevel(invalid); expect(getRenderBudgetLevel()).toBe(0); }
+      setRenderBudgetLevel(100); expect(getRenderBudgetLevel()).toBe(4);
+    } finally { setRenderBudgetLevel(previous); }
+  });
+  it('samples full foreground stalls and resets hidden/context timing before resuming', () => {
+    const sampler = createRenderFrameSampler(0); sampleRenderFrame(sampler, 100, true);
+    expect(sampleRenderFrame(sampler, 1300, true)).toBeCloseTo(1 / 1.2);
+    expect(sampler.rawFps).toBeCloseTo(1 / 1.2);
+    resetRenderFrameSampler(sampler); expect(sampleRenderFrame(sampler, 60_000, false)).toBeNull();
+    expect(sampler).toMatchObject({ rawFps: null, frames: 0, seconds: 0, last: 0 });
+    expect(sampleRenderFrame(sampler, 60_016, true)).toBeNull();
+    let now = 60_016, result: number | null = null;
+    for (let i = 0; i < 145; i++) { now += 1000 / 60; result = sampleRenderFrame(sampler, now, true) ?? result; }
+    expect(result).toBeCloseTo(60); expect(sampler.rawFps).toBeCloseTo(60);
+  });
+  it('reports a one-off hitch in raw throughput while preserving filtered diagnostics', () => {
+    const sampler = createRenderFrameSampler(0); let now = 100; sampleRenderFrame(sampler, now, true);
+    let result: number | null = null;
+    for (let i = 0; i < 100 && result === null; i++) { now += i === 0 ? 300 : 1000 / 60; result = sampleRenderFrame(sampler, now, true); }
+    expect(result).toBeCloseTo(60); expect(sampler.rawFps).toBeLessThan(50);
   });
 
-  it('never exceeds the display pixel ratio or the level cap', () => {
-    expect(budgetPixelRatio(RENDER_BUDGET_LEVELS[0]!, 2)).toBe(1.25);
-    expect(budgetPixelRatio(RENDER_BUDGET_LEVELS[0]!, 1)).toBe(1);
-    expect(budgetPixelRatio(RENDER_BUDGET_LEVELS[RENDER_BUDGET_LEVELS.length - 1]!, 2)).toBeLessThan(1);
+  it('fits every resolution step to physical landscape and portrait canvas dimensions', () => {
+    for (const budget of RENDER_BUDGET_LEVELS) {
+      for (const [width, height] of [[3840, 2160], [2160, 3840]]) {
+        const ratio = budgetPixelRatio(budget, 2, width!, height!);
+        expect(Math.min(width!, height!) * ratio).toBeCloseTo(budget.resolutionHeight);
+        expect(Math.max(width!, height!) * ratio).toBeCloseTo(budget.resolutionHeight * 16 / 9);
+      }
+    }
+    expect(budgetPixelRatio(RENDER_BUDGET_LEVELS[4]!, 2)).toBeCloseTo(720 / 1080);
+  });
+
+  it('respects native display ratios below one and caps high-density displays without supersampling', () => {
+    const highest = RENDER_BUDGET_LEVELS[0]!;
+    expect(budgetPixelRatio(highest, 0.75, 640, 360)).toBe(0.75);
+    expect(budgetPixelRatio(highest, 1, 640, 360)).toBe(1);
+    expect(budgetPixelRatio(highest, 3, 640, 360)).toBe(2);
+    expect(budgetPixelRatio(RENDER_BUDGET_LEVELS[4]!, 1, 320, 240)).toBe(1);
+  });
+
+  it('caps total pixels on ultrawide canvases as well as the short edge', () => {
+    const highest = RENDER_BUDGET_LEVELS[0]!;
+    const width = 5120, height = 1440;
+    const ratio = budgetPixelRatio(highest, 2, width, height);
+    expect(width * ratio * height * ratio).toBeCloseTo(3840 * 2160);
+    expect(height * ratio).toBeLessThan(highest.resolutionHeight);
+    const { maxPixels: _maxPixels, ...withoutPixelCap } = highest;
+    expect(budgetPixelRatio(withoutPixelCap, 2, width, height)).toBe(2160 / height);
+  });
+
+  it('uses finite positive fallbacks for invalid dimensions and display ratios', () => {
+    const budget = RENDER_BUDGET_LEVELS[4]!;
+    const fallback = budgetPixelRatio(budget, 1, 1920, 1080);
+    for (const invalid of [0, -1, NaN, Infinity, -Infinity]) {
+      expect(budgetPixelRatio(budget, invalid)).toBe(fallback);
+      expect(budgetPixelRatio(budget, 1, invalid, invalid)).toBe(fallback);
+      expect(budgetPixelRatio(budget, 1, invalid, 1080)).toBe(fallback);
+      expect(budgetPixelRatio(budget, 1, 1920, invalid)).toBe(fallback);
+    }
+    const hugeCanvasRatio = budgetPixelRatio(budget, 2, Number.MAX_VALUE, Number.MAX_VALUE);
+    expect(Number.isFinite(hugeCanvasRatio)).toBe(true);
+    expect(hugeCanvasRatio).toBeGreaterThan(0);
+  });
+
+  it('detects integrated, mobile and software GPUs vs discrete GPUs', () => {
+    expect(detectInitialRenderBudgetLevel({ renderer: 'ANGLE (Intel, Intel(R) Iris(R) Xe Graphics)', vendor: 'Google Inc.' }))
+      .toBe(LIGHTWEIGHT_RENDER_BUDGET_LEVEL);
+    expect(detectInitialRenderBudgetLevel({ renderer: 'Apple M2', vendor: 'Apple' }))
+      .toBe(LIGHTWEIGHT_RENDER_BUDGET_LEVEL);
+    expect(detectInitialRenderBudgetLevel({ renderer: 'Google SwiftShader', vendor: 'Google Inc.' }))
+      .toBe(LIGHTWEIGHT_RENDER_BUDGET_LEVEL);
+    expect(detectInitialRenderBudgetLevel({ renderer: 'NVIDIA GeForce RTX 4070', vendor: 'NVIDIA Corporation' }))
+      .toBe(INITIAL_RENDER_BUDGET_LEVEL);
+    expect(detectInitialRenderBudgetLevel({ renderer: 'Apple M3 Max', vendor: 'Apple' }))
+      .toBe(INITIAL_RENDER_BUDGET_LEVEL);
   });
 
 });

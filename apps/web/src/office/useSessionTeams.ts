@@ -29,7 +29,7 @@ export function sessionTeamPresenceKey(session: SessionSummary, spawned = 0): st
  * is spawned in it (the lead's `manage_team` or a team set from a prompt).
  * Hosts without teams return an empty map.
  */
-export function useSessionTeams(agents: AgentHostApi | undefined, sessions: readonly SessionSummary[], events: readonly ExtaliaEvent[]): PresenceTeams {
+export function useSessionTeamSnapshot(agents: AgentHostApi | undefined, sessions: readonly SessionSummary[], events: readonly ExtaliaEvent[], scope = '') {
   const supported = Boolean(agents && teamSupported(agents));
   const keys = useMemo(() => {
     if (!supported) return '';
@@ -38,25 +38,45 @@ export function useSessionTeams(agents: AgentHostApi | undefined, sessions: read
     return sessions.filter(session => session.control === 'managed' && session.team)
       .map(session => sessionTeamPresenceKey(session, spawned.get(session.id) ?? 0)).sort().join('\n');
   }, [supported, sessions, events]);
-  const [teams, setTeams] = useState<ReadonlyMap<string, readonly PresenceMember[]>>(() => new Map());
+  const requests = useMemo(() => keys ? keys.split('\n').map(key => {
+    const [id, runtime] = key.split('|'); return { id: id!, runtime, key };
+  }) : [], [keys]);
+  const [cache, setCache] = useState<{ agents?: AgentHostApi; scope?: string; teams: PresenceTeams; signatures: ReadonlyMap<string, string> }>(
+    () => ({ teams: NO_TEAMS, signatures: new Map() }));
   useEffect(() => {
-    if (!agents || !keys) return;
+    if (!agents || !requests.length) return;
     let live = true;
-    const requests = keys.split('\n').map(key => { const [id, runtime] = key.split('|'); return { id: id!, runtime }; });
     const api = teamApi(agents);
-    void Promise.all(requests.map(({ id, runtime }) => api.get(id).then(team => [id, presenceTeamMembers(team, { control: 'managed', ...(runtime === 'hermes' ? { runtime: { id: 'hermes', profile: '' } } : {}) })] as const, () => [id, undefined] as const))).then(results => {
+    void Promise.all(requests.map(({ id, runtime, key }) => api.get(id).then(team => [id, key, presenceTeamMembers(team, { control: 'managed', ...(runtime === 'hermes' ? { runtime: { id: 'hermes', profile: '' } } : {}) })] as const, () => [id, key, undefined] as const))).then(results => {
       if (!live) return;
-      setTeams(current => {
+      setCache(current => {
+        const sameSource = current.agents === agents && current.scope === scope;
+        const previous = sameSource ? current.teams : NO_TEAMS;
         const next = new Map<string, readonly PresenceMember[]>();
-        for (const [id, members] of results) {
-          // A failed fetch keeps what was known before.
-          const list = members ?? current.get(id);
+        const signatures = new Map<string, string>();
+        for (const [id, key, members] of results) {
+          // Preserve display metadata after an error, but never certify a changed
+          // roster revision or a different host/profile from that old metadata.
+          const list = members ?? previous.get(id);
           if (list) next.set(id, list);
+          if (members !== undefined || (sameSource && current.signatures.get(id) === key)) signatures.set(id, key);
         }
-        return next;
+        return { agents, scope, teams: next, signatures };
       });
     });
     return () => { live = false; };
-  }, [agents, keys]);
-  return keys ? teams : NO_TEAMS;
+  }, [agents, requests, scope]);
+  return useMemo(() => {
+    const sameSource = cache.agents === agents && cache.scope === scope;
+    const wanted = new Set(requests.map(request => request.id));
+    return {
+      teams: sameSource && requests.length ? new Map([...cache.teams].filter(([id]) => wanted.has(id))) : NO_TEAMS,
+      readySessionIds: new Set(sameSource ? requests.filter(request => cache.signatures.get(request.id) === request.key).map(request => request.id) : []),
+    };
+  }, [cache, agents, requests, scope]);
+}
+
+/** Legacy display-only callers may retain the last metadata while a same-source revision refreshes. */
+export function useSessionTeams(agents: AgentHostApi | undefined, sessions: readonly SessionSummary[], events: readonly ExtaliaEvent[]): PresenceTeams {
+  return useSessionTeamSnapshot(agents, sessions, events).teams;
 }

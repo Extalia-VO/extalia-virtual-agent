@@ -20,7 +20,7 @@ async function waitFor(window: BrowserWindow, expression: string, timeoutMs = 15
   return false;
 }
 
-type Page = 'start' | 'logs' | 'diagnostics' | 'office' | 'settings';
+type Page = 'start' | 'logs' | 'diagnostics' | 'office' | 'knowledge' | 'settings';
 const SHELL = `document.querySelector('.brand') && document.querySelector('.topbar-meta')`;
 const SETUP = `document.querySelector('[data-onboarding-step]')`;
 // Navigation before buttons carried data-page: the page is identified by its position.
@@ -43,6 +43,25 @@ async function settle(window: BrowserWindow): Promise<void> {
   await delay(100);
   await window.webContents.executeJavaScript('Promise.all(document.getAnimations().filter(animation => Number.isFinite(animation.effect?.getTiming().iterations)).map(animation => animation.finished.catch(() => undefined))).then(() => true)').catch(() => false);
   await delay(100);
+}
+
+/** Record the hidden smoke window's actual buffer, separately from performance claims. */
+async function officeRenderSnapshot(window: BrowserWindow): Promise<Record<string, unknown>> {
+  await waitFor(window, "!document.querySelector('.office-loading')", 10_000);
+  await settle(window);
+  // Let initial uploads and a fresh FPS measurement finish before capturing.
+  await delay(3000);
+  return window.webContents.executeJavaScript(`(() => {
+    const canvas = document.querySelector('.office-stage canvas');
+    const rect = canvas?.getBoundingClientRect();
+    return { view: document.querySelector('.topbar-views button[aria-pressed="true"]')?.getAttribute('data-view'),
+      devicePixelRatio, cssWidth: rect?.width ?? null, cssHeight: rect?.height ?? null,
+      bufferWidth: canvas?.width ?? null, bufferHeight: canvas?.height ?? null,
+      pixelRatio: rect?.width ? canvas.width / rect.width : null,
+      frameRate: document.querySelector('.office-render-stats')?.textContent ?? null,
+      loading: Boolean(document.querySelector('.office-loading')),
+      interrupted: Boolean(document.querySelector('.office-render-recovery')) };
+  })()`);
 }
 
 type Theme = 'light' | 'dark';
@@ -143,7 +162,7 @@ export async function runSmokeTest(window: BrowserWindow, screenshotDir = proces
   }
   const officeOpened = rendered && await open(window, 'office');
   const officeRendered = officeOpened && await waitFor(window, `Boolean(document.querySelector('.office-stage canvas') || document.querySelector('.office-stage [role="alert"]'))`);
-  const officeReady = `Boolean(document.querySelector('.office-stage canvas')) && !document.querySelector('.office-loading:not(.done)') && !document.querySelector('.office-stage [role="alert"]')`;
+  const officeReady = `Boolean(document.querySelector('.office-stage canvas')) && !document.querySelector('.office-loading') && !document.querySelector('.office-stage [role="alert"]')`;
   // Software WebGL and hosted macOS runners need minutes for the first shaders and models.
   const sceneReady = officeRendered && await waitFor(window, officeReady, 120_000);
   const office = officeOpened ? await window.webContents.executeJavaScript(`({
@@ -155,6 +174,7 @@ export async function runSmokeTest(window: BrowserWindow, screenshotDir = proces
     loading: document.querySelector('.office-loading:not(.done) [role="progressbar"]')?.getAttribute('aria-valuenow') ?? null,
   })`) as Record<string, unknown> : {};
   const floorViews: boolean[] = [];
+  const officeRendering: Record<string, unknown>[] = sceneReady ? [await officeRenderSnapshot(window)] : [];
   if (screenshotDir && officeOpened) {
     await waitFor(window, officeReady, 30_000);
     const file = path.join(screenshotDir, 'office-desktop.png');
@@ -175,12 +195,39 @@ export async function runSmokeTest(window: BrowserWindow, screenshotDir = proces
       })()`) as boolean;
       await settle(window);
       floorViews.push(manualCamera && chosen && await waitFor(window, `document.querySelector('.topbar-office button[data-view="${floor}"]')?.getAttribute('aria-pressed') === 'true'`));
+      if (chosen) officeRendering.push(await officeRenderSnapshot(window));
       if (screenshotDir && chosen) {
         const file = path.join(screenshotDir, `office-f${floor}-desktop.png`);
         await writeFile(file, (await window.webContents.capturePage()).toPNG());
         screenshots.push(file);
       }
     }
+  }
+
+  // Check the actual IPC binding contract in the throwaway host, without a model request.
+  const knowledgeOpened = rendered && await open(window, 'knowledge');
+  const knowledgeReady = knowledgeOpened && await waitFor(window, "Boolean(document.querySelector('.knowledge-connection-location code'))", 30_000);
+  const knowledge = knowledgeReady ? await window.webContents.executeJavaScript(`(async () => {
+    const api = window.extaliaDesktop.agents;
+    const catalog = await api.call('listVaultProfiles', []);
+    const workspaceId = document.querySelector('.knowledge-connection-workspace')?.getAttribute('data-workspace-id');
+    const workspace = catalog.workspaces.find(item => item.id === workspaceId);
+    const profile = catalog.profiles.find(item => item.id === workspace?.profileId);
+    const shown = document.querySelector('.knowledge-connection-location code')?.textContent;
+    let staleBindingRejected = false, boundRead = false;
+    if (workspace && profile) {
+      boundRead = Boolean(await api.call('workspaceKnowledge', [workspace.id, 'knowledgeStatus', [], { profileId: profile.id, root: profile.root }]));
+      try { await api.call('workspaceKnowledge', [workspace.id, 'knowledgeStatus', [], { profileId: 'wrong-profile', root: profile.root }]); }
+      catch (error) { staleBindingRejected = /vault changed/i.test(error.message); }
+    }
+    return { rootMatches: Boolean(profile && shown === profile.root), boundRead, staleBindingRejected,
+      connectionCount: document.querySelectorAll('.knowledge-connection').length,
+      folderConfigurationCollapsed: !document.querySelector('.knowledge-connection-config')?.open,
+      globalProfileManagerHidden: !document.querySelector('.knowledge-profile-manager') };
+  })()`) as Record<string, unknown> : {};
+  if (screenshotDir && knowledgeReady) {
+    const file = path.join(screenshotDir, 'knowledge-desktop.png');
+    await writeFile(file, (await window.webContents.capturePage()).toPNG()); screenshots.push(file);
   }
 
   // Check Settings after the scene captures so navigation cannot remount the
@@ -193,7 +240,8 @@ export async function runSmokeTest(window: BrowserWindow, screenshotDir = proces
 
   const ok = rendered && report.desktopBridge === true && report.nodeExposed === false && String(report.host).startsWith('Desktop')
     && String(report.splashVideo).startsWith('canplay') && String(report.splashRange).startsWith('206 video/mp4')
-    && officeRendered && sceneReady && modelErrors.length === 0 && office.route === 'page' && office.separateFrame === false && settingsOpened && floorViews.length === 3 && floorViews.every(Boolean);
-  console.log(JSON.stringify({ ok, rendered, ...report, office, sceneReady, modelErrors, textureDiagnostics, rendererErrors, floorViews, settingsOpened, diagnostics, screenshots }, null, 2));
+    && officeRendered && sceneReady && modelErrors.length === 0 && office.route === 'page' && office.separateFrame === false && settingsOpened && floorViews.length === 3 && floorViews.every(Boolean)
+    && knowledgeReady && knowledge.rootMatches === true && knowledge.boundRead === true && knowledge.staleBindingRejected === true && knowledge.connectionCount === 1 && knowledge.folderConfigurationCollapsed === true && knowledge.globalProfileManagerHidden === true;
+  console.log(JSON.stringify({ ok, rendered, ...report, office, sceneReady, officeRendering, knowledgeReady, knowledge, modelErrors, textureDiagnostics, rendererErrors, floorViews, settingsOpened, diagnostics, screenshots }, null, 2));
   return ok ? 0 : 1;
 }

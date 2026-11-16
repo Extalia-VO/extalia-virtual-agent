@@ -1,10 +1,12 @@
+import { createAgentHost } from '../src/service.js';
 import type { ExtaliaEvent } from '@extalia/protocol';
 import { existsSync } from 'node:fs';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createAgentHost, type AgentHostRuntime } from '../src/service.js';
+import { type AgentHostRuntime } from '../src/service.js';
+import { mockModelDiscovery } from './modelDiscoveryFixture.js';
 import { WORKSPACE_COMMAND_UNAVAILABLE } from '../src/tools/command.js';
 
 /** A scripted endpoint: edit a file, attempt a blocked command/delegation, then answer. */
@@ -35,7 +37,7 @@ async function setup(attemptDelegation = false) {
   const project = path.join(root, 'project');
   await import('node:fs/promises').then(fs => fs.mkdir(project));
   const scripted = scriptedFetch(attemptDelegation);
-  const runtime = await createAgentHost({ kind: 'bridge', version: '0.0.0-test', dataDirectory: path.join(root, 'data'), homeDirectory: path.join(root, 'home'), importHome: path.join(root, 'home'), env: { EXTALIA_SECRET_STORE: 'memory', PATH: process.env.PATH, EXTALIA_HERMES_BIN: path.join(root, 'not-installed') }, fetch: scripted.fetch });
+  const runtime = await createAgentHost({ kind: 'bridge', version: '0.0.0-test', dataDirectory: path.join(root, 'data'), homeDirectory: path.join(root, 'home'), importHome: path.join(root, 'home'), env: { EXTALIA_SECRET_STORE: 'memory', PATH: process.env.PATH, EXTALIA_HERMES_BIN: path.join(root, 'not-installed') }, fetch: scripted.fetch, modelDiscovery: mockModelDiscovery(scripted.fetch) });
   cleanups.push(async () => { await runtime.close(); await rm(root, { recursive: true, force: true }); });
   const events: ExtaliaEvent[] = [];
   runtime.host.subscribe(event => events.push(event));

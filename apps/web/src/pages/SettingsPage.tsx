@@ -16,6 +16,7 @@ import './settings/settingsNav.css';
 import { ConnectionsSection } from './settings/ConnectionsSection';
 import { WorkspacesSection } from './settings/WorkspacesSection';
 import { KnowledgeVaultSection } from './settings/KnowledgeVaultSection';
+import { OperatingProfilesSection } from '../operatingProfiles/OperatingProfilesSection';
 import { Icon } from '../ui/Icon';
 
 export type { SettingsSection } from './settings/settingsSections';
@@ -39,6 +40,8 @@ type SettingsPageProps = {
   onSectionChange?: (section: SettingsSection) => void;
   onOpenObserve?: () => void;
   onOpenImport?: () => void;
+  /** Normal-flow home for the shared learning notification above editable settings. */
+  onLearningTarget?: (target: HTMLDivElement | null) => void;
 };
 
 /** A changed host/profile discards its private editor drafts before new panels render. */
@@ -53,13 +56,15 @@ export function SettingsPage(props: SettingsPageProps) {
   return <SettingsPageContent key={revision} {...props} />;
 }
 
-function SettingsPageContent({ t, platform, preferences, onChange, hostState, onHostState, updateStatus, editGateFor, onEditGateHandled, onOpenSkills, section, onSectionChange, onOpenObserve, onOpenImport }: SettingsPageProps) {
+function SettingsPageContent({ t, platform, preferences, onChange, hostState, onHostState, updateStatus, editGateFor, onEditGateHandled, onOpenSkills, section, onSectionChange, onOpenObserve, onOpenImport, onLearningTarget }: SettingsPageProps) {
   const { agents, updater } = platform.capabilities;
+  const observeOnly = hostState?.workflow === 'observe';
   const picker = hostState?.host.kind === 'desktop' ? platform.capabilities.filesystem : undefined;
-  const sections = availableSettingsSections({ agents: Boolean(agents && hostState), system: Boolean(updater || platform.capabilities.restart) });
+  const sections = availableSettingsSections({ agents: Boolean(agents && hostState), system: Boolean(updater || platform.capabilities.restart), profiles: !observeOnly && typeof agents?.listOperatingProfiles === 'function' });
   const [localSection, setLocalSection] = useState<SettingsSection>('general');
   const activeSection = resolveSettingsSection(section ?? localSection, sections, editGateFor);
   const [visited, setVisited] = useState<SettingsSection[]>([activeSection]);
+  const [profileCatalogRevision, setProfileCatalogRevision] = useState(0);
   const tabsId = useId();
   const tabs = useRef(new Map<SettingsSection, HTMLButtonElement>());
   // A programmatic destination mounts in the current render; retaining it after
@@ -88,13 +93,13 @@ function SettingsPageContent({ t, platform, preferences, onChange, hostState, on
     operation.active = true;
     return () => { operation.active = false; };
   }, []);
-  const changeWorkflow = (mode: 'managed' | 'observe') => {
+  const changeWorkflow = (mode: 'managed' | 'observe', setup = false) => {
     const operation = workflowOperation.current;
     if (!agents || !operation.active || operation.busy) return;
     operation.busy = true;
     setWorkflowBusy(true); setWorkflowError(undefined);
     void agents.setWorkflow(mode).then(
-      state => { if (operation.active) onHostState(state); },
+      state => { if (operation.active) { onHostState(state); if (setup) selectSection(state.connections.length ? 'workspaces' : 'connections'); } },
       failure => { if (operation.active) setWorkflowError(errorMessage(failure)); },
     ).finally(() => {
       operation.busy = false;
@@ -111,6 +116,7 @@ function SettingsPageContent({ t, platform, preferences, onChange, hostState, on
           {onOpenImport && <button type="button" onClick={onOpenImport}>{t.nav.import}</button>}
         </div>}
       </header>
+      <div className="settings-learning-slot" ref={onLearningTarget} />
       <div className="settings-tabs" role="tablist" aria-label={t.settings.sections.label}>
         {sections.map(item => <button key={item} type="button" role="tab" id={`${tabsId}-${item}-tab`}
           ref={element => { if (element) tabs.current.set(item, element); else tabs.current.delete(item); }}
@@ -131,7 +137,7 @@ function SettingsPageContent({ t, platform, preferences, onChange, hostState, on
                     label={t.settings.theme}
                     value={preferences.theme}
                     options={([
-                      { value: 'solar' as const, label: t.settings.themes.solar, icon: 'sunrise' as const, badge: 'Auto' },
+                      { value: 'solar' as const, label: t.settings.themes.solar, icon: 'sunrise' as const, badge: t.settings.automaticBadge },
                       { value: 'system' as const, label: t.settings.themes.system, icon: 'monitor' as const },
                       { value: 'light' as const, label: t.settings.themes.light, icon: 'sun' as const },
                       { value: 'dark' as const, label: t.settings.themes.dark, icon: 'moon' as const }
@@ -159,11 +165,11 @@ function SettingsPageContent({ t, platform, preferences, onChange, hostState, on
                     label={t.settings.font}
                     value={preferences.font}
                     options={([
-                      { value: 'sf-pro' as const, label: t.settings.fonts['sf-pro'], description: 'macOS Native SF Pro Display' },
-                      { value: 'quicksand' as const, label: t.settings.fonts.quicksand, description: 'Soft rounded geometry', badge: 'Popular' },
-                      { value: 'geist' as const, label: t.settings.fonts.geist, description: 'Vercel / Linear modern AI look' },
-                      { value: 'jakarta' as const, label: t.settings.fonts.jakarta, description: 'Plus Jakarta Sans modern' },
-                      { value: 'inter' as const, label: t.settings.fonts.inter, description: 'Classic developer neutral' }
+                      { value: 'sf-pro' as const, label: t.settings.fonts['sf-pro'], description: t.settings.fontDescriptions['sf-pro'] },
+                      { value: 'quicksand' as const, label: t.settings.fonts.quicksand, description: t.settings.fontDescriptions.quicksand },
+                      { value: 'geist' as const, label: t.settings.fonts.geist, description: t.settings.fontDescriptions.geist },
+                      { value: 'jakarta' as const, label: t.settings.fonts.jakarta, description: t.settings.fontDescriptions.jakarta },
+                      { value: 'inter' as const, label: t.settings.fonts.inter, description: t.settings.fontDescriptions.inter }
                     ])}
                     onChange={val => onChange({ ...preferences, font: val })}
                   />
@@ -194,8 +200,8 @@ function SettingsPageContent({ t, platform, preferences, onChange, hostState, on
               </div>
             </section>
             {agents && hostState && <section className="card settings-section"><h2>{t.observer.workflow}</h2><div className="actions">
-              {(['managed', 'observe'] as const).map(mode => <button key={mode} type="button" disabled={workflowBusy} aria-pressed={(hostState.workflow ?? 'managed') === mode} onClick={() => changeWorkflow(mode)}>{t.observer[mode]}</button>)}
-            </div>{workflowError && <p role="alert" className="form-error">{workflowError}</p>}</section>}
+              {(['managed', 'observe'] as const).map(mode => <button key={mode} type="button" disabled={workflowBusy} aria-pressed={(hostState.workflow ?? 'managed') === mode} onClick={() => changeWorkflow(mode, observeOnly && mode === 'managed')}>{observeOnly && mode === 'managed' ? t.observer.setupFull : t.observer[mode]}</button>)}
+            </div>{observeOnly && <p className="muted small">{t.observer.setupFullHint}</p>}{workflowError && <p role="alert" className="form-error">{workflowError}</p>}</section>}
             {agents && hostState && (
               <section className="card settings-section" aria-labelledby="settings-approvals">
                 <h2 id="settings-approvals">{t.approvalInbox.settings.title}</h2>
@@ -204,15 +210,17 @@ function SettingsPageContent({ t, platform, preferences, onChange, hostState, on
             )}
           </>}
           {item === 'connections' && agents && hostState && <ConnectionsSection t={t} agents={agents} state={hostState} onState={onHostState} />}
+          {item === 'profiles' && agents && hostState && <OperatingProfilesSection t={t} agents={agents} state={hostState} onState={onHostState} onCatalogChanged={() => setProfileCatalogRevision(value => value + 1)} />}
           {item === 'workspaces' && agents && hostState && <>
             <WorkspacesSection t={t} agents={agents} picker={picker} state={hostState} onState={onHostState} editGateFor={editGateFor} onEditGateHandled={onEditGateHandled}
-              {...(onOpenSkills ? { onReviewSkills: (workspaceId: string) => onOpenSkills(workspaceId) } : {})} />
-            {onOpenSkills && <SkillsMovedPointer t={t} onOpen={() => onOpenSkills()} />}
+              profileCatalogRevision={profileCatalogRevision}
+              {...(!observeOnly && onOpenSkills ? { onReviewSkills: (workspaceId: string) => onOpenSkills(workspaceId) } : {})} />
+            {!observeOnly && onOpenSkills && <SkillsMovedPointer t={t} onOpen={() => onOpenSkills()} />}
           </>}
           {item === 'agent-apps' && agents && hostState && <>
             <ConnectAgentAppsCard t={t} agents={agents} />
             <AutoWatchLocations t={t} agents={agents} onState={onHostState} />
-            <IgnoredFolders t={t} agents={agents} onState={onHostState} />
+            <IgnoredFolders t={t} agents={agents} picker={picker} onState={onHostState} />
           </>}
           {item === 'storage' && <>
             {agents && hostState && (

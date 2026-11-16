@@ -1,0 +1,2173 @@
+{
+  "schemaVersion": 1,
+  "meshoptimizer": "1.1.1",
+  "review": "static-two-angle-visual-and-loader-reviewed; interactive FPS not measured",
+  "files": [
+    {
+      "changed": true,
+      "sourceBytes": 4704920,
+      "outputBytes": 1885152,
+      "beforeTriangles": 159184,
+      "afterTriangles": 59908,
+      "sourceSHA256": "4425dfbd70c151727368a6e21bb2b8b6bbe95f8be259b2d30c3a61580ae7d302",
+      "outputSHA256": "ba4229286286dedb329314413b4c62236bd2f082b660118543a241f17c418f12",
+      "retainedVertexBytesExact": false,
+      "imagePayloadsExact": true,
+      "primitives": [
+        {
+          "mesh": 5,
+          "primitive": 0,
+          "material": "Graphite alloy",
+          "beforeTriangles": 216,
+          "afterTriangles": 84,
+          "relativeError": 0.008220233954489231,
+          "smallAccent": false
+        },
+        {
+          "mesh": 6,
+          "primitive": 0,
+          "material": "Honey oak",
+          "beforeTriangles": 432,
+          "afterTriangles": 232,
+          "relativeError": 0.0094338059425354,
+          "smallAccent": false
+        },
+        {
+          "mesh": 7,
+          "primitive": 0,
+          "material": "Muted teal",
+          "beforeTriangles": 1056,
+          "afterTriangles": 436,
+          "relativeError": 0.00979163683950901,
+          "smallAccent": false
+        },
+        {
+          "mesh": 8,
+          "primitive": 0,
+          "material": "Ochre details",
+          "beforeTriangles": 3300,
+          "afterTriangles": 750,
+          "relativeError": 0.009609379805624485,
+          "smallAccent": false
+        },
+        {
+          "mesh": 9,
+          "primitive": 0,
+          "material": "Oiled walnut",
+          "beforeTriangles": 324,
+          "afterTriangles": 168,
+          "relativeError": 0.009575827047228813,
+          "smallAccent": false
+        },
+        {
+          "mesh": 10,
+          "primitive": 0,
+          "material": "Slate blue bookcloth",
+          "beforeTriangles": 924,
+          "afterTriangles": 400,
+          "relativeError": 0.009668078273534775,
+          "smallAccent": false
+        },
+        {
+          "mesh": 11,
+          "primitive": 0,
+          "material": "Soft woven linen",
+          "beforeTriangles": 324,
+          "afterTriangles": 180,
+          "relativeError": 0.005981277674436569,
+          "smallAccent": false
+        },
+        {
+          "mesh": 12,
+          "primitive": 0,
+          "material": "Terracotta ceramic",
+          "beforeTriangles": 660,
+          "afterTriangles": 284,
+          "relativeError": 0.009573628194630146,
+          "smallAccent": false
+        },
+        {
+          "mesh": 13,
+          "primitive": 0,
+          "material": "Warm ivory powdercoat",
+          "beforeTriangles": 660,
+          "afterTriangles": 278,
+          "relativeError": 0.009993632324039936,
+          "smallAccent": false
+        },
+        {
+          "mesh": 14,
+          "primitive": 0,
+          "material": "Warm paper edges",
+          "beforeTriangles": 3240,
+          "afterTriangles": 1578,
+          "relativeError": 0.009857227094471455,
+          "smallAccent": false
+        },
+        {
+          "mesh": 15,
+          "primitive": 0,
+          "material": "Graphite alloy",
+          "beforeTriangles": 216,
+          "afterTriangles": 84,
+          "relativeError": 0.008220233954489231,
+          "smallAccent": false
+        },
+        {
+          "mesh": 16,
+          "primitive": 0,
+          "material": "Honey oak",
+          "beforeTriangles": 432,
+          "afterTriangles": 240,
+          "relativeError": 0.008125661872327328,
+          "smallAccent": false
+        },
+        {
+          "mesh": 17,
+          "primitive": 0,
+          "material": "Muted teal",
+          "beforeTriangles": 1408,
+          "afterTriangles": 578,
+          "relativeError": 0.009974725544452667,
+          "smallAccent": false
+        },
+        {
+          "mesh": 18,
+          "primitive": 0,
+          "material": "Ochre details",
+          "beforeTriangles": 6160,
+          "afterTriangles": 1320,
+          "relativeError": 0.009974110871553421,
+          "smallAccent": false
+        },
+        {
+          "mesh": 19,
+          "primitive": 0,
+          "material": "Oiled walnut",
+          "beforeTriangles": 216,
+          "afterTriangles": 108,
+          "relativeError": 0.009575827047228813,
+          "smallAccent": false
+        },
+        {
+          "mesh": 20,
+          "primitive": 0,
+          "material": "Slate blue bookcloth",
+          "beforeTriangles": 1232,
+          "afterTriangles": 528,
+          "relativeError": 0.00907029490917921,
+          "smallAccent": false
+        },
+        {
+          "mesh": 21,
+          "primitive": 0,
+          "material": "Soft woven linen",
+          "beforeTriangles": 324,
+          "afterTriangles": 180,
+          "relativeError": 0.005981277674436569,
+          "smallAccent": false
+        },
+        {
+          "mesh": 22,
+          "primitive": 0,
+          "material": "Terracotta ceramic",
+          "beforeTriangles": 880,
+          "afterTriangles": 372,
+          "relativeError": 0.009539435617625713,
+          "smallAccent": false
+        },
+        {
+          "mesh": 23,
+          "primitive": 0,
+          "material": "Warm ivory powdercoat",
+          "beforeTriangles": 880,
+          "afterTriangles": 372,
+          "relativeError": 0.009958367794752121,
+          "smallAccent": false
+        },
+        {
+          "mesh": 24,
+          "primitive": 0,
+          "material": "Warm paper edges",
+          "beforeTriangles": 3240,
+          "afterTriangles": 1578,
+          "relativeError": 0.009857227094471455,
+          "smallAccent": false
+        },
+        {
+          "mesh": 25,
+          "primitive": 0,
+          "material": "Honey oak",
+          "beforeTriangles": 432,
+          "afterTriangles": 200,
+          "relativeError": 0.009459372609853745,
+          "smallAccent": false
+        },
+        {
+          "mesh": 27,
+          "primitive": 0,
+          "material": "Muted teal",
+          "beforeTriangles": 1908,
+          "afterTriangles": 280,
+          "relativeError": 0.009833189658820629,
+          "smallAccent": false
+        },
+        {
+          "mesh": 28,
+          "primitive": 0,
+          "material": "Oiled walnut",
+          "beforeTriangles": 1008,
+          "afterTriangles": 302,
+          "relativeError": 0.00944475270807743,
+          "smallAccent": false
+        },
+        {
+          "mesh": 29,
+          "primitive": 0,
+          "material": "Satin brass",
+          "beforeTriangles": 452,
+          "afterTriangles": 72,
+          "relativeError": 0.006252861116081476,
+          "smallAccent": false
+        },
+        {
+          "mesh": 30,
+          "primitive": 0,
+          "material": "Soft woven linen",
+          "beforeTriangles": 648,
+          "afterTriangles": 336,
+          "relativeError": 0.008730417117476463,
+          "smallAccent": false
+        },
+        {
+          "mesh": 31,
+          "primitive": 0,
+          "material": "Warm ivory powdercoat",
+          "beforeTriangles": 1008,
+          "afterTriangles": 114,
+          "relativeError": 0.00983716081827879,
+          "smallAccent": false
+        },
+        {
+          "mesh": 32,
+          "primitive": 0,
+          "material": "Warm paper edges",
+          "beforeTriangles": 308,
+          "afterTriangles": 70,
+          "relativeError": 0.006424320861697197,
+          "smallAccent": false
+        },
+        {
+          "mesh": 36,
+          "primitive": 0,
+          "material": "Oiled walnut",
+          "beforeTriangles": 232,
+          "afterTriangles": 104,
+          "relativeError": 0.009774799458682537,
+          "smallAccent": false
+        },
+        {
+          "mesh": 37,
+          "primitive": 0,
+          "material": "Soft black rubber",
+          "beforeTriangles": 624,
+          "afterTriangles": 102,
+          "relativeError": 0.009956935420632362,
+          "smallAccent": false
+        },
+        {
+          "mesh": 39,
+          "primitive": 0,
+          "material": "Warm ivory powdercoat",
+          "beforeTriangles": 536,
+          "afterTriangles": 504,
+          "relativeError": 0.008585119619965553,
+          "smallAccent": false
+        },
+        {
+          "mesh": 44,
+          "primitive": 0,
+          "material": "Oiled walnut",
+          "beforeTriangles": 264,
+          "afterTriangles": 76,
+          "relativeError": 0.00876076240092516,
+          "smallAccent": false
+        },
+        {
+          "mesh": 47,
+          "primitive": 0,
+          "material": "Terracotta ceramic",
+          "beforeTriangles": 792,
+          "afterTriangles": 450,
+          "relativeError": 0.009965660981833935,
+          "smallAccent": false
+        },
+        {
+          "mesh": 48,
+          "primitive": 0,
+          "material": "Warm ivory powdercoat",
+          "beforeTriangles": 216,
+          "afterTriangles": 120,
+          "relativeError": 0.005714678671211004,
+          "smallAccent": false
+        },
+        {
+          "mesh": 49,
+          "primitive": 0,
+          "material": "Graphite alloy",
+          "beforeTriangles": 324,
+          "afterTriangles": 180,
+          "relativeError": 0.009673397988080978,
+          "smallAccent": false
+        },
+        {
+          "mesh": 50,
+          "primitive": 0,
+          "material": "Graphite polymer",
+          "beforeTriangles": 788,
+          "afterTriangles": 296,
+          "relativeError": 0.008927765302360058,
+          "smallAccent": false
+        },
+        {
+          "mesh": 51,
+          "primitive": 0,
+          "material": "Muted teal",
+          "beforeTriangles": 416,
+          "afterTriangles": 64,
+          "relativeError": 0.009679018519818783,
+          "smallAccent": false
+        },
+        {
+          "mesh": 52,
+          "primitive": 0,
+          "material": "Porcelain keycaps",
+          "beforeTriangles": 240,
+          "afterTriangles": 152,
+          "relativeError": 0.00906998198479414,
+          "smallAccent": false
+        },
+        {
+          "mesh": 54,
+          "primitive": 0,
+          "material": "Soft black rubber",
+          "beforeTriangles": 944,
+          "afterTriangles": 338,
+          "relativeError": 0.00991514977067709,
+          "smallAccent": false
+        },
+        {
+          "mesh": 55,
+          "primitive": 0,
+          "material": "Warm ivory powdercoat",
+          "beforeTriangles": 216,
+          "afterTriangles": 136,
+          "relativeError": 0.009815764613449574,
+          "smallAccent": false
+        },
+        {
+          "mesh": 56,
+          "primitive": 0,
+          "material": "Warm paper edges",
+          "beforeTriangles": 220,
+          "afterTriangles": 108,
+          "relativeError": 0.009886028245091438,
+          "smallAccent": false
+        },
+        {
+          "mesh": 68,
+          "primitive": 0,
+          "material": "Graphite alloy",
+          "beforeTriangles": 512,
+          "afterTriangles": 384,
+          "relativeError": 0.00974020455032587,
+          "smallAccent": false
+        },
+        {
+          "mesh": 70,
+          "primitive": 0,
+          "material": "Muted teal",
+          "beforeTriangles": 236,
+          "afterTriangles": 196,
+          "relativeError": 0.007767893839627504,
+          "smallAccent": false
+        },
+        {
+          "mesh": 74,
+          "primitive": 0,
+          "material": "Honey oak",
+          "beforeTriangles": 2660,
+          "afterTriangles": 528,
+          "relativeError": 0.009583028964698315,
+          "smallAccent": false
+        },
+        {
+          "mesh": 76,
+          "primitive": 0,
+          "material": "Muted teal",
+          "beforeTriangles": 536,
+          "afterTriangles": 504,
+          "relativeError": 0.00861390121281147,
+          "smallAccent": false
+        },
+        {
+          "mesh": 78,
+          "primitive": 0,
+          "material": "Oiled walnut",
+          "beforeTriangles": 680,
+          "afterTriangles": 178,
+          "relativeError": 0.009844807907938957,
+          "smallAccent": false
+        },
+        {
+          "mesh": 81,
+          "primitive": 0,
+          "material": "Warm ivory powdercoat",
+          "beforeTriangles": 928,
+          "afterTriangles": 108,
+          "relativeError": 0.009490931406617165,
+          "smallAccent": false
+        },
+        {
+          "mesh": 83,
+          "primitive": 0,
+          "material": "Botanical dark green",
+          "beforeTriangles": 1032,
+          "afterTriangles": 156,
+          "relativeError": 0.009799813851714134,
+          "smallAccent": false
+        },
+        {
+          "mesh": 84,
+          "primitive": 0,
+          "material": "Graphite alloy",
+          "beforeTriangles": 584,
+          "afterTriangles": 136,
+          "relativeError": 0.00936871487647295,
+          "smallAccent": false
+        },
+        {
+          "mesh": 85,
+          "primitive": 0,
+          "material": "Graphite polymer",
+          "beforeTriangles": 516,
+          "afterTriangles": 106,
+          "relativeError": 0.00980030745267868,
+          "smallAccent": false
+        },
+        {
+          "mesh": 86,
+          "primitive": 0,
+          "material": "Honey oak",
+          "beforeTriangles": 2216,
+          "afterTriangles": 634,
+          "relativeError": 0.009772097691893578,
+          "smallAccent": false
+        },
+        {
+          "mesh": 88,
+          "primitive": 0,
+          "material": "Muted teal",
+          "beforeTriangles": 3524,
+          "afterTriangles": 350,
+          "relativeError": 0.00918569602072239,
+          "smallAccent": false
+        },
+        {
+          "mesh": 89,
+          "primitive": 0,
+          "material": "Ochre details",
+          "beforeTriangles": 840,
+          "afterTriangles": 174,
+          "relativeError": 0.007009497843682766,
+          "smallAccent": false
+        },
+        {
+          "mesh": 90,
+          "primitive": 0,
+          "material": "Oiled walnut",
+          "beforeTriangles": 1996,
+          "afterTriangles": 396,
+          "relativeError": 0.00992730725556612,
+          "smallAccent": false
+        },
+        {
+          "mesh": 91,
+          "primitive": 0,
+          "material": "Porcelain keycaps",
+          "beforeTriangles": 568,
+          "afterTriangles": 254,
+          "relativeError": 0.009529360570013523,
+          "smallAccent": false
+        },
+        {
+          "mesh": 92,
+          "primitive": 0,
+          "material": "Satin brass",
+          "beforeTriangles": 2616,
+          "afterTriangles": 264,
+          "relativeError": 0.009711859747767448,
+          "smallAccent": false
+        },
+        {
+          "mesh": 93,
+          "primitive": 0,
+          "material": "Slate blue bookcloth",
+          "beforeTriangles": 1032,
+          "afterTriangles": 102,
+          "relativeError": 0.008597281761467457,
+          "smallAccent": false
+        },
+        {
+          "mesh": 94,
+          "primitive": 0,
+          "material": "Soft woven linen",
+          "beforeTriangles": 696,
+          "afterTriangles": 122,
+          "relativeError": 0.009956725873053074,
+          "smallAccent": false
+        },
+        {
+          "mesh": 95,
+          "primitive": 0,
+          "material": "Terracotta ceramic",
+          "beforeTriangles": 840,
+          "afterTriangles": 172,
+          "relativeError": 0.008606713265180588,
+          "smallAccent": false
+        },
+        {
+          "mesh": 96,
+          "primitive": 0,
+          "material": "Warm ivory powdercoat",
+          "beforeTriangles": 2944,
+          "afterTriangles": 812,
+          "relativeError": 0.00944520439952612,
+          "smallAccent": false
+        },
+        {
+          "mesh": 97,
+          "primitive": 0,
+          "material": "Warm paper edges",
+          "beforeTriangles": 660,
+          "afterTriangles": 126,
+          "relativeError": 0.00999428704380989,
+          "smallAccent": false
+        },
+        {
+          "mesh": 98,
+          "primitive": 0,
+          "material": "Graphite alloy",
+          "beforeTriangles": 216,
+          "afterTriangles": 172,
+          "relativeError": 0.009840285405516624,
+          "smallAccent": false
+        },
+        {
+          "mesh": 99,
+          "primitive": 0,
+          "material": "Graphite polymer",
+          "beforeTriangles": 440,
+          "afterTriangles": 232,
+          "relativeError": 0.006869615521281958,
+          "smallAccent": false
+        },
+        {
+          "mesh": 101,
+          "primitive": 0,
+          "material": "Oiled walnut",
+          "beforeTriangles": 284,
+          "afterTriangles": 170,
+          "relativeError": 0.00970696285367012,
+          "smallAccent": false
+        },
+        {
+          "mesh": 103,
+          "primitive": 0,
+          "material": "Satin brass",
+          "beforeTriangles": 292,
+          "afterTriangles": 132,
+          "relativeError": 0.009928201325237751,
+          "smallAccent": false
+        },
+        {
+          "mesh": 104,
+          "primitive": 0,
+          "material": "Warm ivory powdercoat",
+          "beforeTriangles": 1180,
+          "afterTriangles": 414,
+          "relativeError": 0.009523486718535423,
+          "smallAccent": false
+        },
+        {
+          "mesh": 105,
+          "primitive": 0,
+          "material": "Graphite alloy",
+          "beforeTriangles": 432,
+          "afterTriangles": 168,
+          "relativeError": 0.009817956015467644,
+          "smallAccent": false
+        },
+        {
+          "mesh": 107,
+          "primitive": 0,
+          "material": "Porcelain keycaps",
+          "beforeTriangles": 2088,
+          "afterTriangles": 208,
+          "relativeError": 0.00823967345058918,
+          "smallAccent": false
+        },
+        {
+          "mesh": 108,
+          "primitive": 0,
+          "material": "Graphite alloy",
+          "beforeTriangles": 688,
+          "afterTriangles": 436,
+          "relativeError": 0.009996402077376842,
+          "smallAccent": false
+        },
+        {
+          "mesh": 109,
+          "primitive": 0,
+          "material": "Graphite polymer",
+          "beforeTriangles": 236,
+          "afterTriangles": 176,
+          "relativeError": 0.00937424786388874,
+          "smallAccent": false
+        },
+        {
+          "mesh": 110,
+          "primitive": 0,
+          "material": "Satin brass",
+          "beforeTriangles": 512,
+          "afterTriangles": 322,
+          "relativeError": 0.00976630486547947,
+          "smallAccent": false
+        },
+        {
+          "mesh": 111,
+          "primitive": 0,
+          "material": "Soft black rubber",
+          "beforeTriangles": 252,
+          "afterTriangles": 188,
+          "relativeError": 0.007860471494495869,
+          "smallAccent": false
+        },
+        {
+          "mesh": 113,
+          "primitive": 0,
+          "material": "Muted teal upholstery",
+          "beforeTriangles": 488,
+          "afterTriangles": 408,
+          "relativeError": 0.00795102957636118,
+          "smallAccent": false
+        },
+        {
+          "mesh": 114,
+          "primitive": 0,
+          "material": "Oiled walnut",
+          "beforeTriangles": 380,
+          "afterTriangles": 316,
+          "relativeError": 0.004719702992588282,
+          "smallAccent": false
+        },
+        {
+          "mesh": 115,
+          "primitive": 0,
+          "material": "Soft woven linen",
+          "beforeTriangles": 512,
+          "afterTriangles": 190,
+          "relativeError": 0.008393412455916405,
+          "smallAccent": false
+        },
+        {
+          "mesh": 116,
+          "primitive": 0,
+          "material": "Graphite alloy",
+          "beforeTriangles": 1080,
+          "afterTriangles": 566,
+          "relativeError": 0.009095477871596813,
+          "smallAccent": false
+        },
+        {
+          "mesh": 117,
+          "primitive": 0,
+          "material": "Graphite polymer",
+          "beforeTriangles": 1080,
+          "afterTriangles": 362,
+          "relativeError": 0.009557411074638367,
+          "smallAccent": false
+        },
+        {
+          "mesh": 118,
+          "primitive": 0,
+          "material": "Muted teal",
+          "beforeTriangles": 504,
+          "afterTriangles": 86,
+          "relativeError": 0.00676256837323308,
+          "smallAccent": false
+        },
+        {
+          "mesh": 119,
+          "primitive": 0,
+          "material": "Ochre details",
+          "beforeTriangles": 504,
+          "afterTriangles": 86,
+          "relativeError": 0.0067703574895858765,
+          "smallAccent": false
+        },
+        {
+          "mesh": 120,
+          "primitive": 0,
+          "material": "Oiled walnut",
+          "beforeTriangles": 616,
+          "afterTriangles": 224,
+          "relativeError": 0.00831848755478859,
+          "smallAccent": false
+        },
+        {
+          "mesh": 121,
+          "primitive": 0,
+          "material": "Porcelain keycaps",
+          "beforeTriangles": 1456,
+          "afterTriangles": 272,
+          "relativeError": 0.00940051581710577,
+          "smallAccent": false
+        },
+        {
+          "mesh": 123,
+          "primitive": 0,
+          "material": "Server LED cyan",
+          "beforeTriangles": 308,
+          "afterTriangles": 40,
+          "relativeError": 0.009669768624007702,
+          "smallAccent": false
+        },
+        {
+          "mesh": 124,
+          "primitive": 0,
+          "material": "Server LED green",
+          "beforeTriangles": 308,
+          "afterTriangles": 56,
+          "relativeError": 0.007096805144101381,
+          "smallAccent": false
+        },
+        {
+          "mesh": 125,
+          "primitive": 0,
+          "material": "Soft black rubber",
+          "beforeTriangles": 11312,
+          "afterTriangles": 2070,
+          "relativeError": 0.008747968822717667,
+          "smallAccent": false
+        },
+        {
+          "mesh": 126,
+          "primitive": 0,
+          "material": "Terracotta ceramic",
+          "beforeTriangles": 504,
+          "afterTriangles": 86,
+          "relativeError": 0.006764381658285856,
+          "smallAccent": false
+        },
+        {
+          "mesh": 127,
+          "primitive": 0,
+          "material": "Graphite alloy",
+          "beforeTriangles": 540,
+          "afterTriangles": 100,
+          "relativeError": 0.00902225449681282,
+          "smallAccent": false
+        },
+        {
+          "mesh": 128,
+          "primitive": 0,
+          "material": "Graphite polymer",
+          "beforeTriangles": 264,
+          "afterTriangles": 94,
+          "relativeError": 0.009092110209167004,
+          "smallAccent": false
+        },
+        {
+          "mesh": 129,
+          "primitive": 0,
+          "material": "Honey oak",
+          "beforeTriangles": 216,
+          "afterTriangles": 62,
+          "relativeError": 0.009119680151343346,
+          "smallAccent": false
+        },
+        {
+          "mesh": 134,
+          "primitive": 0,
+          "material": "Soft woven linen",
+          "beforeTriangles": 1056,
+          "afterTriangles": 194,
+          "relativeError": 0.008800237439572811,
+          "smallAccent": false
+        },
+        {
+          "mesh": 135,
+          "primitive": 0,
+          "material": "Warm ivory powdercoat",
+          "beforeTriangles": 216,
+          "afterTriangles": 56,
+          "relativeError": 0.00955123733729124,
+          "smallAccent": false
+        },
+        {
+          "mesh": 137,
+          "primitive": 0,
+          "material": "Graphite polymer",
+          "beforeTriangles": 540,
+          "afterTriangles": 196,
+          "relativeError": 0.009217571467161179,
+          "smallAccent": false
+        },
+        {
+          "mesh": 139,
+          "primitive": 0,
+          "material": "Soft black rubber",
+          "beforeTriangles": 880,
+          "afterTriangles": 240,
+          "relativeError": 0.0086992671713233,
+          "smallAccent": false
+        },
+        {
+          "mesh": 140,
+          "primitive": 0,
+          "material": "Graphite alloy",
+          "beforeTriangles": 540,
+          "afterTriangles": 268,
+          "relativeError": 0.006079348269850016,
+          "smallAccent": false
+        },
+        {
+          "mesh": 144,
+          "primitive": 0,
+          "material": "Warm ivory powdercoat",
+          "beforeTriangles": 216,
+          "afterTriangles": 168,
+          "relativeError": 0.009177236817777157,
+          "smallAccent": false
+        },
+        {
+          "mesh": 145,
+          "primitive": 0,
+          "material": "Graphite polymer",
+          "beforeTriangles": 468,
+          "afterTriangles": 320,
+          "relativeError": 0.00942201167345047,
+          "smallAccent": false
+        },
+        {
+          "mesh": 150,
+          "primitive": 0,
+          "material": "Soft black rubber",
+          "beforeTriangles": 248,
+          "afterTriangles": 184,
+          "relativeError": 0.006477808579802513,
+          "smallAccent": false
+        },
+        {
+          "mesh": 152,
+          "primitive": 0,
+          "material": "Warm ivory powdercoat",
+          "beforeTriangles": 976,
+          "afterTriangles": 654,
+          "relativeError": 0.009980267845094204,
+          "smallAccent": false
+        },
+        {
+          "mesh": 154,
+          "primitive": 0,
+          "material": "Graphite polymer",
+          "beforeTriangles": 864,
+          "afterTriangles": 334,
+          "relativeError": 0.009593049995601177,
+          "smallAccent": false
+        },
+        {
+          "mesh": 155,
+          "primitive": 0,
+          "material": "Muted teal",
+          "beforeTriangles": 656,
+          "afterTriangles": 186,
+          "relativeError": 0.00921333022415638,
+          "smallAccent": false
+        },
+        {
+          "mesh": 156,
+          "primitive": 0,
+          "material": "Oiled walnut",
+          "beforeTriangles": 456,
+          "afterTriangles": 168,
+          "relativeError": 0.009258471429347992,
+          "smallAccent": false
+        },
+        {
+          "mesh": 158,
+          "primitive": 0,
+          "material": "Satin brass",
+          "beforeTriangles": 308,
+          "afterTriangles": 54,
+          "relativeError": 0.009586101397871971,
+          "smallAccent": false
+        },
+        {
+          "mesh": 160,
+          "primitive": 0,
+          "material": "Soft black rubber",
+          "beforeTriangles": 248,
+          "afterTriangles": 104,
+          "relativeError": 0.008431650698184967,
+          "smallAccent": false
+        },
+        {
+          "mesh": 161,
+          "primitive": 0,
+          "material": "Terracotta ceramic",
+          "beforeTriangles": 372,
+          "afterTriangles": 276,
+          "relativeError": 0.008141842670738697,
+          "smallAccent": false
+        },
+        {
+          "mesh": 163,
+          "primitive": 0,
+          "material": "Graphite alloy",
+          "beforeTriangles": 432,
+          "afterTriangles": 176,
+          "relativeError": 0.008344246074557304,
+          "smallAccent": false
+        },
+        {
+          "mesh": 164,
+          "primitive": 0,
+          "material": "Graphite polymer",
+          "beforeTriangles": 1188,
+          "afterTriangles": 198,
+          "relativeError": 0.0098031647503376,
+          "smallAccent": false
+        },
+        {
+          "mesh": 165,
+          "primitive": 0,
+          "material": "Honey oak",
+          "beforeTriangles": 432,
+          "afterTriangles": 216,
+          "relativeError": 0.00955322664231062,
+          "smallAccent": false
+        },
+        {
+          "mesh": 166,
+          "primitive": 0,
+          "material": "Muted teal",
+          "beforeTriangles": 3424,
+          "afterTriangles": 584,
+          "relativeError": 0.009883713908493519,
+          "smallAccent": false
+        },
+        {
+          "mesh": 168,
+          "primitive": 0,
+          "material": "Porcelain keycaps",
+          "beforeTriangles": 220,
+          "afterTriangles": 88,
+          "relativeError": 0.00857261661440134,
+          "smallAccent": false
+        },
+        {
+          "mesh": 169,
+          "primitive": 0,
+          "material": "Soft black rubber",
+          "beforeTriangles": 868,
+          "afterTriangles": 194,
+          "relativeError": 0.00970124825835228,
+          "smallAccent": false
+        },
+        {
+          "mesh": 170,
+          "primitive": 0,
+          "material": "Terracotta ceramic",
+          "beforeTriangles": 3040,
+          "afterTriangles": 406,
+          "relativeError": 0.009978796355426311,
+          "smallAccent": false
+        },
+        {
+          "mesh": 171,
+          "primitive": 0,
+          "material": "Warm paper edges",
+          "beforeTriangles": 548,
+          "afterTriangles": 154,
+          "relativeError": 0.009994595311582088,
+          "smallAccent": false
+        },
+        {
+          "mesh": 172,
+          "primitive": 0,
+          "material": "Graphite alloy",
+          "beforeTriangles": 216,
+          "afterTriangles": 112,
+          "relativeError": 0.009856663644313812,
+          "smallAccent": false
+        },
+        {
+          "mesh": 173,
+          "primitive": 0,
+          "material": "Graphite polymer",
+          "beforeTriangles": 788,
+          "afterTriangles": 188,
+          "relativeError": 0.009689845144748688,
+          "smallAccent": false
+        },
+        {
+          "mesh": 175,
+          "primitive": 0,
+          "material": "Soft black rubber",
+          "beforeTriangles": 1672,
+          "afterTriangles": 420,
+          "relativeError": 0.009483003988862038,
+          "smallAccent": false
+        },
+        {
+          "mesh": 179,
+          "primitive": 0,
+          "material": "Graphite alloy",
+          "beforeTriangles": 428,
+          "afterTriangles": 222,
+          "relativeError": 0.0097348066046834,
+          "smallAccent": false
+        },
+        {
+          "mesh": 180,
+          "primitive": 0,
+          "material": "Graphite polymer",
+          "beforeTriangles": 260,
+          "afterTriangles": 128,
+          "relativeError": 0.009885894134640694,
+          "smallAccent": false
+        },
+        {
+          "mesh": 184,
+          "primitive": 0,
+          "material": "Soft black rubber",
+          "beforeTriangles": 552,
+          "afterTriangles": 152,
+          "relativeError": 0.00961037166416645,
+          "smallAccent": false
+        },
+        {
+          "mesh": 188,
+          "primitive": 0,
+          "material": "Graphite alloy",
+          "beforeTriangles": 12832,
+          "afterTriangles": 996,
+          "relativeError": 0.0016418531304225326,
+          "smallAccent": false
+        },
+        {
+          "mesh": 189,
+          "primitive": 0,
+          "material": "Graphite polymer",
+          "beforeTriangles": 992,
+          "afterTriangles": 632,
+          "relativeError": 0.009343511424958706,
+          "smallAccent": false
+        },
+        {
+          "mesh": 190,
+          "primitive": 0,
+          "material": "Porcelain keycaps",
+          "beforeTriangles": 440,
+          "afterTriangles": 120,
+          "relativeError": 0.006960899103432894,
+          "smallAccent": false
+        },
+        {
+          "mesh": 191,
+          "primitive": 0,
+          "material": "Soft black rubber",
+          "beforeTriangles": 216,
+          "afterTriangles": 80,
+          "relativeError": 0.007945500314235687,
+          "smallAccent": false
+        },
+        {
+          "mesh": 192,
+          "primitive": 0,
+          "material": "Graphite alloy",
+          "beforeTriangles": 412,
+          "afterTriangles": 240,
+          "relativeError": 0.00960304494947195,
+          "smallAccent": false
+        },
+        {
+          "mesh": 193,
+          "primitive": 0,
+          "material": "Muted teal",
+          "beforeTriangles": 216,
+          "afterTriangles": 184,
+          "relativeError": 0.007927611470222473,
+          "smallAccent": false
+        },
+        {
+          "mesh": 194,
+          "primitive": 0,
+          "material": "Soft black rubber",
+          "beforeTriangles": 432,
+          "afterTriangles": 160,
+          "relativeError": 0.00971302855759859,
+          "smallAccent": false
+        },
+        {
+          "mesh": 196,
+          "primitive": 0,
+          "material": "Graphite alloy",
+          "beforeTriangles": 368,
+          "afterTriangles": 222,
+          "relativeError": 0.009533184580504894,
+          "smallAccent": false
+        },
+        {
+          "mesh": 198,
+          "primitive": 0,
+          "material": "Soft black rubber",
+          "beforeTriangles": 432,
+          "afterTriangles": 160,
+          "relativeError": 0.00971302855759859,
+          "smallAccent": false
+        },
+        {
+          "mesh": 200,
+          "primitive": 0,
+          "material": "Graphite alloy",
+          "beforeTriangles": 324,
+          "afterTriangles": 140,
+          "relativeError": 0.009940492920577526,
+          "smallAccent": false
+        },
+        {
+          "mesh": 205,
+          "primitive": 0,
+          "material": "Soft black rubber",
+          "beforeTriangles": 252,
+          "afterTriangles": 108,
+          "relativeError": 0.00876859575510025,
+          "smallAccent": false
+        },
+        {
+          "mesh": 207,
+          "primitive": 0,
+          "material": "Graphite alloy",
+          "beforeTriangles": 756,
+          "afterTriangles": 476,
+          "relativeError": 0.008503615856170654,
+          "smallAccent": false
+        },
+        {
+          "mesh": 209,
+          "primitive": 0,
+          "material": "Warm paper edges",
+          "beforeTriangles": 308,
+          "afterTriangles": 126,
+          "relativeError": 0.00908318068832159,
+          "smallAccent": false
+        },
+        {
+          "mesh": 211,
+          "primitive": 0,
+          "material": "Soft black rubber",
+          "beforeTriangles": 216,
+          "afterTriangles": 136,
+          "relativeError": 0.00920610036700964,
+          "smallAccent": false
+        },
+        {
+          "mesh": 212,
+          "primitive": 0,
+          "material": "Graphite alloy",
+          "beforeTriangles": 1240,
+          "afterTriangles": 160,
+          "relativeError": 0.009110234677791595,
+          "smallAccent": false
+        },
+        {
+          "mesh": 217,
+          "primitive": 0,
+          "material": "Soft woven linen",
+          "beforeTriangles": 220,
+          "afterTriangles": 60,
+          "relativeError": 0.009907824918627739,
+          "smallAccent": false
+        },
+        {
+          "mesh": 220,
+          "primitive": 0,
+          "material": "Muted teal",
+          "beforeTriangles": 636,
+          "afterTriangles": 192,
+          "relativeError": 0.007476140279322863,
+          "smallAccent": false
+        },
+        {
+          "mesh": 222,
+          "primitive": 0,
+          "material": "Warm ivory powdercoat",
+          "beforeTriangles": 1296,
+          "afterTriangles": 528,
+          "relativeError": 0.009451479651033878,
+          "smallAccent": false
+        },
+        {
+          "mesh": 230,
+          "primitive": 0,
+          "material": "Botanical dark green",
+          "beforeTriangles": 1104,
+          "afterTriangles": 524,
+          "relativeError": 0.009970852173864841,
+          "smallAccent": false
+        },
+        {
+          "mesh": 231,
+          "primitive": 0,
+          "material": "Botanical light green",
+          "beforeTriangles": 1080,
+          "afterTriangles": 792,
+          "relativeError": 0.007400952745229006,
+          "smallAccent": false
+        },
+        {
+          "mesh": 233,
+          "primitive": 0,
+          "material": "Terracotta ceramic",
+          "beforeTriangles": 668,
+          "afterTriangles": 620,
+          "relativeError": 0.0075111291371285915,
+          "smallAccent": false
+        },
+        {
+          "mesh": 234,
+          "primitive": 0,
+          "material": "Muted teal",
+          "beforeTriangles": 528,
+          "afterTriangles": 226,
+          "relativeError": 0.00960483867675066,
+          "smallAccent": false
+        },
+        {
+          "mesh": 238,
+          "primitive": 0,
+          "material": "Terracotta ceramic",
+          "beforeTriangles": 528,
+          "afterTriangles": 228,
+          "relativeError": 0.009826053865253925,
+          "smallAccent": false
+        },
+        {
+          "mesh": 241,
+          "primitive": 0,
+          "material": "Graphite alloy",
+          "beforeTriangles": 324,
+          "afterTriangles": 182,
+          "relativeError": 0.009998391382396221,
+          "smallAccent": false
+        },
+        {
+          "mesh": 244,
+          "primitive": 0,
+          "material": "Muted teal",
+          "beforeTriangles": 564,
+          "afterTriangles": 420,
+          "relativeError": 0.00785461813211441,
+          "smallAccent": false
+        },
+        {
+          "mesh": 246,
+          "primitive": 0,
+          "material": "Porcelain keycaps",
+          "beforeTriangles": 744,
+          "afterTriangles": 552,
+          "relativeError": 0.004435556009411812,
+          "smallAccent": false
+        },
+        {
+          "mesh": 247,
+          "primitive": 0,
+          "material": "Satin brass",
+          "beforeTriangles": 476,
+          "afterTriangles": 180,
+          "relativeError": 0.008946283720433712,
+          "smallAccent": false
+        },
+        {
+          "mesh": 248,
+          "primitive": 0,
+          "material": "Terracotta ceramic",
+          "beforeTriangles": 780,
+          "afterTriangles": 336,
+          "relativeError": 0.009275545366108418,
+          "smallAccent": false
+        },
+        {
+          "mesh": 249,
+          "primitive": 0,
+          "material": "Warm paper edges",
+          "beforeTriangles": 264,
+          "afterTriangles": 132,
+          "relativeError": 0.008798433467745781,
+          "smallAccent": false
+        },
+        {
+          "mesh": 250,
+          "primitive": 0,
+          "material": "Graphite alloy",
+          "beforeTriangles": 284,
+          "afterTriangles": 236,
+          "relativeError": 0.007406741380691528,
+          "smallAccent": false
+        },
+        {
+          "mesh": 251,
+          "primitive": 0,
+          "material": "Honey oak",
+          "beforeTriangles": 476,
+          "afterTriangles": 376,
+          "relativeError": 0.007324913516640663,
+          "smallAccent": false
+        },
+        {
+          "mesh": 252,
+          "primitive": 0,
+          "material": "Satin brass",
+          "beforeTriangles": 640,
+          "afterTriangles": 226,
+          "relativeError": 0.006776695139706135,
+          "smallAccent": false
+        },
+        {
+          "mesh": 257,
+          "primitive": 0,
+          "material": "Warm ivory powdercoat",
+          "beforeTriangles": 764,
+          "afterTriangles": 562,
+          "relativeError": 0.009945379570126534,
+          "smallAccent": false
+        },
+        {
+          "mesh": 259,
+          "primitive": 0,
+          "material": "Warm ivory powdercoat",
+          "beforeTriangles": 924,
+          "afterTriangles": 876,
+          "relativeError": 0.0054129548370838165,
+          "smallAccent": false
+        },
+        {
+          "mesh": 265,
+          "primitive": 0,
+          "material": "Warm ivory powdercoat",
+          "beforeTriangles": 792,
+          "afterTriangles": 452,
+          "relativeError": 0.009841236285865307,
+          "smallAccent": false
+        }
+      ],
+      "attributeMaximumAbsoluteError": {
+        "TEXCOORD_0": 7.653352806280544e-06
+      },
+      "beforeWeldVertices": 50537,
+      "afterWeldVertices": 50537,
+      "retainedPositionNormalBytesExact": true,
+      "path": "furniture/interior-library.glb"
+    },
+    {
+      "changed": true,
+      "sourceBytes": 3945096,
+      "outputBytes": 2899736,
+      "beforeTriangles": 78856,
+      "afterTriangles": 56562,
+      "sourceSHA256": "b970fdea297911a5c4de2ea8cca3149ecc618dec9e0d3a168ac4ab6966b0d448",
+      "outputSHA256": "012781a5f3d9ebf6dcc5952cb14f0d5c77551183b2aa6366dfffbcc4332a79ab",
+      "retainedVertexBytesExact": false,
+      "imagePayloadsExact": true,
+      "primitives": [
+        {
+          "mesh": 1,
+          "primitive": 0,
+          "material": "Botanical dark bark",
+          "beforeTriangles": 244,
+          "afterTriangles": 208,
+          "relativeError": 0.009874653071165085,
+          "smallAccent": false
+        },
+        {
+          "mesh": 6,
+          "primitive": 0,
+          "material": "Botanical sunlit canopy",
+          "beforeTriangles": 1760,
+          "afterTriangles": 1744,
+          "relativeError": 0.009671309031546116,
+          "smallAccent": false
+        },
+        {
+          "mesh": 8,
+          "primitive": 0,
+          "material": "Botanical warm bark",
+          "beforeTriangles": 340,
+          "afterTriangles": 300,
+          "relativeError": 0.009918014518916607,
+          "smallAccent": false
+        },
+        {
+          "mesh": 14,
+          "primitive": 0,
+          "material": "Botanical warm bark",
+          "beforeTriangles": 260,
+          "afterTriangles": 234,
+          "relativeError": 0.009934729896485806,
+          "smallAccent": false
+        },
+        {
+          "mesh": 30,
+          "primitive": 0,
+          "material": "Lavender silvery foliage",
+          "beforeTriangles": 568,
+          "afterTriangles": 508,
+          "relativeError": 0.009865894913673401,
+          "smallAccent": false
+        },
+        {
+          "mesh": 36,
+          "primitive": 0,
+          "material": "Botanical sword fern",
+          "beforeTriangles": 1680,
+          "afterTriangles": 1144,
+          "relativeError": 0.00871752854436636,
+          "smallAccent": false
+        },
+        {
+          "mesh": 39,
+          "primitive": 0,
+          "material": "Honed limestone coping",
+          "beforeTriangles": 432,
+          "afterTriangles": 124,
+          "relativeError": 0.009651605039834976,
+          "smallAccent": false
+        },
+        {
+          "mesh": 45,
+          "primitive": 0,
+          "material": "Tropical monstera emerald",
+          "beforeTriangles": 240,
+          "afterTriangles": 192,
+          "relativeError": 0.009844347834587097,
+          "smallAccent": false
+        },
+        {
+          "mesh": 48,
+          "primitive": 0,
+          "material": "Exterior warm teak slat",
+          "beforeTriangles": 216,
+          "afterTriangles": 92,
+          "relativeError": 0.007440824527293444,
+          "smallAccent": false
+        },
+        {
+          "mesh": 51,
+          "primitive": 0,
+          "material": "Brushed cast aluminium",
+          "beforeTriangles": 608,
+          "afterTriangles": 296,
+          "relativeError": 0.00974966213107109,
+          "smallAccent": false
+        },
+        {
+          "mesh": 52,
+          "primitive": 0,
+          "material": "Exterior honey oak slat",
+          "beforeTriangles": 324,
+          "afterTriangles": 132,
+          "relativeError": 0.009338234551250935,
+          "smallAccent": false
+        },
+        {
+          "mesh": 53,
+          "primitive": 0,
+          "material": "Exterior warm teak slat",
+          "beforeTriangles": 520,
+          "afterTriangles": 216,
+          "relativeError": 0.00955401360988617,
+          "smallAccent": false
+        },
+        {
+          "mesh": 56,
+          "primitive": 0,
+          "material": "Exterior honey oak slat",
+          "beforeTriangles": 216,
+          "afterTriangles": 88,
+          "relativeError": 0.007912106812000275,
+          "smallAccent": false
+        },
+        {
+          "mesh": 58,
+          "primitive": 0,
+          "material": "Exterior warm teak slat",
+          "beforeTriangles": 216,
+          "afterTriangles": 88,
+          "relativeError": 0.007912056520581245,
+          "smallAccent": false
+        },
+        {
+          "mesh": 59,
+          "primitive": 0,
+          "material": "Powdercoated charcoal steel",
+          "beforeTriangles": 240,
+          "afterTriangles": 126,
+          "relativeError": 0.009672786109149456,
+          "smallAccent": false
+        },
+        {
+          "mesh": 63,
+          "primitive": 0,
+          "material": "Exterior honey oak slat",
+          "beforeTriangles": 324,
+          "afterTriangles": 138,
+          "relativeError": 0.008924060501158237,
+          "smallAccent": false
+        },
+        {
+          "mesh": 64,
+          "primitive": 0,
+          "material": "Exterior warm teak slat",
+          "beforeTriangles": 216,
+          "afterTriangles": 92,
+          "relativeError": 0.008923850953578949,
+          "smallAccent": false
+        },
+        {
+          "mesh": 66,
+          "primitive": 0,
+          "material": "Powdercoated charcoal steel",
+          "beforeTriangles": 504,
+          "afterTriangles": 190,
+          "relativeError": 0.009949368424713612,
+          "smallAccent": false
+        },
+        {
+          "mesh": 71,
+          "primitive": 0,
+          "material": "Powdercoated charcoal steel",
+          "beforeTriangles": 288,
+          "afterTriangles": 104,
+          "relativeError": 0.009861599653959274,
+          "smallAccent": false
+        },
+        {
+          "mesh": 73,
+          "primitive": 0,
+          "material": "Brushed cast aluminium",
+          "beforeTriangles": 600,
+          "afterTriangles": 184,
+          "relativeError": 0.00987029355019331,
+          "smallAccent": false
+        },
+        {
+          "mesh": 75,
+          "primitive": 0,
+          "material": "Exterior parasol canvas",
+          "beforeTriangles": 432,
+          "afterTriangles": 204,
+          "relativeError": 0.009831377305090427,
+          "smallAccent": false
+        },
+        {
+          "mesh": 76,
+          "primitive": 0,
+          "material": "Powdercoated charcoal steel",
+          "beforeTriangles": 236,
+          "afterTriangles": 216,
+          "relativeError": 0.004092316143214703,
+          "smallAccent": false
+        },
+        {
+          "mesh": 79,
+          "primitive": 0,
+          "material": "Brushed architectural brass",
+          "beforeTriangles": 220,
+          "afterTriangles": 164,
+          "relativeError": 0.009529098868370056,
+          "smallAccent": false
+        },
+        {
+          "mesh": 80,
+          "primitive": 0,
+          "material": "Brushed cast aluminium",
+          "beforeTriangles": 748,
+          "afterTriangles": 186,
+          "relativeError": 0.009868712164461613,
+          "smallAccent": false
+        },
+        {
+          "mesh": 81,
+          "primitive": 0,
+          "material": "Cafe glazed ceramic",
+          "beforeTriangles": 232,
+          "afterTriangles": 220,
+          "relativeError": 0.008744345977902412,
+          "smallAccent": false
+        },
+        {
+          "mesh": 84,
+          "primitive": 0,
+          "material": "Limestone planter cladding",
+          "beforeTriangles": 332,
+          "afterTriangles": 220,
+          "relativeError": 0.0077163479290902615,
+          "smallAccent": false
+        },
+        {
+          "mesh": 85,
+          "primitive": 0,
+          "material": "Sculpted terracotta clay",
+          "beforeTriangles": 276,
+          "afterTriangles": 178,
+          "relativeError": 0.007748874370008707,
+          "smallAccent": false
+        },
+        {
+          "mesh": 86,
+          "primitive": 0,
+          "material": "Warm stone table top",
+          "beforeTriangles": 332,
+          "afterTriangles": 276,
+          "relativeError": 0.005755201913416386,
+          "smallAccent": false
+        },
+        {
+          "mesh": 88,
+          "primitive": 0,
+          "material": "Brushed cast aluminium",
+          "beforeTriangles": 200,
+          "afterTriangles": 192,
+          "relativeError": 0.009925125166773796,
+          "smallAccent": false
+        },
+        {
+          "mesh": 96,
+          "primitive": 0,
+          "material": "Powdercoated charcoal steel",
+          "beforeTriangles": 344,
+          "afterTriangles": 136,
+          "relativeError": 0.009907959960401058,
+          "smallAccent": false
+        },
+        {
+          "mesh": 102,
+          "primitive": 0,
+          "material": "Powdercoated charcoal steel",
+          "beforeTriangles": 328,
+          "afterTriangles": 204,
+          "relativeError": 0.009668437764048576,
+          "smallAccent": false
+        },
+        {
+          "mesh": 110,
+          "primitive": 0,
+          "material": "Exterior honey oak slat",
+          "beforeTriangles": 216,
+          "afterTriangles": 86,
+          "relativeError": 0.008499565534293652,
+          "smallAccent": false
+        },
+        {
+          "mesh": 115,
+          "primitive": 0,
+          "material": "Architectural slate metal",
+          "beforeTriangles": 1152,
+          "afterTriangles": 222,
+          "relativeError": 0.009719867259263992,
+          "smallAccent": false
+        },
+        {
+          "mesh": 117,
+          "primitive": 0,
+          "material": "Brushed architectural brass",
+          "beforeTriangles": 1736,
+          "afterTriangles": 278,
+          "relativeError": 0.009716679342091084,
+          "smallAccent": false
+        },
+        {
+          "mesh": 118,
+          "primitive": 0,
+          "material": "Brushed cast aluminium",
+          "beforeTriangles": 600,
+          "afterTriangles": 114,
+          "relativeError": 0.009821982122957706,
+          "smallAccent": false
+        },
+        {
+          "mesh": 119,
+          "primitive": 0,
+          "material": "Cafe display glass",
+          "beforeTriangles": 272,
+          "afterTriangles": 84,
+          "relativeError": 0.008606982417404652,
+          "smallAccent": false
+        },
+        {
+          "mesh": 120,
+          "primitive": 0,
+          "material": "Cafe glazed ceramic",
+          "beforeTriangles": 2076,
+          "afterTriangles": 206,
+          "relativeError": 0.009763957001268864,
+          "smallAccent": false
+        },
+        {
+          "mesh": 121,
+          "primitive": 0,
+          "material": "Exterior honey oak slat",
+          "beforeTriangles": 1340,
+          "afterTriangles": 336,
+          "relativeError": 0.009942940436303616,
+          "smallAccent": false
+        },
+        {
+          "mesh": 122,
+          "primitive": 0,
+          "material": "Exterior lamp diffuser",
+          "beforeTriangles": 372,
+          "afterTriangles": 142,
+          "relativeError": 0.009815938770771027,
+          "smallAccent": false
+        },
+        {
+          "mesh": 123,
+          "primitive": 0,
+          "material": "Exterior warm teak slat",
+          "beforeTriangles": 1180,
+          "afterTriangles": 306,
+          "relativeError": 0.009965607896447182,
+          "smallAccent": false
+        },
+        {
+          "mesh": 125,
+          "primitive": 0,
+          "material": "Powdercoated charcoal steel",
+          "beforeTriangles": 1400,
+          "afterTriangles": 376,
+          "relativeError": 0.009924757294356823,
+          "smallAccent": false
+        },
+        {
+          "mesh": 126,
+          "primitive": 0,
+          "material": "Sculpted terracotta clay",
+          "beforeTriangles": 828,
+          "afterTriangles": 326,
+          "relativeError": 0.009972409345209599,
+          "smallAccent": false
+        },
+        {
+          "mesh": 127,
+          "primitive": 0,
+          "material": "Architectural grey plinth",
+          "beforeTriangles": 432,
+          "afterTriangles": 134,
+          "relativeError": 0.009287443943321705,
+          "smallAccent": false
+        },
+        {
+          "mesh": 129,
+          "primitive": 0,
+          "material": "Exterior honey oak slat",
+          "beforeTriangles": 1512,
+          "afterTriangles": 534,
+          "relativeError": 0.00983816385269165,
+          "smallAccent": false
+        },
+        {
+          "mesh": 130,
+          "primitive": 0,
+          "material": "Exterior warm teak slat",
+          "beforeTriangles": 756,
+          "afterTriangles": 280,
+          "relativeError": 0.009965835139155388,
+          "smallAccent": false
+        },
+        {
+          "mesh": 135,
+          "primitive": 0,
+          "material": "Powdercoated charcoal steel",
+          "beforeTriangles": 280,
+          "afterTriangles": 76,
+          "relativeError": 0.008716311305761337,
+          "smallAccent": false
+        },
+        {
+          "mesh": 136,
+          "primitive": 0,
+          "material": "Architectural slate metal",
+          "beforeTriangles": 736,
+          "afterTriangles": 224,
+          "relativeError": 0.007734678685665131,
+          "smallAccent": false
+        },
+        {
+          "mesh": 137,
+          "primitive": 0,
+          "material": "Brushed cast aluminium",
+          "beforeTriangles": 936,
+          "afterTriangles": 248,
+          "relativeError": 0.009080273099243641,
+          "smallAccent": false
+        },
+        {
+          "mesh": 139,
+          "primitive": 0,
+          "material": "Bicycle frame paint",
+          "beforeTriangles": 312,
+          "afterTriangles": 146,
+          "relativeError": 0.00984007678925991,
+          "smallAccent": false
+        },
+        {
+          "mesh": 140,
+          "primitive": 0,
+          "material": "Bicycle vulcanised tire",
+          "beforeTriangles": 896,
+          "afterTriangles": 384,
+          "relativeError": 0.00833981391042471,
+          "smallAccent": false
+        },
+        {
+          "mesh": 141,
+          "primitive": 0,
+          "material": "Brushed cast aluminium",
+          "beforeTriangles": 1164,
+          "afterTriangles": 484,
+          "relativeError": 0.009995941072702408,
+          "smallAccent": false
+        },
+        {
+          "mesh": 144,
+          "primitive": 0,
+          "material": "Powdercoated charcoal steel",
+          "beforeTriangles": 364,
+          "afterTriangles": 104,
+          "relativeError": 0.009827546775341034,
+          "smallAccent": false
+        },
+        {
+          "mesh": 145,
+          "primitive": 0,
+          "material": "Architectural grey plinth",
+          "beforeTriangles": 432,
+          "afterTriangles": 408,
+          "relativeError": 0.009670520201325417,
+          "smallAccent": false
+        },
+        {
+          "mesh": 146,
+          "primitive": 0,
+          "material": "Bicycle frame paint",
+          "beforeTriangles": 328,
+          "afterTriangles": 314,
+          "relativeError": 0.008917022496461868,
+          "smallAccent": false
+        },
+        {
+          "mesh": 150,
+          "primitive": 0,
+          "material": "Brushed architectural brass",
+          "beforeTriangles": 220,
+          "afterTriangles": 134,
+          "relativeError": 0.009998536668717861,
+          "smallAccent": false
+        },
+        {
+          "mesh": 151,
+          "primitive": 0,
+          "material": "Cafe glazed ceramic",
+          "beforeTriangles": 328,
+          "afterTriangles": 314,
+          "relativeError": 0.009014826267957687,
+          "smallAccent": false
+        },
+        {
+          "mesh": 153,
+          "primitive": 0,
+          "material": "Exterior lamp diffuser",
+          "beforeTriangles": 220,
+          "afterTriangles": 124,
+          "relativeError": 0.009623594582080841,
+          "smallAccent": false
+        },
+        {
+          "mesh": 155,
+          "primitive": 0,
+          "material": "Garden shrub deep green",
+          "beforeTriangles": 240,
+          "afterTriangles": 238,
+          "relativeError": 0.009576781652867794,
+          "smallAccent": false
+        },
+        {
+          "mesh": 156,
+          "primitive": 0,
+          "material": "Honed limestone coping",
+          "beforeTriangles": 320,
+          "afterTriangles": 190,
+          "relativeError": 0.009871279820799828,
+          "smallAccent": false
+        },
+        {
+          "mesh": 162,
+          "primitive": 0,
+          "material": "Sculpted terracotta clay",
+          "beforeTriangles": 328,
+          "afterTriangles": 314,
+          "relativeError": 0.009315312840044498,
+          "smallAccent": false
+        },
+        {
+          "mesh": 164,
+          "primitive": 0,
+          "material": "Cypress deep needle",
+          "beforeTriangles": 400,
+          "afterTriangles": 358,
+          "relativeError": 0.009817862883210182,
+          "smallAccent": false
+        },
+        {
+          "mesh": 165,
+          "primitive": 0,
+          "material": "Cypress mid needle",
+          "beforeTriangles": 928,
+          "afterTriangles": 910,
+          "relativeError": 0.00934006366878748,
+          "smallAccent": false
+        },
+        {
+          "mesh": 166,
+          "primitive": 0,
+          "material": "Cypress sunlit tip",
+          "beforeTriangles": 944,
+          "afterTriangles": 910,
+          "relativeError": 0.009760407730937004,
+          "smallAccent": false
+        },
+        {
+          "mesh": 167,
+          "primitive": 0,
+          "material": "Botanical cherry bark",
+          "beforeTriangles": 464,
+          "afterTriangles": 304,
+          "relativeError": 0.00990618858486414,
+          "smallAccent": false
+        },
+        {
+          "mesh": 168,
+          "primitive": 0,
+          "material": "Botanical cream blossom",
+          "beforeTriangles": 1360,
+          "afterTriangles": 1344,
+          "relativeError": 0.009497128427028656,
+          "smallAccent": false
+        },
+        {
+          "mesh": 169,
+          "primitive": 0,
+          "material": "Botanical soft rose",
+          "beforeTriangles": 1160,
+          "afterTriangles": 1158,
+          "relativeError": 0.009967082180082798,
+          "smallAccent": false
+        },
+        {
+          "mesh": 171,
+          "primitive": 0,
+          "material": "Sakura blush petal",
+          "beforeTriangles": 1960,
+          "afterTriangles": 1938,
+          "relativeError": 0.00973983108997345,
+          "smallAccent": false
+        },
+        {
+          "mesh": 185,
+          "primitive": 0,
+          "material": "Tropical monstera emerald",
+          "beforeTriangles": 240,
+          "afterTriangles": 234,
+          "relativeError": 0.00952125247567892,
+          "smallAccent": false
+        },
+        {
+          "mesh": 188,
+          "primitive": 0,
+          "material": "Botanical sword fern",
+          "beforeTriangles": 528,
+          "afterTriangles": 484,
+          "relativeError": 0.00992391724139452,
+          "smallAccent": false
+        },
+        {
+          "mesh": 193,
+          "primitive": 0,
+          "material": "Architectural grey plinth",
+          "beforeTriangles": 420,
+          "afterTriangles": 228,
+          "relativeError": 0.006951298099011183,
+          "smallAccent": false
+        },
+        {
+          "mesh": 196,
+          "primitive": 0,
+          "material": "Botanical mid canopy",
+          "beforeTriangles": 676,
+          "afterTriangles": 476,
+          "relativeError": 0.004613203462213278,
+          "smallAccent": false
+        },
+        {
+          "mesh": 198,
+          "primitive": 0,
+          "material": "Botanical sword fern",
+          "beforeTriangles": 1460,
+          "afterTriangles": 1006,
+          "relativeError": 0.009810294955968857,
+          "smallAccent": false
+        },
+        {
+          "mesh": 199,
+          "primitive": 0,
+          "material": "Exterior honey oak slat",
+          "beforeTriangles": 432,
+          "afterTriangles": 152,
+          "relativeError": 0.009716824628412724,
+          "smallAccent": false
+        },
+        {
+          "mesh": 200,
+          "primitive": 0,
+          "material": "Exterior lamp diffuser",
+          "beforeTriangles": 220,
+          "afterTriangles": 128,
+          "relativeError": 0.008103316649794579,
+          "smallAccent": false
+        },
+        {
+          "mesh": 201,
+          "primitive": 0,
+          "material": "Exterior warm teak slat",
+          "beforeTriangles": 324,
+          "afterTriangles": 142,
+          "relativeError": 0.009974129498004913,
+          "smallAccent": false
+        },
+        {
+          "mesh": 207,
+          "primitive": 0,
+          "material": "Powdercoated charcoal steel",
+          "beforeTriangles": 392,
+          "afterTriangles": 238,
+          "relativeError": 0.00956723839044571,
+          "smallAccent": false
+        },
+        {
+          "mesh": 211,
+          "primitive": 0,
+          "material": "Waterfall cascade foam",
+          "beforeTriangles": 416,
+          "afterTriangles": 242,
+          "relativeError": 0.009707923047244549,
+          "smallAccent": false
+        },
+        {
+          "mesh": 212,
+          "primitive": 0,
+          "material": "Architectural grey plinth",
+          "beforeTriangles": 432,
+          "afterTriangles": 144,
+          "relativeError": 0.009502673521637917,
+          "smallAccent": false
+        },
+        {
+          "mesh": 214,
+          "primitive": 0,
+          "material": "Botanical mid canopy",
+          "beforeTriangles": 928,
+          "afterTriangles": 898,
+          "relativeError": 0.009000527672469616,
+          "smallAccent": false
+        },
+        {
+          "mesh": 217,
+          "primitive": 0,
+          "material": "Botanical sunlit canopy",
+          "beforeTriangles": 592,
+          "afterTriangles": 578,
+          "relativeError": 0.009957361035048962,
+          "smallAccent": false
+        },
+        {
+          "mesh": 218,
+          "primitive": 0,
+          "material": "Exterior honey oak slat",
+          "beforeTriangles": 540,
+          "afterTriangles": 220,
+          "relativeError": 0.006825805641710758,
+          "smallAccent": false
+        },
+        {
+          "mesh": 220,
+          "primitive": 0,
+          "material": "Exterior warm teak slat",
+          "beforeTriangles": 432,
+          "afterTriangles": 176,
+          "relativeError": 0.008072753436863422,
+          "smallAccent": false
+        },
+        {
+          "mesh": 225,
+          "primitive": 0,
+          "material": "Powdercoated charcoal steel",
+          "beforeTriangles": 648,
+          "afterTriangles": 264,
+          "relativeError": 0.008905373513698578,
+          "smallAccent": false
+        }
+      ],
+      "path": "landscape/exterior-landscape.glb",
+      "attributeMaximumAbsoluteError": {
+        "TEXCOORD_0": 7.653352806280544e-06
+      },
+      "beforeWeldVertices": 87900,
+      "afterWeldVertices": 87900,
+      "retainedPositionNormalBytesExact": true
+    },
+    {
+      "changed": true,
+      "sourceBytes": 3238616,
+      "outputBytes": 2300424,
+      "beforeTriangles": 32168,
+      "afterTriangles": 32168,
+      "sourceSHA256": "ea202d04ae1517fc649ceb5647508bcf06057c2b6ea9b2e9344af085c1d9c621",
+      "outputSHA256": "c0404bf9588b72cdd8b7adf23ec5368c52431c828a6f6a3ea6d53ab12565cb72",
+      "retainedVertexBytesExact": false,
+      "imagePayloadsExact": true,
+      "primitives": [],
+      "path": "landscape/district-buildings.glb",
+      "attributeMaximumAbsoluteError": {
+        "TEXCOORD_0": 7.645405520340098e-06,
+        "COLOR_0": 0.001953585007611447
+      },
+      "beforeWeldVertices": 68448,
+      "afterWeldVertices": 68064,
+      "retainedPositionNormalBytesExact": true
+    }
+  ]
+}

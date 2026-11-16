@@ -967,7 +967,7 @@ fieldset > legend { padding: 0; margin-bottom: 6px; }
 .worker-run { margin-left: 34px; border-style: dashed; }
 .worker-run .worker-detail { margin-left: 34px; }
 /* Consecutive tool calls: a summary line and one card with a row per call (like a chat app's "Ran 6 commands"). */
-.tool-run { display: grid; gap: 6px; font-size: .9rem; }
+.tool-run { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; gap: 6px; font-size: .9rem; }
 .tool-run-head { display: inline-flex; align-items: center; gap: 6px; justify-self: start; padding: 2px 0; border: 0; background: none; color: var(--muted); font: inherit; font-size: .86rem; cursor: pointer; }
 .tool-run-head:hover { color: var(--text); }
 .tool-run-head .pulse { width: 7px; height: 7px; }
@@ -1174,7 +1174,7 @@ fieldset > legend { padding: 0; margin-bottom: 6px; }
 .skill-center .form-error { margin-top: 0; }
 .skill-center-imports { align-self: center; }
 .skill-center-banner { align-items: center; flex-wrap: wrap; }
-.skill-center-banner > span { flex: 1 1 240px; min-width: 0; }
+.skill-center-banner > span { flex: 1 1 240px; min-width: 0; overflow-wrap: anywhere; }
 .skill-center-banner.warn { background: var(--warn-soft); }
 .skill-center-banner.warn > .icon { color: var(--warn); }
 .skill-center-banner.error { background: var(--error-soft); }
@@ -1745,7 +1745,10 @@ input[type='file']::file-selector-button {
   backdrop-filter: blur(32px) saturate(200%);
   max-height: min(280px, var(--radix-select-content-available-height, 280px));
   overflow-y: auto;
-  animation: enter 140ms ease both;
+  /* Floating UI owns transform for positioning. Fade without replacing or
+     transitioning that transform, including after the entrance completes. */
+  animation: select-menu-enter 140ms ease both;
+  transition-property: background-color, border-color, color, box-shadow, border-radius, backdrop-filter, -webkit-backdrop-filter;
 }
 
 .glass-select-viewport {
@@ -1912,6 +1915,8 @@ input[type='file']::file-selector-button {
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes blink { to { visibility: hidden; } }
 
+@keyframes select-menu-enter { from { opacity: 0; } to { opacity: 1; } }
+
 @keyframes enter {
   from { opacity: 0; transform: translateY(5px); }
   to { opacity: 1; transform: none; }
@@ -2063,12 +2068,7 @@ input[type='file']::file-selector-button {
 .office-toast-text { display: grid; min-width: 0; gap: 4px; font-size: 11px; }
 .office-toast-text strong { font-size: 12px; }
 .office-toast-text span { overflow-wrap: anywhere; }
-/* Anchored at the name tag; lifted by half its own height plus the tag, so wrapped text grows upward and never covers the tag. */
-.office-character-bubble { translate: 0 calc(-50% - 20px); position: relative; display: flex; align-items: center; gap: 8px; max-width: 240px; width: max-content; border: 1px solid var(--line); border-radius: 14px; padding: 8px 12px; color: var(--text); background: var(--office-overlay); box-shadow: var(--shadow); font-size: 12px; pointer-events: none; transition: opacity 380ms ease, transform 380ms ease; }
-.office-character-bubble::after { content: ''; position: absolute; bottom: -5px; left: 50%; width: 9px; height: 9px; background: inherit; transform: rotate(45deg); }
-.office-character-bubble.tone-thought { border-radius: 22px; font-style: italic; }
-.office-character-bubble.tone-attention { border-color: var(--warn); }
-.office-character-bubble.fading { opacity: 0; transform: translateY(4px) scale(.97); }
+/* Character activity bubbles own their styles in office/overlay/activityBubble.css. */
 @media (max-width: 700px) {
   .office-prompt-dock { bottom: 14px; left: 12px; right: 12px; width: auto; padding: 12px; }
   .office-panel { bottom: auto; top: 48px; left: auto; width: 220px; }
@@ -2076,7 +2076,7 @@ input[type='file']::file-selector-button {
   .office-toasts { bottom: 180px; left: 12px; right: 12px; width: auto; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .office-panel-body, .office-loading, .office-character-bubble { transition: none; }
+  .office-panel-body, .office-loading { transition: none; }
   .office-loading-fill, .office-loading-fill::after { animation: none; }
   .office-toast { animation: none; }
 }
@@ -3729,9 +3729,18 @@ dl.office-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1f
 /* ── end v0.0.38 markdown tables ── */
 
 /* ── v0.0.38 life: board-pick reply bubble ── */
-.office-character-callout { translate: 0 calc(-50% - 24px); position: relative; display: flex; align-items: center; width: max-content; max-width: 220px; border: 2px solid var(--accent); border-radius: 999px; padding: 7px 14px; color: var(--text); background: var(--office-overlay); box-shadow: 0 6px 22px color-mix(in srgb, var(--accent) 35%, transparent), var(--shadow); font-size: 13px; font-weight: 650; letter-spacing: .01em; pointer-events: none; animation: office-callout-pop 2500ms ease both; }
-.office-character-callout::after { content: ''; position: absolute; bottom: -7px; left: calc(50% - 6px); width: 10px; height: 10px; background: inherit; border-right: 2px solid var(--accent); border-bottom: 2px solid var(--accent); transform: rotate(45deg); }
+.office-character-callout { translate: 0 calc(-50% - 24px); position: relative; display: flex; align-items: center; gap: 8px; width: max-content; max-width: min(240px, calc(100vw - 40px)); border: 1px solid var(--accent); border-radius: 18px; padding: 8px 12px; color: var(--text); background: var(--office-overlay); box-shadow: 0 4px 16px color-mix(in srgb, var(--accent) 18%, transparent), var(--shadow); font-size: 12px; font-weight: 600; line-height: 1.4; pointer-events: none; animation: office-callout-pop 2500ms ease both; }
+.office-character-callout::after { content: ''; position: absolute; bottom: -5px; left: calc(50% - 4px); width: 8px; height: 8px; background: inherit; border-right: 1px solid var(--accent); border-bottom: 1px solid var(--accent); transform: rotate(45deg); }
+.office-callout-mark { display: grid; place-items: center; flex: none; color: var(--accent); }
+.office-callout-mark .icon { width: 16px; height: 16px; }
+.office-character-callout.variant-0 { border-radius: 18px 18px 18px 7px; }
+.office-character-callout.variant-1 { border-radius: 22px; animation-name: office-callout-rise; }
+.office-character-callout.variant-1::after { width: 7px; height: 7px; bottom: -6px; left: calc(50% - 3px); border: 1px solid var(--accent); border-radius: 50%; transform: none; box-shadow: 3px 7px 0 -2px var(--accent); }
+.office-character-callout.variant-2 { border-radius: 18px 18px 7px 18px; animation-name: office-callout-tilt; }
+.office-character-callout.variant-3 { border-radius: 14px; animation-name: office-callout-rise; }
 .office-character-callout.reduced { animation: office-callout-fade 2500ms linear both; }
+@keyframes office-callout-rise { 0% { opacity: 0; transform: translateY(8px); } 12%, 86% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-3px); } }
+@keyframes office-callout-tilt { 0% { opacity: 0; transform: translateY(5px) rotate(-3deg) scale(.94); } 14%, 86% { opacity: 1; transform: none; } 100% { opacity: 0; transform: translateY(-3px); } }
 @keyframes office-callout-pop {
   0% { opacity: 0; transform: translateY(6px) scale(.6); }
   10% { opacity: 1; transform: translateY(-2px) scale(1.08); }
@@ -3740,7 +3749,7 @@ dl.office-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1f
   100% { opacity: 0; transform: translateY(-4px) scale(.98); }
 }
 @keyframes office-callout-fade { 0%, 88% { opacity: 1; } 100% { opacity: 0; } }
-@media (prefers-reduced-motion: reduce) { .office-character-callout { animation: office-callout-fade 2500ms linear both; } }
+@media (prefers-reduced-motion: reduce) { .office-character-callout, .office-character-callout[class*='variant-'] { animation: office-callout-fade 2500ms linear both; } }
 /* ── end v0.0.38 life ── */
 
 /* ── v0.0.39 settings ── */
@@ -4403,6 +4412,7 @@ button.mission-dag-card:hover { border-color: var(--accent); }
 /* ── Conversation: one reading view for Chat, Observe, History and the session dialog ── */
 .transcript { --reading: min(100%, 760px); justify-items: center; gap: 18px; padding-top: 12px; font-size: 15px; line-height: 1.68; }
 .transcript > .msg { position: relative; width: var(--reading); }
+.transcript > .msg > .visually-hidden { inset-inline-start: 0; }
 .character-conversation .transcript { gap: 18px; font-size: 14.5px; line-height: 1.66; }
 .session-dialog .character-tab-panel { padding-inline: 4px 10px; scrollbar-gutter: stable; }
 
@@ -4517,10 +4527,11 @@ button.mission-dag-card:hover { border-color: var(--accent); }
 @media (prefers-reduced-motion: reduce) { .bubble-more .icon, .source-notice-chevron, .message-actions { transition: none; } }
 
 /* Files tab: what the session changed, one row per file. */
-.conversation-tabs { display: flex; width: min(100%, 320px); margin: 10px auto 2px; }
-.conversation-panel { display: contents; }
+.conversation-tabs { display: flex; flex: 0 0 auto; align-self: center; align-items: center; width: fit-content; max-width: 100%; margin: 8px auto; }
+.conversation-tabs button { flex: 0 0 auto; min-width: 104px; min-height: 32px; padding: 6px 14px; }
+.conversation-panel { display: block; flex: 1 0 auto; width: min(100%, 860px); min-width: 0; margin-inline: auto; }
 .conversation-panel[hidden] { display: none; }
-.conversation-files { width: min(100%, 760px); margin-inline: auto; padding-block: 12px; }
+.conversation-files { flex: 1 0 auto; width: min(100%, 860px); min-width: 0; margin-inline: auto; padding-block: 12px; }
 .changed-files { display: grid; gap: 8px; font-size: 14px; }
 .changed-files-summary { margin: 0; color: var(--muted); font-size: 13px; }
 .changed-files ul { display: grid; gap: 1px; margin: 0; padding: 0; list-style: none; }

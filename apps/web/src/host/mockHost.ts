@@ -14,6 +14,10 @@ import { createMockWorkspaceInspection, createMockWorkspaceSkills } from './mock
 import { createMockBuiltinSkills, createMockSkillRegistry, type MockSkillMode } from './mockSkillRegistry';
 import { createMockKnowledge } from './mockKnowledge';
 import { createMockKnowledgeSettings } from './mockKnowledgeSettings';
+import { createMockVaultProfiles } from './mockVaultProfiles';
+import { createMockWorkspaceKnowledge } from './mockWorkspaceKnowledge';
+import { createMockOperatingProfiles } from './mockOperatingProfiles';
+import { createMockPromptQueues } from './mockPromptQueues';
 import { browserNotifications } from '../approvals/browserNotifications';
 
 const MOCK_WORKSPACE_TEAMS_KEY = 'extalia.mock.workspace-teams';
@@ -32,6 +36,8 @@ const MOCK_HERMES_MODELS = [
  * builds with `?mock` in the URL; production builds never contain it.
  *
  * URL options: `mock=ready` starts after setup with sample sessions,
+ * `officeLoad=1..48` replaces them with that many synthetic working Native leads for Office load profiling,
+ * `standby=1..32` replaces the Native sample turns with one idle configured team,
  * `host=desktop` behaves like the Desktop app (folder picker),
  * `update=available|ready|downloading` shows the update banner, and `hermes`
  * reports Hermes Agent as installed (its sessions still run the mock scenarios;
@@ -48,6 +54,12 @@ const MOCK_HERMES_MODELS = [
  */
 
 export interface MockOptions {
+  /** Explicit, developer-only team meeting fixture; never inferred from prompt text. */
+  meeting?: 'active' | 'completed' | 'cancelled';
+  /** With `mock=ready`: one idle Native team, with no worker or turn events. */
+  standby?: number;
+  /** With `mock=ready`: number of synthetic active Native leads for renderer profiling (1–48). */
+  officeLoad?: number;
   seed: 'setup' | 'ready';
   host: 'desktop' | 'bridge';
   update?: UpdateStatus['state'];
@@ -100,6 +112,8 @@ export function mockOptionsFromSearch(search: string): MockOptions {
     seed: params.get('mock') === 'ready' ? 'ready' : 'setup',
     host: params.get('host') === 'desktop' ? 'desktop' : 'bridge',
     ...(update && (states as string[]).includes(update) ? { update: update as UpdateStatus['state'] } : {}),
+    ...(/^(?:[1-9]|[12]\d|3[0-2])$/.test(params.get('standby') ?? '') ? { standby: Number(params.get('standby')) } : {}),
+    ...(/^(?:[1-9]|[1-3]\d|4[0-8])$/.test(params.get('officeLoad') ?? '') ? { officeLoad: Number(params.get('officeLoad')) } : {}),
     ...(params.has('hermes') ? { hermes: true } : {}),
     ...(/^\d{1,3}$/.test(params.get('hermesChildren') ?? '') ? { hermesChildren: Number(params.get('hermesChildren')) } : {}),
     ...(/^[1-9]\d{0,2}$/.test(params.get('hermesConcurrent') ?? '') ? { hermesConcurrent: Number(params.get('hermesConcurrent')) } : {}),
@@ -107,6 +121,7 @@ export function mockOptionsFromSearch(search: string): MockOptions {
     ...(params.has('migrated') ? { migrated: true } : {}),
     ...(params.has('otp') ? { otp: true } : {}),
     ...(params.has('missions') ? { missions: true } : {}),
+    ...(['active', 'completed', 'cancelled'].includes(params.get('meeting') ?? '') ? { meeting: params.get('meeting') as MockOptions['meeting'] } : {}),
     ...(['legacy', 'offline', 'review'].includes(params.get('skills') ?? '') ? { skills: params.get('skills') as MockSkillMode } : {}),
     ...(['large', 'empty', 'off', 'conflict'].includes(params.get('knowledge') ?? '') ? { knowledge: params.get('knowledge') as 'large' | 'empty' | 'off' | 'conflict' } : {}),
   };
@@ -501,28 +516,76 @@ function createMockAgents(options: MockOptions): AgentHostApi {
       toView({ name: 'Ollama', preset: 'ollama', api: 'openai-chat', baseUrl: 'http://localhost:11434/v1', model: 'qwen3-coder:30b', credential: { kind: 'none' }, features: { memory: 'extalia', skills: 'off' } }, 'connection-local', iso()),
     );
     const app = addWorkspace('demo-app', `${HOME}/demo-app`, 'connection-seed', { fileWrite: 'ask', commands: 'ask' });
+    if (options.meeting) {
+      const discussion = addSession(app, 'Review discussion');
+      const participants = ['primary', 'meeting-reviewer', 'meeting-planner'];
+      for (const [id, role, label] of [['meeting-reviewer', 'Reviewer', 'Review member'], ['meeting-planner', 'Planner', 'Planning member']] as const) {
+        emit(discussion.id, { type: 'subagent.spawned', subagentId: id, role, label, model: 'mock-model' });
+        emit(discussion.id, { type: 'agent.state', state: 'working', activity: 'think' }, now, id);
+      }
+      emit(discussion.id, { type: 'agent.state', state: 'working', activity: 'delegate' });
+      emit(discussion.id, { type: 'meeting.started', meetingId: 'mock-meeting', participants, roomId: 'meeting-a', topic: 'Review the implementation plan' });
+      emit(discussion.id, { type: 'meeting.contribution', meetingId: 'mock-meeting', round: 1, text: 'Review the current source before selecting the implementation.' }, now, 'meeting-reviewer');
+      const finish = (outcome: 'completed' | 'cancelled') => {
+        emit(discussion.id, { type: 'meeting.completed', meetingId: 'mock-meeting', outcome });
+        for (const id of participants) emit(discussion.id, { type: 'agent.state', state: 'idle' }, now, id);
+        discussion.running = false;
+      };
+      discussion.running = options.meeting === 'active';
+      if (options.meeting !== 'active') finish(options.meeting);
+      // This whole module is a development-only host; no real session is controlled.
+      // StrictMode evaluates the host initializer twice and keeps the first value.
+      // Keep that first fixture's controls instead of targeting the discarded host.
+      if (typeof window !== 'undefined' && !Object.hasOwn(window, '__EXTALIA_MOCK_MEETING__')) Object.assign(window, { __EXTALIA_MOCK_MEETING__: {
+        sessionId: discussion.id,
+        complete: () => finish('completed'), cancel: () => finish('cancelled'),
+        nextRound: () => emit(discussion.id, { type: 'meeting.contribution', meetingId: 'mock-meeting', round: 2, text: 'Use the review findings in the next step.' }, now, 'meeting-planner'),
+      } });
+    }
     // Missions in demo-app may also use the local connection (two providers, as `setWorkspaceMissionConnections` allows).
     app.missionConnectionIds = ['connection-local'];
     // ADR 0028: demo-app has an integration test gate; docs-site has none (its Changes panel offers a suggestion).
     app.integrationGate = { command: 'npm test' };
     addWorkspace('docs-site', `${HOME}/docs-site`, 'connection-local', { fileWrite: 'allow', commands: 'ask' });
-    // Replayed instantly with timestamps in the past: one finished session and one waiting for approval.
     const past = (minutesAgo: number) => { let offset = 0; return () => new Date(Date.now() - minutesAgo * 60_000 + (offset += 1_200)); };
-    startTurn(addSession(app), 'Fix the flaky login test.', { clock: past(26 * 60), decide: 'once' });
-    // v0.0.48: the second sample session has used 62% of its 200k window (its lead's context in use).
-    const explained = addSession(app);
-    explained.context = { usedTokens: 124_000, windowTokens: 200_000, estimated: false, compactions: 0, updatedAt: iso() };
-    startTurn(explained, 'Explain the build setup', { clock: past(50) });
-    // The newest sample session leads a small subagent team, so the board shows members under their lead.
-    const lead = addSession(app);
-    const allowedModels = ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-4-5'];
-    const goal = 'Add a test coverage script and run it.';
-    const souls = ['Curious and thorough; cites every file it reads.', 'Skeptical reviewer; looks for the case nobody tested.', 'Calm analyst; compares options before choosing.'];
-    const planned = planTeamHeuristic({ goal, count: 3, allowedModels }, () => nextId('member'), officeNames());
-    // The first member may edit inside its scope (a write member); the others only read.
-    const members = planned.map((member, index) => ({ ...member, soul: souls[index]!, ...(index === 0 ? { access: 'write' as const, scope: ['package.json', 'src'], forbidden: ['src/generated'] } : { access: 'read' as const }) }));
-    setTeam(lead, { enabled: true, allowedModels, goal, rules: ['Run the tests before reporting.'], members });
-    startTurn(lead, goal, { clock: past(3) });
+    if (options.officeLoad) {
+      // OfficePage loads at most 24 sessions, so each synthetic lead can carry
+      // one protocol-level active child to profile up to 48 actual characters.
+      // No mock turn/provider work is started.
+      for (let index = 1; index <= options.officeLoad; index += 2) {
+        const lead = addSession(app, `Office render fixture ${index}`);
+        lead.running = true;
+        emit(lead.id, { type: 'agent.state', state: 'working', activity: 'think', summary: 'Office render fixture' });
+        if (index + 1 <= options.officeLoad) {
+          const workerId = nextId('render-worker');
+          emit(lead.id, { type: 'subagent.spawned', subagentId: workerId, label: `Render worker ${index + 1}`, role: 'Office render fixture', model: 'mock-model' });
+          emit(lead.id, { type: 'subagent.state', subagentId: workerId, state: 'working', summary: 'Office render fixture' });
+        }
+      }
+    } else if (options.standby) {
+      const lead = addSession(app, 'Native standby team');
+      const allowedModels = ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-4-5'];
+      const goal = 'General-purpose workspace team.';
+      const members = planTeamHeuristic({ goal, count: options.standby, allowedModels }, () => nextId('member'), officeNames());
+      setTeam(lead, { enabled: true, allowedModels, goal, rules: [], members });
+    } else {
+      // Replayed instantly with timestamps in the past: one finished session and one waiting for approval.
+      startTurn(addSession(app), 'Fix the flaky login test.', { clock: past(26 * 60), decide: 'once' });
+      // v0.0.48: the second sample session has used 62% of its 200k window (its lead's context in use).
+      const explained = addSession(app);
+      explained.context = { usedTokens: 124_000, windowTokens: 200_000, estimated: false, compactions: 0, updatedAt: iso() };
+      startTurn(explained, 'Explain the build setup', { clock: past(50) });
+      // The newest sample session leads a small subagent team, so the board shows members under their lead.
+      const lead = addSession(app);
+      const allowedModels = ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-4-5'];
+      const goal = 'Add a test coverage script and run it.';
+      const souls = ['Curious and thorough; cites every file it reads.', 'Skeptical reviewer; looks for the case nobody tested.', 'Calm analyst; compares options before choosing.'];
+      const planned = planTeamHeuristic({ goal, count: 3, allowedModels }, () => nextId('member'), officeNames());
+      // The first member may edit inside its scope (a write member); the others only read.
+      const members = planned.map((member, index) => ({ ...member, soul: souls[index]!, ...(index === 0 ? { access: 'write' as const, scope: ['package.json', 'src'], forbidden: ['src/generated'] } : { access: 'read' as const }) }));
+      setTeam(lead, { enabled: true, allowedModels, goal, rules: ['Run the tests before reporting.'], members });
+      startTurn(lead, goal, { clock: past(3) });
+    }
     if (options.hermes) {
       // v0.0.32: a Hermes Agent workspace (profile `default`, models from a local router stand-in) with one session.
       const lab: Workspace = { id: nextId('workspace'), profileId: state.profile.id, name: 'agent-lab', projectLocation: `${HOME}/agent-lab`, runtimeId: 'hermes', runtimeProfileId: 'default', permissions: { fileWrite: 'ask', commands: 'ask' }, createdAt: iso(), updatedAt: iso() };
@@ -725,6 +788,12 @@ function createMockAgents(options: MockOptions): AgentHostApi {
   }
 
   const latency = () => sleep(140);
+  const mockKnowledgeSettings = createMockKnowledgeSettings(latency);
+  const mockVaultProfiles = createMockVaultProfiles(state, mockKnowledgeSettings, () => runs.size > 0, latency);
+  const mockKnowledge = options.seed === 'ready' && options.knowledge !== 'off'
+    ? createMockKnowledge(options.knowledge === 'empty' || options.knowledge === 'large' ? options.knowledge : 'sample', latency, Date.now(), { conflict: options.knowledge === 'conflict' }) : undefined;
+  const mockWorkspaceKnowledge = mockKnowledge ? createMockWorkspaceKnowledge({ state, initial: mockKnowledge, settings: mockKnowledgeSettings,
+    profiles: mockVaultProfiles, latency, busy: () => runs.size > 0 }) : undefined;
   /** v0.0.49 mock: uploaded attachments by id until a prompt takes them. */
   let selectionGuide: ModelSelectionGuide | null = null;
   const mockAttachments = new Map<string, { sessionId: string; info: PromptAttachment }>();
@@ -823,7 +892,31 @@ function createMockAgents(options: MockOptions): AgentHostApi {
     },
   };
 
+  const operatingProfiles = createMockOperatingProfiles({ state, snapshot, latency });
+  const mockQueues = createMockPromptQueues(session, (id, text) => { startTurn(session(id), text); },
+    (id, text) => { emit(id, { type: 'user.intervention', action: 'steer', text }); });
   return {
+    ...operatingProfiles.api,
+    ...mockQueues,
+    async observedCodexNativeQueueStatus(id) {
+      await latency();
+      const selected = session(id);
+      if (selected.control !== 'observed' || selected.observation?.sourceId !== 'codex' || !selected.observation.watching)
+        return { sessionId: id, state: 'unavailable', items: [] };
+      return { sessionId: id, threadId: selected.observation.nativeSessionId,
+        state: hookLabelsOnly ? 'private' : 'ready', items: [], observedAt: iso() };
+    },
+    async promptSuggestions(id) {
+      await latency();
+      const selected = session(id), observed = selected.control === 'observed';
+      const origin = observed ? 'harness' as const : 'native' as const;
+      if (observed && hookLabelsOnly) return { sessionId: id, state: 'private', prompts: [], origin, canRequest: false };
+      if (selected.running || selected.pendingApprovalId || observed && !selected.observation?.watching)
+        return { sessionId: id, state: 'unavailable', prompts: [], origin, canRequest: false };
+      return { sessionId: id, anchor: `mock-completion:${id}:${selected.lastActiveAt}`, state: 'ready', origin, canRequest: false,
+        prompts: ['Review the remaining edge cases.', 'Summarize the changes for review.', 'Document the updated behavior.'] };
+    },
+    async requestPromptSuggestions(id) { return this.promptSuggestions!(id); },
     async getState() { await latency(); return snapshot(); },
     async getProfile() { await latency(); return structuredClone(profile); },
     async saveProfile(patch) {
@@ -841,6 +934,15 @@ function createMockAgents(options: MockOptions): AgentHostApi {
         if (value === null || value === undefined) { delete next.preferences[field]; continue; }
         if (field === 'language' ? value !== 'en' && value !== 'id' : !/^[a-z0-9][a-z0-9-]{0,39}$/.test(String(value))) throw new Error(`The ${key} preference is not valid.`);
         (next.preferences as Record<string, string>)[field] = String(value);
+      }
+      if (patch.clientState !== undefined) {
+        const client = { ...profile.clientState };
+        for (const [key, value] of Object.entries(patch.clientState)) {
+          if (!['lastWorkspaceId', 'officeLights', 'approvalNotifications', 'earlierOpen'].includes(key)) throw new Error('Unknown interface state.');
+          if (value === null || value === undefined) delete (client as Record<string, unknown>)[key];
+          else (client as Record<string, unknown>)[key] = value;
+        }
+        if (Object.keys(client).length) next.clientState = client; else delete next.clientState;
       }
       profile = next;
       return structuredClone(profile);
@@ -888,12 +990,20 @@ function createMockAgents(options: MockOptions): AgentHostApi {
     },
     async saveWorkspace(input) {
       await latency();
+      const existing = input.id ? state.workspaces.find(item => item.id === input.id) : undefined;
+      operatingProfiles.beforeWorkspaceSave(existing, input);
+      const mode = input.mode ?? existing?.mode ?? 'managed';
+      if (mode !== 'managed' && mode !== 'observe') throw new Error('Choose a managed or observe-only workspace.');
+      if (mode === 'observe' && input.runtimeId === 'hermes') throw new Error('Observe-only workspaces do not select a managed runtime.');
+      const connectionId = mode === 'observe' && input.connectionId === undefined ? existing?.providerProfileId : input.connectionId;
+      if (mode === 'managed' && input.runtimeId !== 'hermes' && !connectionId) throw new Error('Choose a model connection for this workspace.');
+      if (connectionId && !state.connections.some(connection => connection.id === connectionId)) throw new Error('Choose a saved model connection.');
       if (input.missionConnectionIds !== undefined && (!Array.isArray(input.missionConnectionIds) || input.missionConnectionIds.length > 8
         || new Set(input.missionConnectionIds).size !== input.missionConnectionIds.length
         || input.missionConnectionIds.some(id => !state.connections.some(connection => connection.id === id)))) throw new Error('Choose up to 8 saved connections.');
-      const existing = input.id ? state.workspaces.find(item => item.id === input.id) : undefined;
-      const workspace = existing ?? addWorkspace(input.name, input.projectLocation, input.connectionId ?? '', input.permissions);
-      Object.assign(workspace, { name: input.name, projectLocation: input.projectLocation, providerProfileId: input.connectionId ?? '', permissions: input.permissions, updatedAt: iso() });
+      const workspace = existing ?? addWorkspace(input.name, input.projectLocation, connectionId ?? '', input.permissions);
+      Object.assign(workspace, { name: input.name, projectLocation: input.projectLocation, providerProfileId: connectionId ?? '', permissions: input.permissions, updatedAt: iso() });
+      if (input.mode !== undefined || existing?.mode !== undefined) workspace.mode = mode;
       if (input.crossWorkspaceAccess !== undefined) workspace.crossWorkspaceAccess = input.crossWorkspaceAccess;
       if (input.additionalProjectLocations !== undefined) workspace.additionalProjectLocations = [...input.additionalProjectLocations];
       for (const key of ['runtimeId', 'runtimeProfileId', 'runtimeModel'] as const) delete workspace[key];
@@ -902,6 +1012,7 @@ function createMockAgents(options: MockOptions): AgentHostApi {
       // ADR 0028: omission keeps the gate, `null` removes it, anything else is validated like on the host.
       if (input.integrationGate === null) delete workspace.integrationGate;
       else if (input.integrationGate !== undefined) workspace.integrationGate = normalizeIntegrationGate(input.integrationGate);
+      operatingProfiles.afterWorkspaceSave(workspace);
       return snapshot();
     },
     async deleteWorkspace(id) {
@@ -922,7 +1033,8 @@ function createMockAgents(options: MockOptions): AgentHostApi {
       await latency();
       if (mode !== 'managed' && mode !== 'observe') throw new Error('Invalid workflow mode.');
       if (mode === 'managed') {
-        const native = state.workspaces.some(item => (item.runtimeId ?? 'extalia-native') === 'extalia-native');
+        const native = state.workspaces.some(item => item.mode !== 'observe' && (item.runtimeId ?? 'extalia-native') === 'extalia-native');
+        if (state.workspaces.length && state.workspaces.every(item => item.mode === 'observe') && !state.connections.length) throw new Error('Add a model connection to enable full Extalia.');
         if (native && !state.connections.length) throw new Error('Add a model connection first.');
         if (!state.workspaces.length && !state.connections.length && !options.hermes) throw new Error('Add a model connection or install Hermes Agent first.');
       }
@@ -937,11 +1049,14 @@ function createMockAgents(options: MockOptions): AgentHostApi {
       await latency();
       const workspace = state.workspaces.find(item => item.id === workspaceId);
       if (!workspace) throw new Error('This workspace no longer exists.');
+      if (workspace.mode === 'observe') throw new Error('Enable the full Extalia workspace before starting a managed session.');
+      if (workspace.runtimeId !== 'hermes' && !state.connections.some(connection => connection.id === workspace.providerProfileId)) throw new Error('Choose a model connection for this workspace.');
       const { team, ...checked } = normalizeSessionOptions(sessionOptions);
       const summary = addSession(workspace);
       if (workspace.runtimeId === 'hermes') summary.runtime = { id: 'hermes', profile: workspace.runtimeProfileId || 'default' };
       const savedOptions = { ...(workspace.runtimeId === 'hermes' && workspace.runtimeModel ? { model: workspace.runtimeModel } : {}), ...checked };
       if (Object.keys(savedOptions).length) summary.options = savedOptions;
+      operatingProfiles.prepareSession(summary, workspace, checked);
       // v0.0.47: as on a real host, a new session copies the workspace's default team unless given one (or `team: null`).
       const own = initialSessionTeam(workspace.team, team);
       if (own) setTeam(summary, withDistinctMemberNames(own, new Set(officeNames().map(name => name.toLowerCase())), summary.id));
@@ -989,6 +1104,7 @@ function createMockAgents(options: MockOptions): AgentHostApi {
       if (!workspace) throw new Error('This workspace no longer exists.');
       const checked = normalizeAgentTeam(team);
       if (checked) workspace.team = { ...checked, updatedAt: iso() }; else delete workspace.team;
+      operatingProfiles.savedWorkspaceTeam(workspace, checked);
       workspace.updatedAt = iso();
       storeWorkspaceTeams();
       return snapshot();
@@ -1052,6 +1168,23 @@ function createMockAgents(options: MockOptions): AgentHostApi {
       return structuredClone(summary);
     },
     async renameSession(sessionId, title) { await latency(); session(sessionId).title = title.trim(); return snapshot(); },
+    async setSessionProjectRoot(sessionId, input) {
+      await latency();
+      const selected = session(sessionId), workspace = state.workspaces.find(item => item.id === selected.workspaceId);
+      if (!workspace || workspace.mode === 'observe' || selected.control !== 'managed' || selected.runtime)
+        throw new Error('Choose an Extalia Native session.');
+      if (input.workspaceId !== selected.workspaceId) throw new Error('Use session settings to move to another workspace.');
+      if (![workspace.projectLocation, ...(workspace.additionalProjectLocations ?? [])].includes(input.projectLocation))
+        throw new Error('Choose a registered folder in this workspace.');
+      const queue = await mockQueues.promptQueueStatus!(sessionId);
+      if (selected.running || selected.pendingApprovalId || queue.items.some(item => item.state !== 'sent'))
+        throw new Error('Finish the current task and pending prompts before changing its working folder.');
+      const last = events.get(sessionId)?.at(-1), previous = selected.projectLocation ?? workspace.projectLocation;
+      if (last && previous && previous !== input.projectLocation && selected.workspaceFileScopes?.at(-1)?.throughEventId !== last.id)
+        selected.workspaceFileScopes = [...(selected.workspaceFileScopes ?? []), { throughEventId: last.id, workspaceId: selected.workspaceId, projectLocation: previous }];
+      selected.projectLocation = input.projectLocation;
+      return snapshot();
+    },
     async deleteSession(sessionId) {
       await latency();
       const run = runs.get(sessionId);
@@ -1338,8 +1471,7 @@ function createMockAgents(options: MockOptions): AgentHostApi {
     ...createMockWorkspaceSkills(id => { if (!state.workspaces.some(item => item.id === id)) throw new Error('That workspace no longer exists.'); }, latency),
     ...createMockSkillRegistry(options.skills ?? 'registry', latency),
     ...createMockBuiltinSkills(latency),
-    ...(options.seed === 'ready' && options.knowledge !== 'off' ? createMockKnowledge(options.knowledge === 'empty' || options.knowledge === 'large' ? options.knowledge : 'sample', latency, Date.now(), { conflict: options.knowledge === 'conflict' }) : {}),
-    ...(options.seed === 'ready' && options.knowledge !== 'off' ? createMockKnowledgeSettings(latency) : {}),
+    ...(mockKnowledge ? { ...mockKnowledge, ...mockKnowledgeSettings, ...mockVaultProfiles, ...mockWorkspaceKnowledge } : {}),
     subscribe(listener) {
       listeners.add(listener);
       return () => { listeners.delete(listener); };

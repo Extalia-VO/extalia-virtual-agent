@@ -168,6 +168,31 @@ describe('projectTranscript', () => {
     expect(finished[1]).toMatchObject({ status: 'failed', command: { exitCode: 1, durationMs: 900 } });
   });
 
+  it('keeps approvals, tools and workers live when a user steers the current run', () => {
+    const event = session();
+    const events = [
+      event({ type: 'prompt.submitted', text: 'Review the change', via: 'extalia' }),
+      event({ type: 'tool.started', toolCallId: 'delegate', tool: 'delegate_task', kind: 'delegate', label: 'Review together' }),
+      event({ type: 'subagent.spawned', subagentId: 'worker', role: 'reviewer', label: 'Review member' }),
+      event({ type: 'approval.requested', approvalId: 'approval', action: 'Edit example.ts', risk: 'medium' }),
+      event({ type: 'user.intervention', action: 'steer', text: 'Also preserve the existing API' }),
+    ];
+    const items = projectTranscript(events);
+    expect(items.filter(item => item.kind === 'user').map(item => item.text)).toEqual(['Review the change', 'Also preserve the existing API']);
+    expect(items.find(item => item.kind === 'approval')).toMatchObject({ status: 'pending' });
+    expect(items.find(item => item.kind === 'tool')).toMatchObject({ status: 'running' });
+    expect(items.find(item => item.kind === 'worker')).toMatchObject({ status: 'running' });
+    expect(projectActivity(events)).toMatchObject({ running: true, state: 'waiting', stopping: false, pendingApprovalId: 'approval' });
+    const completed = projectTranscript([...events,
+      event({ type: 'approval.resolved', approvalId: 'approval', decision: 'granted', by: 'user' }),
+      event({ type: 'tool.completed', toolCallId: 'delegate', tool: 'delegate_task', kind: 'delegate', label: 'Review together', ok: true }),
+      event({ type: 'turn.completed' }),
+    ]);
+    expect(completed.find(item => item.kind === 'approval')).toMatchObject({ status: 'granted' });
+    expect(completed.find(item => item.kind === 'tool')).toMatchObject({ status: 'ok' });
+    expect(completed.find(item => item.kind === 'worker')).toMatchObject({ status: 'ok' });
+  });
+
   it('tracks approvals and expires unanswered ones when the turn ends', () => {
     const event = session();
     const asked = [
@@ -258,5 +283,13 @@ describe('mergeEvents', () => {
     const merged = mergeEvents([a], [a, b, b]);
     expect(merged.map(item => item.id)).toEqual([a.id, b.id]);
     expect(mergeEvents(merged, [a, b])).toBe(merged);
+  });
+
+  it('places a late transcript reply before newer hook events, like reloaded history', () => {
+    const at = (second: number) => `2026-11-10T00:00:${String(second).padStart(2, '0')}.000Z`;
+    const make = (id: string, second: number, body: EventBody) => createEvent({ id, at: at(second), sessionId: 's', source: { runtime: 'antigravity', channel: 'hook' }, body });
+    const tool = make('tool', 5, { type: 'tool.started', toolCallId: 'c1', tool: 'run_command', kind: 'command', label: 'Run command' });
+    const reply = make('reply', 3, { type: 'model.completed', text: 'Checking models' });
+    expect(mergeEvents([tool], [reply]).map(item => item.id)).toEqual(['reply', 'tool']);
   });
 });

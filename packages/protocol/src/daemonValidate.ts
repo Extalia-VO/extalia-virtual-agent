@@ -1,3 +1,4 @@
+import { LEARNING_PARAMS, LEARNING_RESULTS, learningJsonSchemaDefs } from './daemonLearningRules.js';
 import type { DaemonMissionRecoveryReview } from './daemonExecutions.js';
 import {
   DAEMON_ERROR_CODES, DAEMON_MAX_DEADLINE_MS, DAEMON_MAX_FRAME_BYTES, DAEMON_OPS, DAEMON_PERMISSION_MODES,
@@ -149,6 +150,7 @@ const PARAMS: Record<DaemonOp, Rule> = {
   ...PREPARATION_PARAMS,
   ...SKILL_PARAMS,
   ...KNOWLEDGE_PARAMS,
+  ...LEARNING_PARAMS,
 };
 const RESULTS: Record<DaemonOp, Rule> = {
   hello: object({ daemonVersion: version, capabilities, maxFrameBytes: number(1, true, DAEMON_MAX_FRAME_BYTES) }),
@@ -165,6 +167,7 @@ const RESULTS: Record<DaemonOp, Rule> = {
   ...PREPARATION_RESULTS,
   ...SKILL_RESULTS,
   ...KNOWLEDGE_RESULTS,
+  ...LEARNING_RESULTS,
 };
 const pascal = (name: string) => name.split('.').map(part => `${part[0]!.toUpperCase()}${part.slice(1)}`).join('');
 const schemaVersion = literal(DAEMON_SCHEMA_VERSION);
@@ -195,6 +198,7 @@ export function daemonJsonSchemaDefs(): Record<string, JsonSchema> {
     TaskState: enumeration(TASK_STATES).schema,
     ...skillJsonSchemaDefs(),
     ...knowledgeJsonSchemaDefs(),
+    ...learningJsonSchemaDefs(),
   };
   for (const name of DAEMON_OPS) {
     defs[`Daemon${pascal(name)}Params`] = PARAMS[name].schema;

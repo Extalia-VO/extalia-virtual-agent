@@ -16,6 +16,25 @@ mod preflight;
 mod routing;
 pub use routing::RoutingInput;
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct SkillRefinementBase {
+    pub revision_id: String,
+    pub skill_md_sha256: String,
+    pub profile_id: String,
+    pub workspace_id: String,
+}
+
+impl SkillRefinementBase {
+    pub fn as_core(&self) -> extalia_core::skills::candidates::RefinementBase<'_> {
+        extalia_core::skills::candidates::RefinementBase {
+            revision_id: &self.revision_id,
+            skill_md_sha256: &self.skill_md_sha256,
+            profile_id: &self.profile_id,
+            workspace_id: &self.workspace_id,
+        }
+    }
+}
+
 /// `DAEMON_SKILL_LIST_MAX_LIMIT`.
 pub const LIST_MAX_LIMIT: u64 = 100;
 /// `DAEMON_SKILL_READ_MAX_BYTES`.
@@ -92,12 +111,17 @@ pub enum SkillRequest {
         /// Relative to the profile's import inbox.
         path: String,
         source_ref: Option<String>,
+        expected_tree_sha256: Option<String>,
+        refinement: Option<SkillRefinementBase>,
     },
     List {
         /// `<packageId>/<revisionId>` of the previous page's last entry.
         cursor: Option<String>,
         limit: Option<u64>,
         package_id: Option<String>,
+    },
+    Rescan {
+        revision_id: String,
     },
     Inspect {
         revision_id: String,
@@ -136,6 +160,12 @@ pub enum SkillRequest {
         revision_id: String,
         path: String,
     },
+    ReviewRead {
+        revision_id: String,
+        path: String,
+        profile_id: String,
+        workspace_id: String,
+    },
     /// The installed inspector (`skill.scanner`); no parameters.
     Scanner,
 }
@@ -148,6 +178,7 @@ impl SkillRequest {
             Self::Import { .. } => Op::SkillImport,
             Self::List { .. } => Op::SkillList,
             Self::Inspect { .. } => Op::SkillInspect,
+            Self::Rescan { .. } => Op::SkillRescan,
             Self::Review { .. } => Op::SkillReview,
             Self::Approve { .. } => Op::SkillApprove,
             Self::Activate { .. } => Op::SkillActivate,
@@ -155,6 +186,7 @@ impl SkillRequest {
             Self::Rollback { .. } => Op::SkillRollback,
             Self::Revoke { .. } => Op::SkillRevoke,
             Self::Read { .. } => Op::SkillRead,
+            Self::ReviewRead { .. } => Op::SkillReviewRead,
             Self::Scanner => Op::SkillScanner,
         }
     }
@@ -180,11 +212,22 @@ impl SkillRequest {
                 origin,
                 path,
                 source_ref,
+                expected_tree_sha256,
+                refinement,
             } => {
                 put("origin", text(origin.as_str()));
                 put("path", text(path));
                 if let Some(source_ref) = source_ref {
                     put("sourceRef", text(source_ref));
+                }
+                if let Some(expected) = expected_tree_sha256 {
+                    put("expectedTreeSha256", text(expected));
+                }
+                if let Some(base) = refinement {
+                    put("expectedBaseRevisionId", text(&base.revision_id));
+                    put("expectedBaseSkillSha256", text(&base.skill_md_sha256));
+                    put("learningProfileId", text(&base.profile_id));
+                    put("learningWorkspaceId", text(&base.workspace_id));
                 }
             }
             Self::List {
@@ -201,6 +244,9 @@ impl SkillRequest {
                 if let Some(package_id) = package_id {
                     put("packageId", text(package_id));
                 }
+            }
+            Self::Rescan { revision_id } => {
+                put("revisionId", text(revision_id));
             }
             Self::Inspect {
                 revision_id,
@@ -264,6 +310,17 @@ impl SkillRequest {
             Self::Read { revision_id, path } => {
                 put("revisionId", text(revision_id));
                 put("path", text(path));
+            }
+            Self::ReviewRead {
+                revision_id,
+                path,
+                profile_id,
+                workspace_id,
+            } => {
+                put("revisionId", text(revision_id));
+                put("path", text(path));
+                put("profileId", text(profile_id));
+                put("workspaceId", text(workspace_id));
             }
             Self::Scanner => {}
         }
@@ -500,13 +557,32 @@ fn all(results: &[bool]) -> Option<()> {
     results.iter().all(|ok| *ok).then_some(())
 }
 
+fn learning_profile(value: &str) -> bool {
+    extalia_core::skills::candidates::candidate_identity(value, 200)
+}
+fn learning_identity(value: &str) -> bool {
+    extalia_core::skills::candidates::candidate_identity(value, 160)
+}
+
 // ---- requests ----
 
 pub(super) fn request(check: &mut Check, op: Op, params: &Value) -> Option<RequestParams> {
     let at = |key: &str| format!("{PARAMS}.{key}");
     let request = match op {
         Op::SkillImport => {
-            let fields = check.object(params, PARAMS, &["origin", "path"], &["sourceRef"])?;
+            let fields = check.object(
+                params,
+                PARAMS,
+                &["origin", "path"],
+                &[
+                    "sourceRef",
+                    "expectedTreeSha256",
+                    "expectedBaseRevisionId",
+                    "expectedBaseSkillSha256",
+                    "learningProfileId",
+                    "learningWorkspaceId",
+                ],
+            )?;
             let origin = check.name(fields.get("origin"), &at("origin"), Origin::parse);
             let path = check.skill_path(fields.get("path"), &at("path"));
             let source_ref = match fields.get("sourceRef") {
@@ -515,10 +591,63 @@ pub(super) fn request(check: &mut Check, op: Op, params: &Value) -> Option<Reque
                     .text(Some(value), &at("sourceRef"), MAX_SOURCE_REF)
                     .map(Some),
             };
+            let expected_tree_sha256 = match fields.get("expectedTreeSha256") {
+                None => Some(None),
+                Some(value) => check
+                    .pattern(
+                        Some(value),
+                        &at("expectedTreeSha256"),
+                        is_digest,
+                        "expected a SHA-256 digest",
+                    )
+                    .map(Some),
+            };
+            let base_keys = [
+                "expectedBaseRevisionId",
+                "expectedBaseSkillSha256",
+                "learningProfileId",
+                "learningWorkspaceId",
+            ];
+            let refinement = if base_keys.iter().any(|key| fields.contains_key(*key)) {
+                for key in base_keys {
+                    if !fields.contains_key(key) {
+                        check.fail(&at(key), "expected complete refinement base");
+                    }
+                }
+                if origin != Some(Origin::Generated) {
+                    check.fail(&at("origin"), "refinements require generated origin");
+                }
+                Some(SkillRefinementBase {
+                    revision_id: check.revision_id(
+                        fields.get("expectedBaseRevisionId"),
+                        &at("expectedBaseRevisionId"),
+                    )?,
+                    skill_md_sha256: check.digest(
+                        fields.get("expectedBaseSkillSha256"),
+                        &at("expectedBaseSkillSha256"),
+                    )?,
+                    profile_id: check.pattern(
+                        fields.get("learningProfileId"),
+                        &at("learningProfileId"),
+                        learning_profile,
+                        "expected a learning profile",
+                    )?,
+                    workspace_id: check.pattern(
+                        fields.get("learningWorkspaceId"),
+                        &at("learningWorkspaceId"),
+                        learning_identity,
+                        "expected a learning workspace",
+                    )?,
+                })
+            } else {
+                None
+            };
             SkillRequest::Import {
                 origin: origin?,
                 path: path?,
                 source_ref: source_ref?,
+                expected_tree_sha256: expected_tree_sha256?,
+                refinement,
             }
         }
         Op::SkillList => {
@@ -543,6 +672,12 @@ pub(super) fn request(check: &mut Check, op: Op, params: &Value) -> Option<Reque
                 cursor: cursor?,
                 limit: limit?,
                 package_id: package_id?,
+            }
+        }
+        Op::SkillRescan => {
+            let fields = check.object(params, PARAMS, &["revisionId"], &[])?;
+            SkillRequest::Rescan {
+                revision_id: check.revision_id(fields.get("revisionId"), &at("revisionId"))?,
             }
         }
         Op::SkillInspect => {
@@ -659,6 +794,30 @@ pub(super) fn request(check: &mut Check, op: Op, params: &Value) -> Option<Reque
                 path: path?,
             }
         }
+        Op::SkillReviewRead => {
+            let fields = check.object(
+                params,
+                PARAMS,
+                &["revisionId", "path", "profileId", "workspaceId"],
+                &[],
+            )?;
+            SkillRequest::ReviewRead {
+                revision_id: check.revision_id(fields.get("revisionId"), &at("revisionId"))?,
+                path: check.skill_path(fields.get("path"), &at("path"))?,
+                profile_id: check.pattern(
+                    fields.get("profileId"),
+                    &at("profileId"),
+                    learning_profile,
+                    "expected a learning profile",
+                )?,
+                workspace_id: check.pattern(
+                    fields.get("workspaceId"),
+                    &at("workspaceId"),
+                    learning_identity,
+                    "expected a learning workspace",
+                )?,
+            }
+        }
         _ => return None,
     };
     Some(RequestParams::Skill(request))
@@ -687,11 +846,28 @@ fn summary(check: &mut Check, value: &Value, path: &str) -> Option<()> {
             "createdAt",
             "updatedAt",
         ],
-        &["stateReason"],
+        &["stateReason", "marketplaceSource", "activationApprovalId"],
     )?;
     let reason = match fields.get("stateReason") {
         None => true,
         Some(value) => check.reason(Some(value), &at("stateReason")).is_some(),
+    };
+    let marketplace_source = match fields.get("marketplaceSource") {
+        None => true,
+        Some(value) => check
+            .boolean(Some(value), &at("marketplaceSource"))
+            .is_some(),
+    };
+    let activation_approval = match fields.get("activationApprovalId") {
+        None => true,
+        Some(value) => check
+            .count(
+                Some(value),
+                &at("activationApprovalId"),
+                1,
+                MAX_SAFE_INTEGER,
+            )
+            .is_some(),
     };
     all(&[
         check
@@ -714,6 +890,8 @@ fn summary(check: &mut Check, value: &Value, path: &str) -> Option<()> {
             .is_some(),
         check.state(fields.get("state"), &at("state")).is_some(),
         reason,
+        marketplace_source,
+        activation_approval,
         check
             .one_of(fields.get("riskClass"), &at("riskClass"), RISK_CLASSES)
             .is_some(),
@@ -784,6 +962,68 @@ fn optional_field(
         None => true,
         Some(value) => rule(check, value, &format!("{path}.{key}")),
     }
+}
+
+fn revision_source(check: &mut Check, value: &Value, path: &str) -> Option<()> {
+    let fields = check.object(value, path, &["origin", "sourceRef", "recordedAt"], &[])?;
+    all(&[
+        check
+            .name(
+                fields.get("origin"),
+                &format!("{path}.origin"),
+                Origin::parse,
+            )
+            .is_some(),
+        check
+            .text(
+                fields.get("sourceRef"),
+                &format!("{path}.sourceRef"),
+                MAX_SOURCE_REF,
+            )
+            .is_some(),
+        check
+            .timestamp(fields.get("recordedAt"), &format!("{path}.recordedAt"))
+            .is_some(),
+    ])
+}
+
+fn source_evidence(check: &mut Check, fields: &Map<String, Value>) -> bool {
+    if !["sources", "sourcesTotal", "sourcesOmitted"]
+        .iter()
+        .any(|key| fields.contains_key(*key))
+    {
+        return true;
+    }
+    all(&[
+        check
+            .items(
+                fields.get("sources"),
+                &format!("{RESULT}.sources"),
+                20,
+                revision_source,
+            )
+            .is_some(),
+        check
+            .count(
+                fields.get("sourcesTotal"),
+                &format!("{RESULT}.sourcesTotal"),
+                0,
+                256,
+            )
+            .is_some(),
+        check
+            .count(
+                fields.get("sourcesOmitted"),
+                &format!("{RESULT}.sourcesOmitted"),
+                0,
+                256,
+            )
+            .is_some(),
+    ])
+    .is_some()
+        && ["sources", "sourcesTotal", "sourcesOmitted"]
+            .iter()
+            .all(|key| fields.contains_key(*key))
 }
 
 fn inspection(check: &mut Check, value: &Value, path: &str) -> Option<()> {
@@ -1064,6 +1304,30 @@ pub(super) fn result(check: &mut Check, op: Op, result: &Value) -> Option<Respon
                     .is_some(),
             ])
         }
+        Op::SkillRescan => {
+            let fields = check.object(
+                result,
+                RESULT,
+                &["revisionId", "packageId", "state"],
+                &["stateReason"],
+            )?;
+            all(&[
+                check
+                    .revision_id(fields.get("revisionId"), &at("revisionId"))
+                    .is_some(),
+                check
+                    .package_id(fields.get("packageId"), &at("packageId"))
+                    .is_some(),
+                check.state(fields.get("state"), &at("state")).is_some(),
+                optional_field(
+                    check,
+                    fields,
+                    "stateReason",
+                    RESULT,
+                    |check, value, path| check.reason(Some(value), path).is_some(),
+                ),
+            ])
+        }
         Op::SkillInspect => {
             let fields = check.object(
                 result,
@@ -1077,9 +1341,32 @@ pub(super) fn result(check: &mut Check, op: Op, result: &Value) -> Option<Respon
                     "history",
                     "consent",
                 ],
-                &[],
+                &[
+                    "instructions",
+                    "instructionsUnavailable",
+                    "sources",
+                    "sourcesTotal",
+                    "sourcesOmitted",
+                ],
             )?;
             all(&[
+                source_evidence(check, fields),
+                !(fields.contains_key("instructions")
+                    && fields.contains_key("instructionsUnavailable")),
+                optional_field(
+                    check,
+                    fields,
+                    "instructions",
+                    RESULT,
+                    |check, value, path| check.multiline(Some(value), path, 65536, true).is_some(),
+                ),
+                optional_field(
+                    check,
+                    fields,
+                    "instructionsUnavailable",
+                    RESULT,
+                    |check, value, path| check.boolean(Some(value), path).is_some(),
+                ),
                 fields
                     .get("revision")
                     .is_none_or(|value| summary(check, value, &at("revision")).is_some()),
@@ -1224,21 +1511,31 @@ pub(super) fn result(check: &mut Check, op: Op, result: &Value) -> Option<Respon
                     .is_some(),
             ])
         }
-        Op::SkillRead => {
-            let fields = check.object(
-                result,
-                RESULT,
-                &[
-                    "revisionId",
-                    "packageId",
-                    "path",
-                    "size",
-                    "sha256",
-                    "content",
-                ],
-                &[],
-            )?;
-            all(&[
+        Op::SkillRead | Op::SkillReviewRead => {
+            let mut required = vec![
+                "revisionId",
+                "packageId",
+                "path",
+                "size",
+                "sha256",
+                "content",
+            ];
+            let max = if op == Op::SkillReviewRead {
+                70 * 1024
+            } else {
+                READ_MAX_BYTES
+            };
+            if op == Op::SkillReviewRead {
+                required.extend([
+                    "skillMdSha256",
+                    "untrusted",
+                    "reviewReceipt",
+                    "provenance",
+                    "referencePaths",
+                ]);
+            }
+            let fields = check.object(result, RESULT, &required, &[])?;
+            let base = all(&[
                 check
                     .revision_id(fields.get("revisionId"), &at("revisionId"))
                     .is_some(),
@@ -1247,18 +1544,86 @@ pub(super) fn result(check: &mut Check, op: Op, result: &Value) -> Option<Respon
                     .is_some(),
                 check.skill_path(fields.get("path"), &at("path")).is_some(),
                 check
-                    .count(fields.get("size"), &at("size"), 0, READ_MAX_BYTES)
+                    .count(fields.get("size"), &at("size"), 0, max)
                     .is_some(),
                 check.digest(fields.get("sha256"), &at("sha256")).is_some(),
                 check
-                    .multiline(
-                        fields.get("content"),
-                        &at("content"),
-                        READ_MAX_BYTES as usize,
-                        false,
-                    )
+                    .multiline(fields.get("content"), &at("content"), max as usize, false)
                     .is_some(),
             ])
+            .is_some();
+            if op == Op::SkillRead {
+                base.then_some(())
+            } else {
+                let provenance_at = at("provenance");
+                let provenance = check.object(
+                    fields.get("provenance")?,
+                    &provenance_at,
+                    &["profileId", "workspaceId", "sessionId", "promptSha256"],
+                    &[],
+                )?;
+                let reference_paths = fields.get("referencePaths")?.as_array();
+                let references_ok = reference_paths.is_some_and(|paths| {
+                    paths.len() <= 4
+                        && paths
+                            .iter()
+                            .all(|value| value.as_str().is_some_and(is_skill_path))
+                        && paths
+                            .iter()
+                            .enumerate()
+                            .all(|(i, value)| !paths[..i].contains(value))
+                });
+                if !references_ok {
+                    check.fail(
+                        &at("referencePaths"),
+                        "expected up to four unique relative paths",
+                    );
+                }
+                if fields.get("untrusted") != Some(&Value::Bool(true)) {
+                    check.fail(&at("untrusted"), "expected true");
+                }
+                all(&[
+                    base,
+                    references_ok,
+                    fields.get("untrusted") == Some(&Value::Bool(true)),
+                    check
+                        .digest(fields.get("skillMdSha256"), &at("skillMdSha256"))
+                        .is_some(),
+                    check
+                        .digest(fields.get("reviewReceipt"), &at("reviewReceipt"))
+                        .is_some(),
+                    check
+                        .pattern(
+                            provenance.get("profileId"),
+                            &format!("{provenance_at}.profileId"),
+                            learning_profile,
+                            "expected a learning profile",
+                        )
+                        .is_some(),
+                    check
+                        .pattern(
+                            provenance.get("workspaceId"),
+                            &format!("{provenance_at}.workspaceId"),
+                            learning_identity,
+                            "expected a learning workspace",
+                        )
+                        .is_some(),
+                    check
+                        .pattern(
+                            provenance.get("sessionId"),
+                            &format!("{provenance_at}.sessionId"),
+                            learning_identity,
+                            "expected a learning session",
+                        )
+                        .is_some(),
+                    check
+                        .digest(
+                            provenance.get("promptSha256"),
+                            &format!("{provenance_at}.promptSha256"),
+                        )
+                        .is_some(),
+                ])
+            }
         }
         Op::SkillRoutingPreview => routing::result(check, result),
         Op::SkillPreflight => preflight::result(check, result),
@@ -1296,4 +1661,47 @@ pub(super) fn result(check: &mut Check, op: Op, result: &Value) -> Option<Respon
         op,
         result: result.clone(),
     })
+}
+
+#[cfg(test)]
+mod provenance_tests {
+    use super::*;
+    use serde_json::json;
+    #[test]
+    fn provenance_is_optional_for_old_peers_but_complete_and_bounded_when_present() {
+        assert!(source_evidence(&mut Check::default(), &Map::new()));
+        let valid = json!({"sources":[{"origin":"imported","sourceRef":"github:example/skills@1111111111111111111111111111111111111111#demo","recordedAt":"2026-01-01T00:00:00.000Z"}],"sourcesTotal":1,"sourcesOmitted":0});
+        assert!(source_evidence(
+            &mut Check::default(),
+            valid.as_object().unwrap()
+        ));
+        for key in ["sources", "sourcesTotal", "sourcesOmitted"] {
+            let mut incomplete = valid.clone();
+            incomplete.as_object_mut().unwrap().remove(key);
+            assert!(!source_evidence(
+                &mut Check::default(),
+                incomplete.as_object().unwrap()
+            ));
+        }
+        for field in ["sourcesTotal", "sourcesOmitted"] {
+            let mut invalid = valid.clone();
+            invalid[field] = json!(257);
+            assert!(!source_evidence(
+                &mut Check::default(),
+                invalid.as_object().unwrap()
+            ));
+        }
+        let mut invalid = valid.clone();
+        invalid["sources"][0]["origin"] = json!("builtin");
+        assert!(!source_evidence(
+            &mut Check::default(),
+            invalid.as_object().unwrap()
+        ));
+        let mut invalid = valid.clone();
+        invalid["sources"] = json!(vec![valid["sources"][0].clone(); 21]);
+        assert!(!source_evidence(
+            &mut Check::default(),
+            invalid.as_object().unwrap()
+        ));
+    }
 }

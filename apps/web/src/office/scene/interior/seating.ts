@@ -13,6 +13,8 @@ export interface OfficeSeat {
 export interface OfficeAgentAllocation extends OfficeSeat {
   agentId: string;
   resourceId: string;
+  /** Reserved workstation retained while the visible resource is a meeting chair. */
+  workstationId?: string;
 }
 
 /**
@@ -107,7 +109,7 @@ export function allocateOfficeAgents(agents: readonly OfficeAgent[], previous?: 
   const order = [...leads, ...others];
   const assigned = new Map<string, OfficeSeat>();
   const taken = new Set<string>();
-  const kept = new Map(previous?.map(entry => [entry.agentId, entry.resourceId]));
+  const kept = new Map(previous?.map(entry => [entry.agentId, entry.workstationId ?? entry.resourceId]));
   for (const agent of order) {
     const seat = seats.find(candidate => candidate.id === kept.get(agent.id));
     if (seat && !taken.has(seat.id)) { assigned.set(agent.id, seat); taken.add(seat.id); }
@@ -130,8 +132,50 @@ export function allocateOfficeAgents(agents: readonly OfficeAgent[], previous?: 
     taken.add(seat.id);
   }
   // Output order is input-independent (sorted by id), as before.
+  const meetings = allocateMeetingSeats(present.filter(agent => assigned.has(agent.id)), previous);
   return present.slice().sort(byId).flatMap(agent => {
     const seat = assigned.get(agent.id);
-    return seat ? [{ ...seat, agentId: agent.id, resourceId: seat.id }] : [];
+    const meeting = meetings.get(agent.id);
+    return seat ? [{ ...(meeting ?? seat), agentId: agent.id, resourceId: (meeting ?? seat).id, workstationId: seat.id }] : [];
   });
+}
+
+/** Whole meetings take one free room; overflow and inconsistent memberships remain at desks. */
+function allocateMeetingSeats(agents: readonly OfficeAgent[], previous?: readonly OfficeAgentAllocation[]): Map<string, OfficeSeat> {
+  const assigned = new Map<string, OfficeSeat>();
+  const rooms = ['meeting-a', 'meeting-b'] as const;
+  const occupied = new Set<string>();
+  const groups = new Map<string, OfficeAgent[]>();
+  for (const agent of agents) if (agent.meeting) {
+    const key = JSON.stringify([agent.sessionId, agent.meeting.meetingId]);
+    groups.set(key, [...(groups.get(key) ?? []), agent]);
+  }
+  const previousRoom = (members: OfficeAgent[]) => {
+    const ids = new Set(members.map(agent => agent.id));
+    const entry = previous?.find(allocation => ids.has(allocation.agentId) && allocation.resourceId.startsWith('meeting-'));
+    return rooms.find(room => entry?.resourceId.startsWith(`${room}.seat-`));
+  };
+  // Existing meetings keep their room before new groups claim an unoccupied one.
+  const ordered = [...groups].sort(([a, membersA], [b, membersB]) =>
+    Number(Boolean(previousRoom(membersB))) - Number(Boolean(previousRoom(membersA))) || a.localeCompare(b));
+  for (const [, members] of ordered) {
+    const meeting = members[0]!.meeting!;
+    if (members.length !== meeting.participants.length || new Set(meeting.participants).size !== members.length
+      || !members.every(agent => agent.meeting?.roomId === meeting.roomId
+        && JSON.stringify(agent.meeting?.participants) === JSON.stringify(meeting.participants)
+        && meeting.participants.includes(agent.agentId))) continue;
+    const kept = previousRoom(members);
+    const candidates = meeting.roomId ? [meeting.roomId] : kept ? [kept, ...rooms.filter(room => room !== kept)] : rooms;
+    const room = candidates.find(id => !occupied.has(id)
+      && OFFICE_RESOURCES.filter(resource => resource.roomId === id && resource.kind === 'meeting-seat').length >= members.length);
+    if (!room) continue;
+    occupied.add(room);
+    const seats = OFFICE_RESOURCES.filter(resource => resource.roomId === room && resource.kind === 'meeting-seat');
+    members.slice().sort((a, b) => a.id.localeCompare(b.id)).forEach((agent, index) => {
+      const seat = seats[index]!;
+      assigned.set(agent.id, { id: seat.id, floor: seat.floor, position: [...seat.position], rotationY: seat.rotationY,
+        seatHeight: seat.interaction.seatHeight });
+    });
+  }
+  return assigned;
 }

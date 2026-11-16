@@ -7,9 +7,9 @@
 //!   rejected) and cross-checks the `SKILL.md` front matter; it infers a manifest for a
 //!   package without one.
 //! - [`lifecycle`] is the single reconciled revision state machine and its transition table.
-//! - [`inspect`] is the `SkillInspector` port. The only adapter in this slice,
-//!   [`inspect::UnavailableInspector`], answers `scanner-unavailable`: every package stays
-//!   quarantined until a verified scanner pin exists (ADR 0023).
+//! - [`inspect`] is the `SkillInspector` port. The daemon supplies a pinned scanner
+//!   only when its bundle and confinement are verified; [`inspect::UnavailableInspector`]
+//!   always answers `scanner-unavailable` (ADR 0023).
 //! - [`policy`] holds the pure decisions: verdict mapping, attestation validity, permission
 //!   increase and the approval / auto-eligibility route.
 //! - [`registry`] applies them to the core store: import, inspection, validation,
@@ -39,6 +39,7 @@
 //! ever falls back to the source copy.
 
 pub mod builtin;
+pub mod candidates;
 pub mod consent;
 pub mod inspect;
 pub mod lifecycle;
@@ -52,6 +53,7 @@ pub mod review;
 pub mod routing;
 #[cfg(test)]
 mod routing_tests;
+pub mod storage;
 #[cfg(test)]
 mod tests;
 pub mod tree;

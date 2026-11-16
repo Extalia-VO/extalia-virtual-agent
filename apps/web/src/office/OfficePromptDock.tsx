@@ -13,6 +13,8 @@ import { TeamSetupDialog } from './TeamSetupDialog';
 import { modelChoicesKey, sessionRuntime } from '../chat/sessionRuntime';
 import { formatBytes, sendPromptWithAttachments, uploadAttachments, type PendingAttachment } from '../chat/attachments';
 import { LONG_PASTE_THRESHOLD, MESSAGE_TEXT_LIMIT, longTextFiles, pastedValue } from '../chat/longTextPaste';
+import { SessionWorkspaceReview } from '../chat/SessionWorkspaceReview';
+import { useWorkspaceReviewRecovery } from '../chat/workspaceReviewRecovery';
 
 /** Hosts before v0.0.27 lack per-session model/effort; everything here is feature-detected so they keep working. */
 interface OptionsHost {
@@ -89,7 +91,7 @@ function useStageReserve(element: RefObject<HTMLElement | null>) {
  * the workspace), with an optional model and effort for that turn and the next.
  * `compact` keeps only the field until the dock is focused or has text; then workspace, target, team, model and effort appear.
  */
-export function OfficePromptDock({ t, agents, state, workspaceId, compact = false, targetSessionId, note, onTarget, onState, onStarted, onOpenSettings, officeNames, savedLooks }: {
+export function OfficePromptDock({ t, agents, state, workspaceId, compact = false, targetSessionId, note, onTarget, onState, onStarted, onOpenSettings, officeNames, savedLooks, onLearningTarget }: {
   t: Messages; agents: AgentHostApi; state: HostState; workspaceId?: string; compact?: boolean;
   /** v0.0.30: every name in the office, so generated team names stay unique. */
   officeNames?: ReadonlySet<string> | undefined;
@@ -101,11 +103,14 @@ export function OfficePromptDock({ t, agents, state, workspaceId, compact = fals
   note?: string | undefined;
   onTarget(sessionId: string | undefined): void;
   onState(state: HostState): void; onStarted(sessionId: string): void; onOpenSettings(): void;
+  /** The shared learning owner portals its view here; the dock measures the resulting height. */
+  onLearningTarget?: (target: HTMLDivElement | null) => void;
 }) {
+  const workspaces = state.workspaces.filter(item => item.mode !== 'observe');
   const c = t.officeUx.composer;
   const id = useId();
   const root = useRef<HTMLElement>(null);
-  const [chosen, setChosen] = useState(workspaceId ?? state.workspaces[0]?.id ?? '');
+  const [chosen, setChosen] = useState(workspaceId ?? workspaces[0]?.id ?? '');
   const [text, setText] = useState('');
   const [chips, setChips] = useState<DockAttachment[]>([]);
   const chipsRef = useRef(chips);
@@ -144,13 +149,16 @@ export function OfficePromptDock({ t, agents, state, workspaceId, compact = fals
     entrancePlayed = true;
     return !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   });
-  // Follow the Office project filter when it changes (state adjusted during render, not in an effect).
+  // Follow the active workspace without filtering the Office roster.
   const [filter, setFilter] = useState(workspaceId);
-  if (filter !== workspaceId) { setFilter(workspaceId); if (workspaceId) setChosen(workspaceId); }
+  if (filter !== workspaceId) { setFilter(workspaceId); setChosen(workspaceId ?? workspaces[0]?.id ?? ''); }
 
   const target = targetSessionId ? state.sessions.find(item => item.id === targetSessionId && item.control === 'managed') : undefined;
-  // A targeted session decides the workspace; otherwise the dock's own choice (or the Office filter).
-  const workspace = state.workspaces.find(item => item.id === (target?.workspaceId ?? chosen)) ?? state.workspaces[0];
+  const { required: workspaceReviewRequired, recover: recoverWorkspaceReview, clear: clearWorkspaceReview } = useWorkspaceReviewRecovery({ agents, onState, session: target });
+  const reviewRequired = useRef(workspaceReviewRequired);
+  useLayoutEffect(() => { reviewRequired.current = workspaceReviewRequired; }, [workspaceReviewRequired]);
+  // A targeted session decides the workspace; otherwise the dock's own choice (or active Office workspace).
+  const workspace = workspaces.find(item => item.id === (target?.workspaceId ?? chosen)) ?? workspaces[0];
   const targets = workspaceTargets(state.sessions, workspace?.id);
   if (target && !targets.some(item => item.id === target.id)) targets.unshift(target);
   // v0.0.30: sessions are named by their lead's full name (the title stays as the task line).
@@ -226,7 +234,7 @@ export function OfficePromptDock({ t, agents, state, workspaceId, compact = fals
   }
 
   async function send() {
-    if (!workspace || busy || sending.current || !prompt || prompt.length > MESSAGE_TEXT_LIMIT || targetBusy) return;
+    if (!workspace || busy || sending.current || !prompt || prompt.length > MESSAGE_TEXT_LIMIT || targetBusy || workspaceReviewRequired) return;
     const sentContext = context;
     const owns = () => currentContext.current === sentContext;
     const sent = chipsRef.current;
@@ -257,11 +265,11 @@ export function OfficePromptDock({ t, agents, state, workspaceId, compact = fals
         if (!owns()) return;
         binding.current = { context: sentContext, sessionId };
       }
-      if (!owns()) return;
+      if (!owns() || reviewRequired.current) return;
       const ids = await uploadAttachments(agents, sessionId, sent, (key, change) => {
         if (owns()) setChips(current => current.map(chip => chip.key === key ? { ...chip, ...change } : chip));
       });
-      if (!owns()) return;
+      if (!owns() || reviewRequired.current) return;
       await sendPromptWithAttachments(agents, sessionId, prompt, ids);
       const sentKeys = new Set(sent.map(chip => chip.key));
       setChips(current => current.filter(chip => !sentKeys.has(chip.key)));
@@ -274,18 +282,24 @@ export function OfficePromptDock({ t, agents, state, workspaceId, compact = fals
       // The next prompt continues the conversation that was just started; the chip says so and can be cleared.
       onTarget(sessionId);
       onStarted(sessionId);
-    } catch (failure) { if (owns()) setError(errorMessage(failure)); }
+    } catch (failure) {
+      if (owns()) {
+        setError(errorMessage(failure));
+        await recoverWorkspaceReview(failure);
+      }
+    }
     finally { sending.current = false; setBusy(false); }
   }
   const specNames = preview ? preview.names.map(name => name || t.teamSpec.unnamed).join(', ') : '';
 
-  const open = !compact || engaged || Boolean(text) || chips.length > 0 || Boolean(error);
+  const open = !compact || engaged || Boolean(text) || chips.length > 0 || Boolean(error) || workspaceReviewRequired;
   const hint = targetBusy ? c.busy : note ?? (target ? c.hintContinue(titleOf(target)) : teamStatus?.enabled ? `${c.hintNew} ${t.team.pending}` : c.hintNew);
   const teamLabel = target ? t.team.openLabel(titleOf(target)) : defaults && workspace ? t.team.openDefault(workspace.name) : t.team.openNew;
   const label = busy ? (target ? c.sending : t.officeUx.dockStarting) : target ? c.send : t.officeUx.dockSend;
   return <section ref={root} className={`office-prompt-dock${compact ? ' is-compact' : ''}`} aria-label={t.officeUx.dockTitle}
     data-entrance={entering || undefined} data-open={open || undefined} data-target={target ? 'session' : 'new'}
-    onFocus={() => setEngaged(true)} onBlur={settle}>
+    onFocus={event => { if (!(event.target as HTMLElement).closest('.learning-countdown')) setEngaged(true); }} onBlur={settle}>
+    <div className="office-learning-slot" ref={onLearningTarget} />
     {!workspace ? <div className="office-prompt-empty"><p>{t.officeUx.dockNoWorkspace}</p><button type="button" className="button" onClick={onOpenSettings}>{t.officeUx.dockOpenSettings}</button></div> :
       // Not a <form>: Radix selects inside forms add hidden native selects whose change events can reset a just-added target.
       <div className="office-prompt-form" role="group" aria-label={t.officeUx.dockTitle}>
@@ -295,18 +309,20 @@ export function OfficePromptDock({ t, agents, state, workspaceId, compact = fals
           <strong className="office-prompt-title"><Icon name="spark" /><span>{target ? c.targetAgent(titleOf(target)) : t.officeUx.dockTitle}</span></strong>
           <div className="office-prompt-workspace" title={`${t.officeUx.dockWorkspace}: ${workspace.name}`}>
             <Select aria-label={t.officeUx.dockWorkspace} value={workspace.id} disabled={busy}
-              options={state.workspaces.map(item => ({ value: item.id, label: item.name, icon: 'folder' as const }))}
+              options={workspaces.map(item => ({ value: item.id, label: item.name, icon: 'folder' as const }))}
               onChange={next => { setChosen(next); if (target && target.workspaceId !== next) onTarget(undefined); }} />
           </div>
         </div>
         </div></div>
+        <SessionWorkspaceReview t={t} agents={agents} state={state} session={target} required={workspaceReviewRequired}
+          onReviewed={next => { clearWorkspaceReview(); setError(undefined); onState(next); area.current?.focus(); }} />
         <div className="office-prompt-input">
           <textarea ref={area} id={`${id}-prompt`} aria-label={target ? c.targetAgent(titleOf(target)) : t.officeUx.dockPlaceholder} aria-describedby={`${id}-hint`}
             placeholder={target ? c.cardPlaceholder(titleOf(target)) : t.officeUx.dockPlaceholder}
             value={text} disabled={busy} rows={1}
             onPaste={onPaste} onChange={event => setText(event.target.value)}
             onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); } }} />
-          <button type="button" onClick={() => void send()} className="button primary office-prompt-send" disabled={busy || !prompt || prompt.length > MESSAGE_TEXT_LIMIT || targetBusy} aria-label={label} title={c.shortcut}>
+          <button type="button" onClick={() => void send()} className="button primary office-prompt-send" disabled={busy || !prompt || prompt.length > MESSAGE_TEXT_LIMIT || targetBusy || workspaceReviewRequired} aria-label={label} title={c.shortcut}>
             <Icon name={busy ? 'refresh' : 'send'} className={busy ? 'spin' : ''} /><span>{label}</span>
           </button>
         </div>

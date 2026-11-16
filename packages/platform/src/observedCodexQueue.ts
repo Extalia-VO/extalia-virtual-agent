@@ -4,6 +4,8 @@ export interface ObservedCodexQueueStatus {
   threadId?: string;
   enabled: boolean;
   canQueue: boolean;
+  /** Verified local CLI and source eligibility; enabling still requires an explicit user action. */
+  canEnable?: boolean;
   busy?: boolean;
   delivery?: 'queued' | 'unknown';
   /** Receipt identity only; this does not establish delivery to an agent. */

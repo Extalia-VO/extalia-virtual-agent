@@ -104,5 +104,24 @@ describe('AttachmentStore', () => {
     expect(existsSync(path.join(root, SESSION))).toBe(false);
     expect(attachments.pending(SESSION)).toBe(0);
   });
+
+  it('lists pending attachments in upload order and reflects remove, consume and drop', async () => {
+    const root = path.join(await tempDir(), 'attachments');
+    const attachments = store(root);
+    const first = await attachments.upload(SESSION, { name: 'first.png', mimeType: 'image/png', data: b64(pngOf(16)) });
+    const second = await attachments.upload(SESSION, { name: 'second.txt', mimeType: 'text/plain', data: b64('two') });
+    const third = await attachments.upload(SESSION, { name: 'third.png', mimeType: 'image/png', data: b64(pngOf(24)) });
+    const pending = attachments.listPending(SESSION);
+    expect(pending.map(item => item.id)).toEqual([first.id, second.id, third.id]);
+    expect(pending.map(item => item.name)).toEqual(['first.png', 'second.txt', 'third.png']);
+    pending[0]!.name = 'mutated.png';
+    expect(attachments.listPending(SESSION)[0]!.name).toBe('first.png');
+    await attachments.remove(SESSION, second.id);
+    expect(attachments.listPending(SESSION).map(item => item.id)).toEqual([first.id, third.id]);
+    await attachments.consume(SESSION, [first.id]);
+    expect(attachments.listPending(SESSION).map(item => item.id)).toEqual([third.id]);
+    await attachments.drop(SESSION);
+    expect(attachments.listPending(SESSION)).toEqual([]);
+  });
 });
 

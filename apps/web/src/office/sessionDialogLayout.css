@@ -1,0 +1,25 @@
+.session-dialog-root .session-dialog {
+  --session-dialog-width: 900px;
+  width: min(var(--session-dialog-width), calc(var(--session-viewport-width, 100vw) - 32px));
+  height: calc(var(--session-viewport-height, 100dvh) - 32px);
+  box-sizing: border-box;
+  transition: width 220ms var(--ease);
+}
+.session-dialog-root .session-dialog[data-tools-available='false'] { --session-dialog-width: 820px; }
+.session-dialog-root .session-dialog[data-tools-expanded='true'] { --session-dialog-width: 1180px; }
+@media (max-width: 650px) {
+  .session-dialog-root .session-dialog {
+    width: var(--session-viewport-width, 100vw);
+    height: var(--session-viewport-height, 100dvh);
+  }
+  .session-dialog-root .session-dialog-head { position: relative; flex-wrap: wrap; gap: 8px; }
+  .session-dialog-root .session-dialog-identity { flex: 1 1 calc(100% - 60px); padding-right: 36px; box-sizing: border-box; }
+  .session-dialog-root .session-dialog-head > .button { flex: 0 1 auto; max-width: 100%; white-space: nowrap; font-size: 12px; }
+  .session-dialog-root .session-dialog-close { position: absolute; top: 10px; right: 10px; }
+  .session-dialog-root .character-tabs { flex: 1 0 100%; width: 100%; }
+  .session-dialog-root .character-tools-toggle { font-size: 0; gap: 0; }
+  .session-dialog-root .character-tools-toggle .icon { width: 18px; height: 18px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .session-dialog-root .session-dialog { transition: none; }
+}

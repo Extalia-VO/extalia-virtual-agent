@@ -34,6 +34,22 @@ const approval = { kind: 'approval', prompt_id: 'question-one', execution_genera
 const clarify = { kind: 'clarify', prompt_id: 'question-one', execution_generation: 3, question: 'Choose a colour', choices: ['Green', 'Blue'], multi_select: false };
 
 describe('observed Hermes exact-owner controls', () => {
+  it.each(['start', 'steer'] as const)('does not change explicit %s intent while checking the gateway authority', async intent => {
+    const f = fixture();
+    f.snapshot.running = intent === 'steer';
+    try {
+      const connected = await f.control.connect();
+      f.request.mockClear();
+      f.request.mockImplementationOnce(async method => {
+        expect(method).toBe('runtime.describe');
+        f.event(intent === 'steer' ? 'message.complete' : 'message.start', {});
+        return { profile_id: 'profile-one', instance_id: 'owner-one', authority_epoch: 7, capabilities: ['durable-admission-v1'] };
+      });
+      const result = await f.control.send({ connectionId: connected.connectionId!, executionGeneration: 3, text: 'Explicit action', intent });
+      expect(result.delivery).toBe('unknown');
+      expect(f.request.mock.calls.some(([method]) => method === 'session.steer' || method === 'prompt.submit')).toBe(false);
+    } finally { await f.control.close(); }
+  });
   it('does no discovery until explicitly connected and submits only into the exact live native identity', async () => {
     const f = fixture();
     expect(f.control.status()).toMatchObject({ state: 'disconnected', canSend: false });
@@ -41,20 +57,31 @@ describe('observed Hermes exact-owner controls', () => {
     const state = await f.control.connect();
     expect(state).toMatchObject({ state: 'connected', nativeSessionId: 'native-one', executionGeneration: 3, canSend: true });
     await f.control.send({ connectionId: state.connectionId!, executionGeneration: 3, text: 'Continue this existing session' });
-    expect(f.request).toHaveBeenCalledWith('session.list', { scope: 'live', limit: 200 });
+    expect(f.request).not.toHaveBeenCalledWith('session.list', expect.anything());
     expect(f.request).toHaveBeenCalledWith('session.resume', { session_id: 'native-one', omit_messages: true });
     expect(f.request).toHaveBeenCalledWith('prompt.submit', { session_id: 'native-one', text: 'Continue this existing session', submission_id: expect.any(String) });
     expect(f.request.mock.calls.some(([method]) => ['session.create', 'session.branch', 'session.activate'].includes(method))).toBe(false);
     await f.control.close();
   });
 
-  it('never resumes a stored-only or missing session', async () => {
+  it('restores an exact authorized cold session without depending on a live-list page', async () => {
     const f = fixture();
-    f.request.mockImplementation(async method => method === 'runtime.describe'
-      ? { profile_id: 'profile-one', instance_id: 'owner-one', authority_epoch: 7, capabilities: ['durable-admission-v1'] }
-      : { scope: 'live', sessions: [{ session_id: 'unrelated' }] });
+    const original = f.request.getMockImplementation()!;
+    f.request.mockImplementation(async method => method === 'session.list' ? { scope: 'live', sessions: [] } : original(method));
+    expect(await f.control.connect()).toMatchObject({ state: 'connected', canSend: true, nativeSessionId: 'native-one' });
+    expect(f.request.mock.calls.map(([method]) => method)).toEqual(['runtime.describe', 'session.resume']);
+    await f.control.close();
+  });
+
+  it('never creates or substitutes another session when exact cold resume is refused', async () => {
+    const f = fixture();
+    const original = f.request.getMockImplementation()!;
+    f.request.mockImplementation(async method => {
+      if (method === 'session.resume') throw new Error('Session is absent or outside authenticated ownership.');
+      return original(method);
+    });
     expect(await f.control.connect()).toMatchObject({ state: 'unavailable', canSend: false });
-    expect(f.request).not.toHaveBeenCalledWith('session.resume', expect.anything());
+    expect(f.request.mock.calls.map(([method]) => method)).toEqual(['runtime.describe', 'session.resume']);
     expect(f.rpc.close).toHaveBeenCalledOnce();
   });
 

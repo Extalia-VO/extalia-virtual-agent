@@ -1,0 +1,66 @@
+{
+  "date": "2026-11-11",
+  "featureVersion": "0.4.267",
+  "latestFocusedVerificationVersion": "0.4.268",
+  "status": "implemented-focused-verified-full-workspace-gate-blocked",
+  "implementation": "docs/architecture/observed-tool-images.md",
+  "checks": {
+    "combinedFocusedTests": { "suites": 18, "passed": 871, "failed": 0 },
+    "productionRendererTypes": { "passed": true, "sourceRoots": 569, "concurrentTestOnlyChangesExcluded": true },
+    "hostTypecheck": "passed",
+    "ownedSourceLint": "passed",
+    "webDesktopCliBuilds": "passed",
+    "versions": "consistent at 0.4.268",
+    "fullPnpmCheck": "not passed",
+    "rustVerification": "incomplete; no Rust tests or Clippy pass claimed"
+  },
+  "focusedCoverage": [
+    "Metadata-only result attachments, strict SHA-256 references and no bytes/paths/URLs in event media",
+    "Supported structured inline Codex result image forms and exact successful image-view matching",
+    "Private image/header/dimension/byte bounds, quotas and legacy accounting",
+    "Corrupt index refusal, failed atomic admission cleanup and bounded reads",
+    "Project/temp path validation, symlinks, file changes and source completion timestamps",
+    "Captured original survives deletion or overwrite; uncaptured newer file is refused for an older result",
+    "Already admitted source reuse and unchanged-source deferred batch progress",
+    "Labels-only and session deletion races during preview reads",
+    "Hook-row hydration without duplicate tools and authoritative event refresh generations",
+    "Primary/worker media, automatic initial opening and preserved manual folding",
+    "Thumbnail/original leases, bounded cache and closed temporary image bitmaps"
+  ],
+  "browser": {
+    "host": "synthetic; actual shared transcript/image components",
+    "layoutCases": 4,
+    "renditionCases": 2,
+    "languages": ["en", "id"],
+    "themes": ["light", "dark"],
+    "widths": [1440, 390],
+    "observations": [
+      "Late media opens a run; explicit folding remains authoritative",
+      "Text output stays independently folded",
+      "2400x1600 source produces 192x128 thumbnail; 800x2400 source produces 64x192 thumbnail",
+      "Explicit modal displays original natural resolution without another host read",
+      "Tab/ShiftTab containment, Escape and focus restoration work",
+      "Offscreen/folded media avoids reads and releases display URLs",
+      "Session switch, unmount and closing originals release their corresponding URLs",
+      "Missing or failed image displays localized unavailable text with literal filename",
+      "No horizontal overflow or runtime errors in final cases"
+    ],
+    "temporaryHarnessServersAndBrowsers": "closed and cleaned"
+  },
+  "workspaceGateLimitations": [
+    "Concurrent Office QA/import/effect and Observe input/notification changes interrupted ownership-baseline stages; only bounded reviewed entries were merged",
+    "Workspace typecheck reported concurrent Office movement source/test narrowing errors; production renderer source check passed after a minimal optional guard",
+    "Shared Cargo cache build stalled while rustc enumerated target/debug/deps; no shared cache was deleted",
+    "Fresh temporary Cargo target then stalled at libc build-script startup; samples stayed in _dyld_start at zero CPU",
+    "A standalone full serial TypeScript run blocked in a temporary Linux installer spawnSync fixture and was interrupted; no full-suite pass claimed",
+    "Only verified owned verification process trees and their temporary targets/fixtures were removed; logs retained outside the repository"
+  ],
+  "scopeLimits": [
+    "Synthetic native source fixtures do not certify every installed Codex transcript version",
+    "Local fallback is restricted to matched successful Codex image-view calls in admitted project/temp roots",
+    "No remote image fetching, arbitrary renderer file reads, model calls or real-profile changes",
+    "Missing uncaptured originals, refused paths, invalid bytes, exhausted quotas or corrupt stores show unavailable metadata",
+    "Path checks do not establish an OS sandbox against a hostile local process coordinating ancestor replacement",
+    "Transient full-source decode peak and whole-app memory were not measured"
+  ]
+}

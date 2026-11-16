@@ -114,7 +114,9 @@ describe('ConnectAgentAppsCard rendering', () => {
     expect(enHtml).toContain('Preview Codex hook changes');
     expect(enHtml).toContain('Apply');
     expect(enHtml).toContain('Labels only (hide prompt, reply and tool output text from outside apps)');
-    expect(enHtml).toContain('Hermes dashboard URL (optional, read-only)');
+    expect(enHtml).toContain(MESSAGES.en.agentApps.dashboardUrlLabel);
+    expect(enHtml).toContain('type="url"');
+    expect(enHtml).not.toContain('readonly=');
     expect(enHtml).toContain('Restart the app after connecting. In Codex, open /hooks and approve the Extalia hooks.');
 
     await agents.applyAgentAppConnect('claude');
@@ -135,7 +137,7 @@ describe('ConnectAgentAppsCard rendering', () => {
     expect(idHtml).toContain('Uji');
     expect(idHtml).toContain('Putuskan');
     expect(idHtml).toContain('Hanya label (sembunyikan teks prompt, balasan, dan output tool dari aplikasi luar)');
-    expect(idHtml).toContain('URL dashboard Hermes (opsional, baca-saja)');
+    expect(idHtml).toContain(MESSAGES.id.agentApps.dashboardUrlLabel);
     expect(idHtml).toContain('Mulai ulang aplikasi setelah menghubungkan. Di Codex, buka /hooks dan setujui hook Extalia.');
 
     const claudeConn = connectedList.find(item => item.app === 'claude')!;

@@ -25,6 +25,7 @@ export interface StartDeps {
   createAgentHost(options: AgentHostOptions): Promise<RuntimeWithHooks>;
   /** Where the host looks for the Rust core daemon (started lazily, only when the native core flag selects it). */
   daemonBinary?: NonNullable<AgentHostOptions['daemon']>['binary'];
+  cliResumeArchiveReader?: string;
   updater: Updater;
   openBrowser(url: string): void;
   signals: SignalSource;
@@ -51,6 +52,9 @@ export async function startBridge(options: StartOptions, deps: StartDeps): Promi
   const runtimeReady = new Promise<RuntimeWithHooks>((resolve, reject) => { resolveRuntime = resolve; rejectRuntime = reject; });
   runtimeReady.catch(() => undefined);
   let runtime: RuntimeWithHooks | undefined;
+  let shutdownRequested = false;
+  let runtimeClosing: Promise<unknown> | undefined;
+  const closeRuntime = (ready: RuntimeWithHooks) => runtimeClosing ??= Promise.resolve().then(() => ready.close());
   let relaunch: () => void = () => undefined;
 
   let server: BridgeServer;
@@ -91,11 +95,16 @@ export async function startBridge(options: StartOptions, deps: StartDeps): Promi
     return 1;
   }
 
-  deps.createAgentHost({ kind: 'bridge', version: deps.version, dataDirectory: deps.dataDirectory, env: deps.env, ...(deps.daemonBinary ? { daemon: { binary: deps.daemonBinary } } : {}) }).then(
+  deps.createAgentHost({ kind: 'bridge', version: deps.version, dataDirectory: deps.dataDirectory, env: deps.env,
+    ...(deps.cliResumeArchiveReader ? { cliResumeArchiveReader: deps.cliResumeArchiveReader } : {}),
+    ...(deps.daemonBinary ? { daemon: { binary: deps.daemonBinary } } : {}) }).then(
     ready => {
       runtime = ready;
-      void ready.hooks?.announce(server.port).catch(() => undefined);
       resolveRuntime(ready);
+      // A slow startup can finish after the terminal has requested shutdown.
+      // Drain it once, without advertising a port that has already closed.
+      if (shutdownRequested) { void closeRuntime(ready).catch(() => undefined); return; }
+      void ready.hooks?.announce(server.port).catch(() => undefined);
     },
     error => { deps.err(`Agents are not available: ${message(error)}`); rejectRuntime(error); },
   );
@@ -110,21 +119,29 @@ export async function startBridge(options: StartOptions, deps: StartDeps): Promi
   }
 
   const shutdownTimeout = deps.shutdownTimeoutMs ?? 5000;
-  const shutdown = () => withTimeout((async () => {
-    await server.close();
-    const ready = await runtimeReady.catch(() => undefined);
-    await ready?.close();
-  })(), shutdownTimeout);
+  let shutdownPromise: Promise<void> | undefined;
+  const shutdown = () => {
+    shutdownRequested = true;
+    return shutdownPromise ??= withTimeout((async () => {
+      try { await server.close(); }
+      finally {
+        const ready = await runtimeReady.catch(() => undefined);
+        if (ready) await closeRuntime(ready);
+      }
+    })(), shutdownTimeout);
+  };
 
   return new Promise<number>(resolve => {
     let stopping = false;
+    let stopRequested = false;
     const onSignal = () => {
       // A terminal Ctrl+C can arrive twice (directly and forwarded by a supervisor); stop once.
+      stopRequested = true;
       if (stopping) return;
       stopping = true;
-      release();
       deps.out('Stopping Extalia…');
-      void shutdown().then(() => resolve(0));
+      // Keep handlers until drain settles so a repeated Ctrl+C cannot bypass it.
+      void shutdown().then(() => { release(); resolve(0); });
     };
     const release = () => { for (const signal of FORWARDED_SIGNALS) deps.signals.off(signal, onSignal); };
     for (const signal of FORWARDED_SIGNALS) deps.signals.on(signal, onSignal);
@@ -132,9 +149,10 @@ export async function startBridge(options: StartOptions, deps: StartDeps): Promi
     const restart = async () => {
       if (stopping) return;
       stopping = true;
-      release();
       deps.out('Update installed. Restarting Extalia…');
       await shutdown();
+      if (stopRequested) { release(); resolve(0); return; }
+      release();
       const plan = relaunchPlan({ ...deps.relaunch, env: deps.env, token: server.token });
       const child = deps.spawn(plan.command, plan.args, { stdio: 'inherit', env: plan.env });
       resolve(await supervise(child, deps.signals, error => deps.err(`Could not restart Extalia: ${error.message}. Start it again with: extalia`)));

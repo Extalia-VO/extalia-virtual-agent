@@ -4,6 +4,8 @@ import { fileURLToPath } from 'node:url';
 import { verifyModelBuild } from '../../tooling/public-models.mjs';
 
 const manifest = JSON.parse(await readFile(new URL('./package.json', import.meta.url), 'utf8'));
+await build({ entryPoints: ['src/continuityReader.ts'], outfile: 'dist/continuity-reader.mjs',
+  bundle: true, platform: 'node', format: 'esm', target: 'node22', logLevel: 'warning' });
 
 // Everything is bundled, workspace packages and their npm dependencies included,
 // so the published package installs without dependencies. Bundled CommonJS

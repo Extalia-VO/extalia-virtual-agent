@@ -17,6 +17,10 @@ describe('shared cosmetic character expressions', () => {
     expect(resolveCharacterExpression('character', 'idle')).toBe('moving');
     motion.walk = 0; motion.clip = 'chat-talk';
     expect(resolveCharacterExpression('character', 'idle')).toBe('talking');
+    motion.clip = 'seated-chat-talk';
+    expect(resolveCharacterExpression('character', 'idle')).toBe('talking');
+    motion.clip = 'seated-chat-listen';
+    expect(resolveCharacterExpression('character', 'idle')).toBe('focused');
     const next = bindCharacterExpression('character', { state: 'waiting' });
     first();
     expect(resolveCharacterExpression('character')).toBe('waiting');

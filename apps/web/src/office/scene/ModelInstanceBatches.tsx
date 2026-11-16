@@ -1,13 +1,13 @@
 import { useLayoutEffect } from 'react';
 import { useThree } from '@react-three/fiber';
-import { DynamicDrawUsage, InstancedMesh, Matrix4, Object3D, type Mesh, type Material, type Scene } from 'three';
+import { DynamicDrawUsage, InstancedMesh, Object3D, type Mesh, type Material, type Scene } from 'three';
 import { OVERVIEW_CULLED_LAYER } from './environment/overviewLod';
+import { registerModelBatchSource, releaseModelBatchSource } from './modelBatchSources';
 
 const OVERVIEW_CULLED_MASK = 1 << OVERVIEW_CULLED_LAYER;
 
 const MIN_INSTANCES = 2;
 const RESCAN_MS = 500;
-const zero = new Matrix4().makeScale(0, 0, 0);
 
 type Source = {
   mesh: Mesh;
@@ -16,10 +16,12 @@ type Source = {
   batchSource: unknown;
   world: number[];
   shown: boolean | null;
+  slot: number;
+  parent: ParentVisibility;
 };
 type Batch = { key: string; mesh: InstancedMesh; sources: Source[] };
-type ParentVisibility = { frame: number; connected: boolean; shown: boolean };
-const detached: ParentVisibility = { frame: -1, connected: false, shown: false };
+type ParentVisibility = { node: Object3D | null; parent: ParentVisibility | null; frame: number; connected: boolean; shown: boolean };
+const detached: ParentVisibility = { node: null, parent: null, frame: -1, connected: false, shown: false };
 
 function authored(mesh: Object3D, scene: Scene): boolean {
   let found = mesh.userData.officeInstanceable === true;
@@ -50,7 +52,7 @@ function eligibleKey(mesh: Mesh, scene: Scene, owned: ReadonlyMap<Mesh, Source>)
   if (material.transparent || mesh.matrixWorld.determinant() <= 0) return null;
   const descriptor = owned.get(mesh)?.descriptor ?? Object.getOwnPropertyDescriptor(mesh, 'visible');
   if (!descriptor || !('value' in descriptor) || !descriptor.configurable || !descriptor.writable) return null;
-  return [mesh.geometry.uuid, material.uuid, mesh.castShadow, mesh.receiveShadow, mesh.layers.mask, mesh.renderOrder].join('/');
+  return [mesh.geometry.uuid, material.uuid, mesh.castShadow, mesh.receiveShadow, mesh.layers.mask, mesh.renderOrder, mesh.frustumCulled].join('/');
 }
 
 /** Reuse immutable Blender geometry/materials across repeated loaded parts.
@@ -65,9 +67,11 @@ export class ModelBatchController {
   private stopped = false;
   private frame = 0;
   private readonly visibility = new WeakMap<Object3D, ParentVisibility>();
-  private readonly rootVisibility: ParentVisibility = { frame: 0, connected: true, shown: true };
+  private readonly rootVisibility: ParentVisibility;
   private readonly stats = { batches: 0, sources: 0, visibleInstances: 0 };
-  constructor(private readonly scene: Scene) {}
+  constructor(private readonly scene: Scene) {
+    this.rootVisibility = { node: scene, parent: null, frame: 0, connected: true, shown: true };
+  }
 
   private releaseSource(source: Source): void {
     if (this.owned.get(source.mesh) !== source) return;
@@ -75,6 +79,7 @@ export class ModelBatchController {
     if (source.batchSource === undefined) delete source.mesh.userData.officeBatchSource;
     else source.mesh.userData.officeBatchSource = source.batchSource;
     this.owned.delete(source.mesh);
+    releaseModelBatchSource(source.mesh, source);
   }
 
   private release(batch: Batch): void {
@@ -122,7 +127,9 @@ export class ModelBatchController {
       instance.receiveShadow = first.receiveShadow;
       instance.layers.mask = first.layers.mask;
       instance.renderOrder = first.renderOrder;
-      instance.frustumCulled = false;
+      // Preserve explicit source opt-outs (for example custom vertex displacement).
+      // Cullable batches refresh bounds after visible transform/count changes.
+      instance.frustumCulled = first.frustumCulled;
       instance.matrixAutoUpdate = false;
       instance.matrixWorldAutoUpdate = false;
       instance.matrix.identity();
@@ -131,11 +138,12 @@ export class ModelBatchController {
       instance.raycast = () => {};
       const sources = meshes.map(mesh => {
         const source: Source = { mesh, descriptor: Object.getOwnPropertyDescriptor(mesh, 'visible')!,
-          visible: mesh.visible, batchSource: mesh.userData.officeBatchSource, world: mesh.matrixWorld.elements.slice(), shown: null };
+          visible: mesh.visible, batchSource: mesh.userData.officeBatchSource, world: mesh.matrixWorld.elements.slice(), shown: null, slot: -1, parent: this.visibilityState(mesh.parent) };
         Object.defineProperty(mesh, 'visible', { configurable: true, enumerable: source.descriptor.enumerable,
           get: () => false, set: (visible: boolean) => { source.visible = visible; } });
         mesh.userData.officeBatchSource = true;
         this.owned.set(mesh, source);
+        registerModelBatchSource(mesh, source);
         return source;
       });
       this.scene.add(instance);
@@ -143,17 +151,25 @@ export class ModelBatchController {
     }
   }
 
-  private parentVisibility(node: Object3D | null): ParentVisibility {
+  /** Resolve weak identities only when a source/ancestor first appears or is reparented.
+   * The per-frame path follows direct shared records, visiting each ancestor once. */
+  private visibilityState(node: Object3D | null): ParentVisibility {
     if (!node) return detached;
     if (node === this.scene) return this.rootVisibility;
     const cached = this.visibility.get(node);
-    if (cached?.frame === this.frame) return cached;
-    const parent = this.parentVisibility(node.parent);
-    const state = cached ?? { frame: this.frame, connected: false, shown: false };
+    if (cached) return cached;
+    const state: ParentVisibility = { node, parent: this.visibilityState(node.parent), frame: -1, connected: false, shown: false };
+    this.visibility.set(node, state);
+    return state;
+  }
+
+  private parentVisibility(state: ParentVisibility): ParentVisibility {
+    if (!state.node || state.frame === this.frame) return state;
+    if (state.parent?.node !== state.node.parent) state.parent = this.visibilityState(state.node.parent);
+    const parent = this.parentVisibility(state.parent!);
     state.frame = this.frame;
     state.connected = parent.connected;
-    state.shown = node.visible && parent.shown;
-    if (!cached) this.visibility.set(node, state);
+    state.shown = state.node.visible && parent.shown;
     return state;
   }
 
@@ -165,7 +181,7 @@ export class ModelBatchController {
       mesh.geometry === instance.geometry && mesh.material === instance.material &&
       !(mesh.material as Material).transparent && mesh.castShadow === instance.castShadow &&
       mesh.receiveShadow === instance.receiveShadow && mesh.layers.mask === instance.layers.mask &&
-      mesh.renderOrder === instance.renderOrder && !mesh.morphTargetInfluences?.length &&
+      mesh.renderOrder === instance.renderOrder && mesh.frustumCulled === instance.frustumCulled && !mesh.morphTargetInfluences?.length &&
       !mesh.customDepthMaterial && !mesh.customDistanceMaterial &&
       mesh.onBeforeRender === Object3D.prototype.onBeforeRender && mesh.onAfterRender === Object3D.prototype.onAfterRender &&
       mesh.onBeforeShadow === Object3D.prototype.onBeforeShadow && mesh.onAfterShadow === Object3D.prototype.onAfterShadow;
@@ -185,7 +201,8 @@ export class ModelBatchController {
         for (let index = 0; index < batch.sources.length; index++) {
           const source = batch.sources[index]!;
           const mesh = source.mesh;
-          const parent = this.parentVisibility(mesh.parent);
+          if (source.parent.node !== mesh.parent) source.parent = this.visibilityState(mesh.parent);
+          const parent = this.parentVisibility(source.parent);
           const world = mesh.matrixWorld.elements;
           let moved = source.shown === null;
           for (let i = 0; !moved && i < 16; i++) moved = world[i] !== source.world[i];
@@ -195,17 +212,28 @@ export class ModelBatchController {
           // scan can safely acquire them again without a disappearance window.
           if (!valid) this.releaseSource(source);
           const shown = valid && parent.shown;
-          if (shown !== source.shown || (shown && moved)) {
-            batch.mesh.setMatrixAt(index, shown ? mesh.matrixWorld : zero);
+          // Keep only visible sources in the submitted prefix. Zero-scale hidden
+          // instances still run the vertex shader and inflate triangle work.
+          const slot = shown ? active : -1;
+          if (shown && (slot !== source.slot || moved)) {
+            batch.mesh.setMatrixAt(slot, mesh.matrixWorld);
             dirty = true;
           }
+          source.slot = slot;
           if (moved) for (let i = 0; i < 16; i++) source.world[i] = world[i]!;
           source.shown = shown;
           if (shown) active++;
         }
         // `officeDetailCulled`: campus-overview level of detail (environment/OverviewDetail).
         batch.mesh.visible = active > 0 && batch.mesh.userData.officeDetailCulled !== true;
+        const countChanged = batch.mesh.count !== active;
+        batch.mesh.count = active;
         if (dirty) batch.mesh.instanceMatrix.needsUpdate = true;
+        if (dirty || countChanged) {
+          // The batch is rooted at the identity transform. Instance matrices are
+          // world-space, so these bounds work for both camera and shadow frusta.
+          batch.mesh.computeBoundingSphere();
+        }
         visible += active;
       }
       this.stats.batches = this.batches.size;

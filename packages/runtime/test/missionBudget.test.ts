@@ -1,8 +1,9 @@
+import { createProvider } from '../src/index.js';
 import { describe, expect, it, vi } from 'vitest';
 import type { AgentEvent, OrchestrationPlan } from '@extalia/protocol';
 import { ProviderError, createFallbackProvider, guardProviderRequests, runNativeMission, type AnyTool, type NativeMissionAccounting, type NativeMissionOptions } from '../src/index.js';
 import type { ModelProvider, ModelRequest, ModelResult } from '../src/model.js';
-import { createProvider } from '../src/index.js';
+
 import { expectAuditedTransitions } from './transitionAudit.js';
 
 // Every emitted state change must be listed in the shared protocol transition tables.

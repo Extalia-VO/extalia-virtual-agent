@@ -3,6 +3,10 @@
 Status: Accepted (2026-10-22) with the recommended defaults for its open questions; the owner
 may revise them before the wave that implements them.
 
+The default Unix physical storage paths below are superseded by
+[ADR 0082](0082-global-skill-storage.md). Registry identity, hashing and approval
+semantics remain unchanged; nondefault CLI namespaces retain legacy paths.
+
 ## Context
 
 FR-15, FR-16, FR-18 and FR-21 need machine-readable skill metadata (categories, intents,

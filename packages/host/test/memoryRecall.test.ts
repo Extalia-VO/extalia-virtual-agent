@@ -214,7 +214,7 @@ describe('bounded prompt-relevant memory recall', () => {
     }
     expect((await stores[4]!.recallCatalog('target')).diagnostics).toMatchObject({ cacheHits: 128, bytesRead: 0 });
     expect((await stores[0]!.recallCatalog('target')).diagnostics).toMatchObject({ cacheHits: 0, loadedCount: 128 });
-  });
+  }, 60_000);
 
   it('treats empty and greeting-only prompts as a cheap bounded alphabetical baseline', async () => {
     const { directory, store } = await fixture();

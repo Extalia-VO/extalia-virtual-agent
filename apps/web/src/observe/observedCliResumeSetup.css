@@ -1,0 +1,18 @@
+.observed-cli-resume { box-sizing: border-box; min-width: 0; max-width: 100%; margin-top: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 9px; }
+.observed-cli-resume-head, .observed-cli-resume-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.observed-cli-resume-head { justify-content: space-between; }
+.observed-cli-resume-actions { margin-top: 8px; }
+.observed-cli-resume p { margin: 8px 0; }
+.observed-cli-resume-review, .observed-cli-resume-inspection { min-width: 0; margin-top: 10px; }
+.observed-cli-resume-review dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 12px; margin: 10px 0; font-size: .8rem; }
+.observed-cli-resume-review dt { color: var(--muted); }
+.observed-cli-resume-review dd { min-width: 0; margin: 0; }
+.observed-cli-resume code, .observed-cli-resume pre { max-width: 100%; overflow-wrap: anywhere; white-space: pre-wrap; font-size: .75rem; }
+.observed-cli-resume pre { max-height: 180px; overflow: auto; }
+.observed-cli-resume summary { cursor: pointer; font-size: .8rem; }
+.observed-cli-resume .observed-cli-resume-confirm { display: flex; align-items: flex-start; gap: 8px; margin: 10px 0; font-size: .8rem; }
+.observed-cli-resume-confirm > input { flex: none; margin-top: 3px; }
+@media (max-width: 600px) { .observed-cli-resume-review dl { grid-template-columns: minmax(0, 1fr); gap: 3px; } .observed-cli-resume-review dd { margin-bottom: 5px; } }
+
+.handover-target-fields > .observed-cli-resume { grid-column: 1 / -1; }
+.observed-cli-resume button { max-width: 100%; white-space: normal; }

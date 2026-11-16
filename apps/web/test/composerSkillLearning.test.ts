@@ -1,7 +1,7 @@
 import type * as React from 'react';
 import { isValidElement, type ReactElement, type ReactNode } from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AgentHostApi, HostState, SessionSummary } from '@extalia/platform';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { AgentHostApi, HostState, PromptQueueChange, PromptQueueStatus, SessionSummary } from '@extalia/platform';
 import { Composer, type ComposerSend } from '../src/chat/Composer';
 import { sendPromptWithAttachments, uploadAttachments } from '../src/chat/attachments';
 import { createMockPlatform } from '../src/host/mockHost';
@@ -32,6 +32,7 @@ vi.mock('react', async original => {
       return hooks.memo.get(id)!.value;
     },
     useRef: (initial: unknown) => { const id = hooks.index++; return hooks.state[id] ??= { current: initial }; },
+    useSyncExternalStore: (_subscribe: unknown, getSnapshot: () => unknown) => getSnapshot(),
     useEffect: effect, useLayoutEffect: effect, useId: () => 'test-composer',
   };
 });
@@ -43,7 +44,7 @@ function elements(node: ReactNode): ReactElement<Record<string, unknown>>[] {
 }
 const text = (node: ReactNode): string => typeof node === 'string' ? node : Array.isArray(node) ? node.map(text).join('') : isValidElement<{ children?: ReactNode }>(node) ? text(node.props.children) : '';
 const checkbox = (tree: ReactNode) => elements(tree).find(item => item.type === 'input' && item.props.type === 'checkbox');
-const change = (node: ReactElement<Record<string, unknown>>, value: string | boolean) => (node.props.onChange as (event: unknown) => void)({ target: typeof value === 'boolean' ? { checked: value } : { value } });
+const change = (node: ReactElement<Record<string, unknown>>, value: string) => (node.props.onChange as (event: unknown) => void)({ target: { value } });
 
 function harness(language: 'en' | 'id' = 'en') {
   const agents = { modelChoices: vi.fn(async () => ({ models: [], efforts: [] })), setSessionOptions: vi.fn(async () => undefined) } as unknown as AgentHostApi;
@@ -63,69 +64,180 @@ function harness(language: 'en' | 'id' = 'en') {
 }
 
 beforeEach(() => { hooks.index = 0; hooks.dirty = false; hooks.state = []; hooks.memo.clear(); hooks.effects.clear(); hooks.pending = []; });
+afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); });
 
-describe('shared Native skill-learning composer', () => {
-  it.each(['en', 'id'] as const)('labels opt-in and scanner/quarantine hint in %s, resets after success', async language => {
-    const h = harness(language), t = MESSAGES[language];
-    expect(checkbox(h.render())?.props.checked).toBe(false);
-    expect(text(h.render())).toContain(t.composer.learnSkill);
-    expect(text(h.render())).not.toContain(t.composer.learnSkillHint);
-    change(checkbox(h.render())!, true); h.type('Learn this procedure');
-    expect(text(h.render())).toContain(t.composer.learnSkillHint);
+describe('session-bound prompt recovery', () => {
+  it('restores separate text across session navigation, hook state updates and composer remount', () => {
+    const h = harness();
+    const one = { id: 'session-one', workspaceId: 'workspace', control: 'managed' } as SessionSummary;
+    const two = { ...one, id: 'session-two' };
+    h.props.session = one; h.type('First unsent prompt');
+    h.props.session = two;
+    expect(elements(h.render()).find(node => node.type === 'textarea')!.props.value).toBe('');
+    h.type('Second unsent prompt');
+    h.props.session = { ...one, running: true, title: 'Updated by a live event' };
+    expect(elements(h.render()).find(node => node.type === 'textarea')!.props.value).toBe('First unsent prompt');
+    // Closing removes all local React state, while the same host/session survives.
+    hooks.state = []; hooks.memo.clear(); hooks.effects.clear(); hooks.pending = [];
+    expect(elements(h.render()).find(node => node.type === 'textarea')!.props.value).toBe('First unsent prompt');
+    h.props.session = two;
+    expect(elements(h.render()).find(node => node.type === 'textarea')!.props.value).toBe('Second unsent prompt');
+  });
+  it('allows another session to send while the original receipt is pending, without clearing its new text', async () => {
+    const h = harness(); let finish!: (ok: boolean) => void;
+    h.props.session = { id: 'session-one', workspaceId: 'workspace', control: 'managed' } as SessionSummary;
+    h.props.onSend = vi.fn().mockImplementationOnce(() => new Promise<boolean>(resolve => { finish = resolve; })).mockResolvedValueOnce(true);
+    h.type('First send'); h.submit();
+    expect(elements(h.render()).find(node => node.type === 'textarea')!.props.value).toBe('First send');
+    h.props.session = { ...h.props.session, id: 'session-two' };
+    h.type('Second send'); h.submit(); await Promise.resolve(); await Promise.resolve();
+    expect(h.props.onSend).toHaveBeenCalledTimes(2);
+    h.props.session = { ...h.props.session, id: 'session-one' }; h.type('New text for first session');
+    finish(true); await Promise.resolve(); await Promise.resolve();
+    expect(elements(h.render()).find(node => node.type === 'textarea')!.props.value).toBe('New text for first session');
+  });
+});
+
+describe('one busy-session composer', () => {
+  function queuedComposer(unknown = false) {
+    vi.useFakeTimers();
+    const h = harness();
+    const status: PromptQueueStatus = { sessionId: 'session', revision: 'r1', supported: true, paused: true, maxTextLength: 100_000, items: [] };
+    const changeQueue = vi.fn(async (_sessionId: string, request: PromptQueueChange) => ({ ...status, revision: 'r2', paused: false,
+      items: [{ id: 'queued', text: 'text' in request ? request.text : 'Follow up', state: unknown ? 'unknown' as const : 'pending' as const, createdAt: '2030-01-01T00:00:00Z' }] }));
+    h.props.agents = { ...h.props.agents, promptQueueStatus: vi.fn(async () => status), changePromptQueue: changeQueue };
+    h.props.session = { id: 'session', control: 'managed' } as SessionSummary;
+    h.props.running = true; h.props.waiting = true;
+    h.render();
+    return { ...h, changeQueue };
+  }
+  it.each(['native', 'plan', 'hermes'] as const)('queues ordinary linked-learning prompts in %s during work and approvals', async mode => {
+    const h = queuedComposer();
+    h.props.hermes = mode === 'hermes';
+    if (mode === 'plan') h.props.session = { ...h.props.session!, options: { permissionMode: 'plan' } };
+    await vi.advanceTimersByTimeAsync(0);
+    h.type('Learn this procedure from https://example.com/guide');
+    expect(checkbox(h.render())).toBeUndefined();
+    expect(elements(h.render()).filter(node => node.type === 'textarea')).toHaveLength(1);
+    expect(elements(h.render()).find(node => node.type === 'textarea')!.props.disabled).toBe(false);
+    h.submit(); await vi.advanceTimersByTimeAsync(0);
+    expect(h.changeQueue).toHaveBeenCalledExactlyOnceWith('session', { action: 'add', text: 'Learn this procedure from https://example.com/guide', start: true, revision: 'r1' });
+    expect(h.props.onSend).not.toHaveBeenCalled();
+    expect(elements(h.render()).find(node => node.type === 'textarea')!.props.value).toBe('');
+  });
+  it('holds queue submission for workspace review while retaining an editable draft and Stop', async () => {
+    const h = queuedComposer(); await vi.advanceTimersByTimeAsync(0);
+    h.props.sendBlocked = true;
+    h.type('Keep this pending draft');
+    const input = elements(h.render()).find(node => node.type === 'textarea')!;
+    expect(input.props.disabled).toBe(false);
+    expect(input.props.placeholder).not.toBe(MESSAGES.en.chat.placeholderObserved);
+    h.submit(); await vi.advanceTimersByTimeAsync(0);
+    expect(h.changeQueue).not.toHaveBeenCalled();
+    expect(h.props.onSend).not.toHaveBeenCalled();
+    expect(elements(h.render()).find(node => node.type === 'textarea')!.props.value).toBe('Keep this pending draft');
+    expect(elements(h.render()).some(node => node.type === 'button' && node.props.onClick === h.props.onStop)).toBe(true);
+    h.props.sendBlocked = false;
+    h.submit(); await vi.advanceTimersByTimeAsync(0);
+    expect(h.changeQueue).toHaveBeenCalledExactlyOnceWith('session', { action: 'add', text: 'Keep this pending draft', start: true, revision: 'r1' });
+  });
+  it('retains the main draft when queue delivery is uncertain', async () => {
+    const h = queuedComposer(true); await vi.advanceTimersByTimeAsync(0);
+    h.type('Follow up'); h.submit(); await vi.advanceTimersByTimeAsync(0);
+    expect(elements(h.render()).find(node => node.type === 'textarea')!.props.value).toBe('Follow up');
+    expect(h.props.onSend).not.toHaveBeenCalled();
+    h.props.running = false; h.props.waiting = false;
+    h.submit(); await vi.advanceTimersByTimeAsync(0);
+    expect(h.changeQueue).toHaveBeenCalledTimes(1);
+    expect(h.props.onSend).not.toHaveBeenCalled();
+  });
+  it('uses the session working flag while transcript activity is still catching up', async () => {
+    const h = queuedComposer();
+    h.props.running = false; h.props.waiting = false; h.props.session!.running = true;
+    await vi.advanceTimersByTimeAsync(0);
+    h.type('Follow up'); h.submit(); await vi.advanceTimersByTimeAsync(0);
+    expect(h.changeQueue).toHaveBeenCalledTimes(1);
+    expect(h.props.onSend).not.toHaveBeenCalled();
+  });
+});
+
+describe('workspace-review send hold', () => {
+  it('retains text and attached files until explicit review permits sending', async () => {
+    const h = harness();
+    h.props.agents.uploadAttachment = vi.fn();
+    h.type('Continue in the new folder');
+    const file = new File(['Keep this attachment'], 'example.txt', { type: 'text/plain' });
+    const input = elements(h.render()).find(node => node.type === 'input' && node.props.type === 'file')!;
+    (input.props.onChange as (event: unknown) => void)({ target: { files: [file], value: '' } });
+    h.props.sendBlocked = true;
+    h.submit(); await Promise.resolve();
+    const tree = h.render();
+    expect(elements(tree).find(node => node.type === 'textarea')!.props.disabled).toBe(false);
+    expect(elements(tree).find(node => node.type === 'textarea')!.props.value).toBe('Continue in the new folder');
+    expect(text(tree)).toContain('example.txt');
+    expect(h.props.onSend).not.toHaveBeenCalled();
+    expect(h.props.agents.uploadAttachment).not.toHaveBeenCalled();
+    h.props.sendBlocked = false;
     h.submit();
-    await vi.waitFor(() => expect(h.props.onSend).toHaveBeenCalledWith(expect.objectContaining({ text: 'Learn this procedure', learnSkill: true })));
+    await vi.waitFor(() => expect(h.props.onSend).toHaveBeenCalledOnce());
+    expect(h.props.onSend).toHaveBeenCalledWith(expect.objectContaining({ text: 'Continue in the new folder', attachments: [expect.objectContaining({ name: 'example.txt', file })] }));
+  });
+});
+
+describe('shared composer automatic-learning presentation', () => {
+  it.each(['en', 'id'] as const)('has no learning checkbox or hint in %s and sends ordinary linked-learning text', async language => {
+    const h = harness(language);
+    expect(checkbox(h.render())).toBeUndefined();
+    expect(text(h.render())).not.toMatch(/Learn as skill|Pelajari sebagai skill|quarantined|dikarantina/);
+    h.type('Learn this procedure from https://example.com/guide'); h.submit();
+    await vi.waitFor(() => expect(h.props.onSend).toHaveBeenCalled());
+    const request = (h.props.onSend as ReturnType<typeof vi.fn>).mock.calls[0]![0];
+    expect(request.text).toBe('Learn this procedure from https://example.com/guide');
+    expect(request).not.toHaveProperty('learnSkill');
     await Promise.resolve(); await Promise.resolve();
-    expect(checkbox(h.render())?.props.checked).toBe(false);
+    expect(elements(h.render()).find(item => item.type === 'textarea')!.props.value).toBe('');
   });
 
-  it('retains the choice and text after a failed send for the same context', async () => {
+  it('retains text after a failed send for the same context', async () => {
     const h = harness(); h.props.onSend = vi.fn(async () => false);
-    change(checkbox(h.render())!, true); h.type('Keep this draft'); h.submit();
+    h.type('Keep this draft'); h.submit();
     await vi.waitFor(() => expect(h.props.onSend).toHaveBeenCalled());
     await Promise.resolve(); await Promise.resolve();
-    expect(checkbox(h.render())?.props.checked).toBe(true);
     expect(elements(h.render()).find(item => item.type === 'textarea')!.props.value).toBe('Keep this draft');
   });
 
-  it.each(['hermes', 'readOnly', 'plan'] as const)('never submits learning in %s mode', async mode => {
-    const h = harness(); change(checkbox(h.render())!, true);
+  it.each(['native', 'hermes', 'readOnly', 'plan'] as const)('has no learning toggle and never emits a learning flag in %s mode', async mode => {
+    const h = harness();
     if (mode === 'plan') h.props.session = { id: 'session', options: { permissionMode: 'plan' } } as SessionSummary;
-    else h.props[mode] = true;
+    else if (mode !== 'native') h.props[mode] = true;
     expect(checkbox(h.render())).toBeUndefined();
-    if (mode !== 'readOnly') {
-      h.type('Read as data'); h.submit();
+    h.type('Learn this procedure'); h.submit();
+    if (mode === 'readOnly') expect(h.props.onSend).not.toHaveBeenCalled();
+    else {
       await vi.waitFor(() => expect(h.props.onSend).toHaveBeenCalled());
       expect((h.props.onSend as ReturnType<typeof vi.fn>).mock.calls[0]![0]).not.toHaveProperty('learnSkill');
     }
   });
 
-  it.each(['workspace', 'session', 'host'] as const)('drops the choice across %s replacement, including switching back', dimension => {
-    const h = harness(); change(checkbox(h.render())!, true);
+  it.each(['workspace', 'session', 'host'] as const)('preserves each draft across %s replacement, including switching back', dimension => {
+    const h = harness(); h.type('Original draft');
     const old = { ...h.props };
     if (dimension === 'workspace') h.props.workspaceId = 'another-workspace';
     if (dimension === 'session') h.props.session = { id: 'another-session' } as SessionSummary;
     if (dimension === 'host') h.props.agents = { ...h.props.agents };
-    expect(checkbox(h.render())?.props.checked).toBe(false);
-    Object.assign(h.props, old);
-    expect(checkbox(h.render())?.props.checked).toBe(false);
+    expect(elements(h.render()).find(item => item.type === 'textarea')!.props.value).toBe('');
+    h.type('New draft');
+    Object.assign(h.props, old); h.props.session = old.session;
+    expect(elements(h.render()).find(item => item.type === 'textarea')!.props.value).toBe('Original draft');
   });
 
-  it('disables the learning choice during approvals, running turns and pending sends', () => {
-    const h = harness();
-    h.props.waiting = true; expect(checkbox(h.render())?.props.disabled).toBe(true);
-    h.props.waiting = false; h.props.running = true; expect(checkbox(h.render())?.props.disabled).toBe(true);
-    h.props.running = false; h.props.onSend = () => new Promise<boolean>(() => undefined);
-    h.type('Pending'); h.submit(); expect(checkbox(h.render())?.props.disabled).toBe(true);
-  });
-
-  it('does not restore an old learning choice or overwrite a new draft after late failure', async () => {
+  it('does not overwrite a new draft after late failure', async () => {
     const h = harness(); let settle!: (value: boolean) => void;
     h.props.onSend = vi.fn((_request: ComposerSend) => new Promise<boolean>(resolve => { settle = resolve; }));
-    change(checkbox(h.render())!, true); h.type('Old draft'); h.submit();
+    h.type('Old draft'); h.submit();
     await vi.waitFor(() => expect(h.props.onSend).toHaveBeenCalled());
     h.props.workspaceId = 'new-workspace'; h.type('New draft');
     settle(false); await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
-    expect(checkbox(h.render())?.props.checked).toBe(false);
     expect(elements(h.render()).find(item => item.type === 'textarea')!.props.value).toBe('New draft');
   });
 
@@ -135,17 +247,16 @@ describe('shared Native skill-learning composer', () => {
     h.props.onSend = vi.fn((_request: ComposerSend) => new Promise<boolean>(resolve => { settle = resolve; }));
     const fileInput = elements(h.render()).find(item => item.type === 'input' && item.props.type === 'file')!;
     (fileInput.props.onChange as (event: unknown) => void)({ target: { files: [new File(['Reference'], 'reference.md', { type: 'text/markdown' })], value: 'reference.md' } });
-    h.type('Learn this reference'); change(checkbox(h.render())!, true); h.submit();
+    h.type('Learn this reference'); h.submit();
     await vi.waitFor(() => expect(h.props.onSend).toHaveBeenCalled());
     h.props.session = { id: 'created-session' } as SessionSummary; h.type('New text');
     expect(text(h.render())).toContain('reference.md');
     settle(true); await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
     expect(text(h.render())).not.toContain('reference.md');
-    expect(checkbox(h.render())?.props.checked).toBe(false);
     expect(elements(h.render()).find(item => item.type === 'textarea')!.props.value).toBe('New text');
   });
 
-  it('preserves first-session learning, prompt and uploaded ids after host refusal, then retries without reupload', async () => {
+  it('preserves first-session prompt and uploaded ids after host refusal, then retries without reupload', async () => {
     const h = harness();
     const uploadedId = `att_${'a'.repeat(24)}`;
     const uploadAttachment = vi.fn(async () => ({ id: uploadedId, name: 'reference.md', mimeType: 'text/markdown', size: 9, kind: 'text' as const }));
@@ -164,10 +275,9 @@ describe('shared Native skill-learning composer', () => {
     });
     const fileInput = elements(h.render()).find(item => item.type === 'input' && item.props.type === 'file')!;
     (fileInput.props.onChange as (event: unknown) => void)({ target: { files: [new File(['Reference'], 'reference.md', { type: 'text/markdown' })], value: 'reference.md' } });
-    h.type('Learn and keep this procedure'); change(checkbox(h.render())!, true); h.submit();
+    h.type('Learn and keep this procedure'); h.submit();
     await vi.waitFor(() => expect(sendPrompt).toHaveBeenCalledTimes(1));
     await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
-    expect(checkbox(h.render())?.props.checked).toBe(true);
     expect(elements(h.render()).find(item => item.type === 'textarea')!.props.value).toBe('Learn and keep this procedure');
     expect(text(h.render())).toContain('reference.md');
     h.submit();
@@ -175,12 +285,11 @@ describe('shared Native skill-learning composer', () => {
     await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
     expect(createSession).toHaveBeenCalledTimes(1);
     expect(uploadAttachment).toHaveBeenCalledTimes(1);
-    expect(sendPrompt).toHaveBeenLastCalledWith('created-session', 'Learn and keep this procedure', { attachmentIds: [uploadedId], learnSkill: true });
-    expect(checkbox(h.render())?.props.checked).toBe(false);
+    expect(sendPrompt).toHaveBeenLastCalledWith('created-session', 'Learn and keep this procedure', { attachmentIds: [uploadedId] });
     expect(text(h.render())).not.toContain('reference.md');
   });
 
-  it('refuses a late first-session handoff after navigation without selecting it or restoring old learning', async () => {
+  it('refuses a late first-session handoff after navigation without selecting it', async () => {
     const h = harness(); let finishCreation!: () => void;
     const selected = vi.fn();
     h.props.onSend = vi.fn(async (request: ComposerSend) => {
@@ -188,12 +297,11 @@ describe('shared Native skill-learning composer', () => {
       if (!request.bindSession!('late-session')) return false;
       selected(); h.props.session = { id: 'late-session' } as SessionSummary; return true;
     });
-    h.type('Old request'); change(checkbox(h.render())!, true); h.submit();
+    h.type('Old request'); h.submit();
     await vi.waitFor(() => expect(h.props.onSend).toHaveBeenCalled());
     h.props.workspaceId = 'different-workspace'; h.type('New input');
     finishCreation(); await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
     expect(selected).not.toHaveBeenCalled();
-    expect(checkbox(h.render())?.props.checked).toBe(false);
     expect(elements(h.render()).find(item => item.type === 'textarea')!.props.value).toBe('New input');
   });
 
@@ -211,16 +319,15 @@ describe('shared Native skill-learning composer', () => {
       await sendPromptWithAttachments(originalHost, id, request.text, ids, request.learnSkill);
       return true;
     });
-    h.type('Old learning request'); change(checkbox(h.render())!, true); h.submit();
+    h.type('Old learning request'); h.submit();
     await vi.waitFor(() => expect(getState).toHaveBeenCalledTimes(1));
     if (dimension === 'workspace') h.props.workspaceId = 'new-workspace';
     else h.props.agents = { ...originalHost };
     h.type('New input');
     finishState({} as HostState);
-    await vi.waitFor(() => expect(checkbox(h.render())?.props.disabled).toBe(false));
+    await vi.waitFor(() => expect(elements(h.render()).find(item => item.type === 'button' && item.props.type === 'submit')!.props.disabled).toBe(false));
     expect(onState).not.toHaveBeenCalled(); expect(onSelect).not.toHaveBeenCalled();
     expect(uploadAttachment).not.toHaveBeenCalled(); expect(sendPrompt).not.toHaveBeenCalled();
-    expect(checkbox(h.render())?.props.checked).toBe(false);
     expect(elements(h.render()).find(item => item.type === 'textarea')!.props.value).toBe('New input');
   });
 

@@ -1,8 +1,16 @@
 # Native core (preview)
 
-The Rust native core is an optional preview. It is off by default, and Extalia
-keeps using the TypeScript runtime unless you turn it on. Behaviour and the
-switch itself may change before the core becomes the default.
+Current scope reviewed against v0.4.288 on 2026-11-12. See the
+[Native agent module](../modules/native-agent.md) for capabilities, source links
+and remaining acceptance gates.
+
+The Rust backend preference for new saved missions is an optional preview and
+is off by default. It does not choose the implementation language for every
+feature: Knowledge, the skill registry, learning artifacts and OpenAI-compatible
+model discovery use Rust independently of that preference. Backend placement
+follows measured whole-workload efficiency and compatible results, not a required
+language migration. TypeScript remains the production completion path under
+[ADR 0071](../adr/0071-rust-openai-completion-and-resource-evidence.md).
 
 ## What it is
 
@@ -12,7 +20,17 @@ worker tool call. Extalia starts the daemon when the first daemon-routed mission
 needs it and stops it with the host. Its data lives in `state/core.sqlite` in
 the data folder of each profile.
 
-Model calls and tools still run in the TypeScript host.
+Completion HTTP/streaming, Anthropic model discovery and ordinary agent tools
+still run in the TypeScript host. OpenAI-compatible `/models` requests now run
+through the same executable's isolated `--provider-models` mode, without opening
+a profile store. Rust constructs the request and validates/bounds the catalog;
+the host waits for actual child close before reporting local settlement.
+
+Model discovery refuses redirects and environment proxies, uses certificate
+verification for HTTPS, and requires a matched daemon binary. Configure the final
+endpoint URL directly. No silent JavaScript discovery fallback is used. See
+[ADR 0070](../adr/0070-rust-provider-model-discovery.md) for limits and remaining
+TLS/proxy/platform verification work.
 
 ## Native status panel
 
@@ -68,6 +86,7 @@ setting when the host starts, so restart it after you change the file.
 - Saved Rust mission starts record a durable preparation scope before credentials or isolated worktrees are prepared. An uncertain start remains blocked after restart, including when the backend selected for new work changes. This receipt does not automatically reconcile execution or approve changes.
 - Missions that already exist, and missions with history off, stay on the
   TypeScript path.
+- Skill management is independent of this preference too. The lazy profile daemon handles imported and learned candidates, pinned inspection, explicit approval and activation. Scanner execution currently requires a verified macOS 14+ ARM64 bundle; other platforms keep external candidates quarantined. See [Skill Security Center](skill-security-center.md).
 - Knowledge is independent of this preference. Both backends expose the Knowledge page and use one shared lazy daemon for its index and recorded Rust recovery; switching mission routing is unnecessary.
 
 ## Knowledge vault
@@ -92,9 +111,13 @@ back to the default; Extalia does not fall back to another folder.
 The Desktop app bundles `extalia-daemon` for macOS (arm64 and x64), Windows x64
 and Linux x64. You do not need Rust, Python or Node.js to use it.
 
-The `extalia` command gets the daemon from per-platform npm packages. Release CI
-builds those packages, but they are not published yet, so a CLI install cannot
-get the daemon from npm yet.
+The `extalia` command gets the matching daemon from per-platform npm packages.
+The v0.4.288 application and all five daemon packages are published for macOS
+ARM64/Intel, Linux ARM64/x64 and Windows x64. The CLI requires the supported
+Node.js version; unlike Desktop it does not bundle Node.js. See the
+[release installation guide](../release/v0.4.288.md#install-or-update) for
+installation and platform limitations. Scanner execution remains limited to the
+verified macOS 14+ ARM64 bundle; package availability does not remove that limit.
 
 ## When the daemon is unavailable
 

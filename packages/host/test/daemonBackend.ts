@@ -10,8 +10,11 @@ import { fileURLToPath } from 'node:url';
 import type { AgentHostOptions } from '../src/service.js';
 
 export type Backend = 'typescript' | 'rust';
-export const DAEMON_BINARY = fileURLToPath(new URL(`../../../target/debug/extalia-daemon${process.platform === 'win32' ? '.exe' : ''}`, import.meta.url));
+export const DAEMON_BINARY = process.env.EXTALIA_TEST_DAEMON_PATH ?? fileURLToPath(new URL(`../../../target/debug/extalia-daemon${process.platform === 'win32' ? '.exe' : ''}`, import.meta.url));
 export const HAS_DAEMON = existsSync(DAEMON_BINARY);
+if (process.env.EXTALIA_TEST_REQUIRE_DAEMON === '1' && !HAS_DAEMON) {
+  throw new Error('Required test daemon is missing; build extalia-daemon before running integration tests.');
+}
 let noticed = false;
 /** Backends to parameterize suites over. */
 export function backends(): Backend[] {

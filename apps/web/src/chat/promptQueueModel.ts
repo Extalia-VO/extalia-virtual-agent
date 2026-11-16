@@ -7,8 +7,12 @@ export interface PromptQueueView {
   disabled: boolean;
   draft: string;
   edit?: { original: PromptQueueItem; text: string };
-  notice?: 'failed' | 'stale';
+  notice?: 'failed' | 'stale' | 'unknown';
+  /** Local submission evidence; acceptance is distinct from the item's later handoff. */
+  delivery?: 'submitting' | 'accepted' | 'unknown' | 'failed';
+  deliveryItemId?: string;
 }
+export interface PromptQueueDrag { sessionId: string; revision: string; item: PromptQueueItem }
 type Change = PromptQueueChange extends infer T ? T extends PromptQueueChange ? Omit<T, 'revision'> : never : never;
 const sameItem = (left: PromptQueueItem | undefined, right: PromptQueueItem) => !!left && left.id === right.id
   && left.text === right.text && left.state === right.state && left.createdAt === right.createdAt;
@@ -24,6 +28,7 @@ export function createPromptQueueControl(api: AgentHostApi, sessionId: string) {
   function validate(status: PromptQueueStatus): PromptQueueStatus {
     if (!status || status.sessionId !== sessionId || typeof status.revision !== 'string' || !status.revision && (status.supported || !Array.isArray(status.items) || status.items.length > 0)
       || typeof status.supported !== 'boolean' || typeof status.paused !== 'boolean'
+      || status.canSteer !== undefined && typeof status.canSteer !== 'boolean'
       || !Number.isSafeInteger(status.maxTextLength) || status.maxTextLength < 1 || !Array.isArray(status.items)
       || status.items.some(item => !item || typeof item.id !== 'string' || !item.id || typeof item.text !== 'string'
         || !['pending', 'sending', 'sent', 'unknown'].includes(item.state) || typeof item.createdAt !== 'string')
@@ -47,29 +52,40 @@ export function createPromptQueueControl(api: AgentHostApi, sessionId: string) {
     void pending.finally(() => { if (read === pending) read = undefined; });
     return pending;
   }
-  async function change(input: Change, guard: (status: PromptQueueStatus) => boolean = () => true, accepted?: () => void, requireSupported = true) {
-    if (!writable(requireSupported)) return;
+  async function change(input: Change, guard: (status: PromptQueueStatus) => boolean = () => true, accepted?: (status: PromptQueueStatus) => void, requireSupported = true, settleSubmission = false) {
+    if (!writable(requireSupported)) return false;
     const revision = view.status!.revision, ticket = ++epoch;
     const current = () => active && ticket === epoch && !view.disabled;
-    mutating = true; update({ ...view, busy: true, notice: undefined });
+    let dispatched = false;
+    mutating = true; update({ ...view, busy: true, notice: undefined,
+      ...(settleSubmission ? { delivery: 'submitting' as const, deliveryItemId: undefined } : {}) });
     try {
       await read;
-      if (!current()) return;
+      if (!current()) return false;
       const status = validate(await api.promptQueueStatus!(sessionId));
-      if (!current()) return;
+      if (!current()) return false;
       receive(status);
-      if (requireSupported && !status.supported || status.revision !== revision || !guard(status)) { update({ ...view, notice: 'stale' }); return; }
-      const result = await api.changePromptQueue!(sessionId, { ...input, revision } as PromptQueueChange);
-      if (!current()) return;
-      receive(result); accepted?.();
-    } catch { if (current()) update({ ...view, phase: 'error', status: undefined, notice: 'failed' }); }
+      if (requireSupported && !status.supported || status.revision !== revision || !guard(status)) { update({ ...view, notice: 'stale' }); return false; }
+      // Effects are admitted only while current. Once admitted, a validated receipt
+      // still belongs to this submission even if its composer has since unmounted.
+      dispatched = true;
+      const result = validate(await api.changePromptQueue!(sessionId, { ...input, revision } as PromptQueueChange));
+      if (current()) receive(result);
+      else if (!settleSubmission) return false;
+      accepted?.(result); return true;
+    } catch {
+      const unknown = settleSubmission && dispatched;
+      if (current()) update({ ...view, phase: 'error', status: undefined, notice: unknown ? 'unknown' : 'failed' });
+      if (unknown) update({ ...view, delivery: 'unknown' });
+      return false;
+    }
     finally { mutating = false; if (active) update({ ...view, busy: false }); }
   }
   return {
     subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
     getSnapshot: () => view,
     start() {
-      active = true; ++epoch; void refresh();
+      active = true; ++epoch; clearInterval(timer); void refresh();
       timer = setInterval(() => { void refresh(); }, 1000);
       return () => { active = false; ++epoch; clearInterval(timer); timer = undefined; };
     },
@@ -82,6 +98,45 @@ export function createPromptQueueControl(api: AgentHostApi, sessionId: string) {
       return change({ action: 'add', text }, status => text.length <= status.maxTextLength, () => {
         if (draftTicket === draftRevision) update({ ...view, draft: '' });
       });
+    },
+    async submit(text: string): Promise<boolean> {
+      if (!writable() || !validText(text) || view.delivery === 'unknown' || view.status?.items.some(item => item.state === 'unknown')) return false;
+      const knownIds = new Set(view.status!.items.map(item => item.id)), revision = view.status!.revision;
+      // An in-flight handoff already owns queue progress. Add behind it without
+      // asking the host to restart a queue while that receipt is still sending.
+      const start = !view.status!.items.some(item => item.state === 'sending');
+      let accepted = false;
+      const changed = await change({ action: 'add', text, start }, status => text.length <= status.maxTextLength
+        && !status.items.some(item => item.state === 'unknown'), result => {
+        const item = result.revision !== revision ? result.items.find(item => !knownIds.has(item.id) && item.text === text) : undefined;
+        accepted = !!item && item.state !== 'unknown';
+        update({ ...view, delivery: accepted ? 'accepted' : 'unknown', deliveryItemId: item?.id });
+      }, true, true);
+      if (view.delivery === 'submitting') update({ ...view, delivery: 'failed' });
+      return changed && accepted;
+    },
+    beginDrag(item: PromptQueueItem): PromptQueueDrag | undefined {
+      if (!writable() || view.edit || !pendingItem(item)) return undefined;
+      return { sessionId, revision: view.status!.revision, item: { ...item } };
+    },
+    drop(drag: PromptQueueDrag, target: PromptQueueItem) {
+      if (!writable() || view.edit || drag.sessionId !== sessionId || drag.revision !== view.status!.revision
+        || !pendingItem(drag.item) || !pendingItem(target)) return Promise.resolve(false);
+      const ids = view.status!.items.filter(item => item.state === 'pending').map(item => item.id);
+      const from = ids.indexOf(drag.item.id), to = ids.indexOf(target.id);
+      if (from === to) return Promise.resolve(false);
+      ids.splice(from, 1); ids.splice(to, 0, drag.item.id);
+      return change({ action: 'reorder', itemIds: ids }, status => {
+        const pending = status.items.filter(item => item.state === 'pending');
+        return pending.length === ids.length && pending.every(item => ids.includes(item.id))
+          && sameItem(pending.find(item => item.id === drag.item.id), drag.item)
+          && sameItem(pending.find(item => item.id === target.id), target);
+      });
+    },
+    steer(item: PromptQueueItem) {
+      if (!view.status?.canSteer || !pendingItem(item)) return Promise.resolve(false);
+      return change({ action: 'steer', itemId: item.id }, status => !!status.canSteer
+        && sameItem(status.items.find(current => current.id === item.id), item));
     },
     beginEdit(item: PromptQueueItem) {
       if (!writable() || !pendingItem(item)) return;
@@ -120,6 +175,13 @@ export function createPromptQueueControl(api: AgentHostApi, sessionId: string) {
     acknowledge(item: PromptQueueItem) {
       if (!['sent', 'unknown'].includes(item.state) || !sameItem(view.status?.items.find(current => current.id === item.id), item)) return Promise.resolve();
       return change({ action: 'acknowledge', itemId: item.id }, status => sameItem(status.items.find(current => current.id === item.id), item), undefined, false);
+    },
+    /** Explicit user inspection may unlock a lost local response, never a host receipt. */
+    allowRetry() {
+      if (!active || view.phase !== 'ready' || mutating || view.status?.items.some(item => item.state === 'unknown' || item.state === 'sending')) return false;
+      update({ ...view, delivery: undefined, deliveryItemId: undefined,
+        ...(view.notice === 'unknown' ? { notice: undefined } : {}) });
+      return true;
     },
     refresh,
   };

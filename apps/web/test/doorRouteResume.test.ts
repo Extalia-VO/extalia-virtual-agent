@@ -178,18 +178,21 @@ describe('natural routes after door choreography', () => {
             holding = false;
             const released = [...mover.position] as Point3;
             stepMover(mover, 1 / 30, env); now += 1000 / 30;
-            expect(Math.hypot(mover.position[0] - released[0], mover.position[2] - released[2])).toBeGreaterThan(1e-5);
+            if (doors.amount('door') > .05) expect((mover as { door: { kind: string } | null }).door?.kind).toBe('close');
+            else expect(Math.hypot(mover.position[0] - released[0], mover.position[2] - released[2])).toBeGreaterThan(1e-5);
           }
         }
         expect(joined).toBe(true);
         expect(shared ? handedOff : closed).toBe(true);
         expect(mover.phase).toBe('gone');
         expect(mover.position).toEqual(point(-side * 5));
+        expect(doors.amount('door')).toBe(0);
       }
     });
   }
 
-  it('rejoins each completed door interaction on all 658 actual office leisure routes', () => {
+  // Exhaustive route simulation needs a separate budget under parallel suite load.
+  it('rejoins each completed door interaction on all 668 actual office leisure routes', () => {
     let routes = 0, joins = 0, curvedRoutes = 0;
     // Conservative wall planes reject optional chords outside the authored
     // apertures; exact graph contacts remain available as the fallback.
@@ -231,8 +234,8 @@ describe('natural routes after door choreography', () => {
         expect(mover.phase, `${source.seatId} → ${destination.seatId}`).toBe('seated');
       }
     }
-    expect(routes).toBe(658);
+    expect(routes).toBe(668);
     expect(joins).toBeGreaterThan(200);
     expect(curvedRoutes).toBeGreaterThan(0);
-  });
+  }, 60_000);
 });

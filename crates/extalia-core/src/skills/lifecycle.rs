@@ -7,7 +7,7 @@
 //! | `inspecting` | `inspected`, `review_required`, `quarantined` (scanner unavailable, failed or incomplete) |
 //! | `inspected` | `validated`, `quarantined` |
 //! | `review_required` | `validated` (human review accepted), `quarantined` |
-//! | `validated` | `evaluating`, `quarantined` |
+//! | `validated` | `evaluating`, `awaiting_approval` (verified instructions only), `quarantined` |
 //! | `evaluating` | `evaluated`, `quarantined` |
 //! | `evaluated` | `awaiting_approval`, `auto_eligible`, `quarantined` |
 //! | `awaiting_approval` | `approved`, `quarantined` |
@@ -78,7 +78,10 @@ const EDGES: &[(RevisionState, &[RevisionState])] = &[
     ),
     (S::Inspected, &[S::Validated, S::Quarantined]),
     (S::ReviewRequired, &[S::Validated, S::Quarantined]),
-    (S::Validated, &[S::Evaluating, S::Quarantined]),
+    (
+        S::Validated,
+        &[S::Evaluating, S::AwaitingApproval, S::Quarantined],
+    ),
     (S::Evaluating, &[S::Evaluated, S::Quarantined]),
     (
         S::Evaluated,
@@ -191,7 +194,6 @@ mod tests {
                 &[S::AwaitingApproval, S::AutoEligible][..],
                 &[S::Approved][..],
                 &[S::Validated][..],
-                &[S::Evaluated][..],
             ] {
                 assert!(
                     !reachable(start, gate).contains(&S::Active),

@@ -1,10 +1,11 @@
+import { createAgentHost } from '../src/service.js';
 import type { HostMissionRun, NativeActiveRun } from '@extalia/platform';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { nativeStatusSnapshot, type NativeStatusMissionMetadata } from '../src/nativeStatus.js';
-import { createAgentHost, type AgentHostOptions, type AgentHostRuntime } from '../src/service.js';
+import { type AgentHostOptions, type AgentHostRuntime } from '../src/service.js';
 import { MissionRecords } from '../src/mission.js';
 import { SessionStore } from '../src/sessions.js';
 import { DaemonSidecar } from '../src/daemon/sidecar.js';

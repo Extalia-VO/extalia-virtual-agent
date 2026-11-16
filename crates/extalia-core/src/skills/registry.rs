@@ -8,8 +8,8 @@
 //! The flow of a revision is `import` → `inspect` → `validate` (or, after a medium finding,
 //! a human `review`, see [`super::review`]) → `record_evaluation` →
 //! `decide` → `approve` / `approve_auto` → `activate`, then `deactivate`, `rollback` or
-//! `revoke`. In this slice the only inspector is `UnavailableInspector`, so `inspect`
-//! leaves every package `quarantined` with reason `scanner-unavailable`. Dependency,
+//! `revoke`. A missing or unverified inspector leaves each imported package
+//! `quarantined` with reason `scanner-unavailable`. Dependency,
 //! conflict and compatibility resolution have a separate read-only diagnostic API
 //! ([`SkillRegistry::dependency_preflight`]); activation integration is not built yet:
 //! `validate` refuses a revision that declares any (`resolver_unavailable`).
@@ -30,9 +30,7 @@ use std::path::Path;
 
 use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior, params};
 
-use super::inspect::{
-    Coverage, InspectionOutcome, InspectionRequest, ScannerIdentity, Severity, SkillInspector,
-};
+use super::inspect::{Coverage, InspectionOutcome, ScannerIdentity, Severity, SkillInspector};
 use super::lifecycle::RevisionState;
 use super::manifest::{self, Capability, MANIFEST_FILE, Permissions, RiskClass, SKILL_FILE};
 use super::policy::{self, Disposition, EvaluationResult, POLICY_VERSION, Route};
@@ -43,9 +41,12 @@ use crate::time::{format_utc, parse_utc};
 
 mod preflight;
 mod routing;
+mod scanning;
 mod snapshot;
+mod sources;
 pub use preflight::RegistryPreflightRequest;
 pub use routing::RegistryRoutingRequest;
+pub use scanning::PreparedInspection;
 
 /// The current scanner identity and policy version every attestation must match.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -192,10 +193,58 @@ impl<'s> SkillRegistry<'s> {
         source_ref: &str,
         now_ms: i64,
     ) -> Result<ImportReceipt, SkillError> {
+        self.import_expected(source, origin, source_ref, now_ms, None)
+    }
+
+    /// Bind an explicitly reviewed package to its sealed content before any
+    /// registry revision or inspection is admitted. Existing imports remain unpinned.
+    pub fn import_expected(
+        &mut self,
+        source: &Path,
+        origin: Origin,
+        source_ref: &str,
+        now_ms: i64,
+        expected_tree_sha256: Option<&str>,
+    ) -> Result<ImportReceipt, SkillError> {
+        self.import_with_base(
+            source,
+            origin,
+            source_ref,
+            now_ms,
+            expected_tree_sha256,
+            None,
+        )
+    }
+
+    /// Generated refinements retain the activation pointer and require a current,
+    /// scoped immutable base. The compare and insertion share one transaction.
+    #[allow(clippy::too_many_arguments)]
+    pub fn import_with_base(
+        &mut self,
+        source: &Path,
+        origin: Origin,
+        source_ref: &str,
+        now_ms: i64,
+        expected_tree_sha256: Option<&str>,
+        refinement: Option<super::candidates::RefinementBase<'_>>,
+    ) -> Result<ImportReceipt, SkillError> {
         if source_ref.len() > LONG_TEXT {
             return Err(SkillError::Denied("source_ref_too_long"));
         }
+        if let Some(base) = refinement {
+            if origin != Origin::Generated {
+                return Err(SkillError::Denied("refinement_origin_invalid"));
+            }
+            let (revision, _, _) =
+                self.candidate_context(base.revision_id, base.profile_id, base.workspace_id)?;
+            if revision.skill_md_sha256 != base.skill_md_sha256 {
+                return Err(SkillError::Denied("refinement_base_changed"));
+            }
+        }
         let tree = self.objects.stage(source, &self.limits)?;
+        if expected_tree_sha256.is_some_and(|expected| expected != tree.sha256) {
+            return Err(SkillError::Denied("import_tree_changed"));
+        }
         let skill_md_entry = tree
             .file(SKILL_FILE)
             .ok_or_else(|| refused(Refusal::MissingSkillMd, None))?;
@@ -207,17 +256,61 @@ impl<'s> SkillRegistry<'s> {
             None => None,
         };
         let package = manifest::resolve(&tree, manifest_bytes.as_deref(), &skill_md)?;
+        if let Some(base) = refinement {
+            let entry = tree
+                .file("PROVENANCE.md")
+                .ok_or(SkillError::Denied("candidate_provenance_unavailable"))?;
+            let candidate = super::candidates::provenance(&self.objects.read_file(
+                &tree.sha256,
+                "PROVENANCE.md",
+                entry,
+            )?)?;
+            if candidate.profile_id != base.profile_id
+                || candidate.workspace_id != base.workspace_id
+                || source_ref
+                    != format!(
+                        "prompt:{}:{}",
+                        candidate.session_id, candidate.prompt_sha256
+                    )
+            {
+                return Err(SkillError::Denied("candidate_scope_mismatch"));
+            }
+        }
         let manifest = &package.manifest;
         let revision_id = format!("skr_{}", tree.sha256);
         let at = format_utc(now_ms);
         let profile = self.profile.as_str().to_owned();
 
         let tx = immediate(self.conn())?;
+        sources::check_package(&tx, &profile, &manifest.id, origin, source_ref)?;
+        if let Some(base) = refinement
+            && let Some(unchanged) =
+                super::candidates::check_refinement(&tx, &profile, &manifest.id, base, &tree)?
+        {
+            // Different run/source receipt alone never creates a new skill.
+            tx.commit()?;
+            return Ok(receipt(unchanged, false));
+        }
         if let Some(existing) = load_revision(&tx, &profile, &revision_id).optional_found()? {
             if existing.package_id != manifest.id {
                 return Err(SkillError::Corrupt("revision package"));
             }
+            sources::record(&tx, &profile, &revision_id, origin, source_ref, &at)?;
+            tx.commit()?;
             return Ok(receipt(existing, false));
+        }
+        // Omitting the optional base cannot turn refinement into creation. Exact
+        // immutable-tree retries above remain idempotent; manual imports retain
+        // their explicit user-managed revision workflow.
+        if origin == Origin::Generated && refinement.is_none() {
+            let exists: bool = tx.query_row(
+                "SELECT EXISTS(SELECT 1 FROM skill_packages WHERE profile_id=?1 AND package_id=?2)",
+                params![profile, manifest.id],
+                |row| row.get(0),
+            )?;
+            if exists {
+                return Err(SkillError::Denied("refinement_base_required"));
+            }
         }
         tx.execute(
             "INSERT OR IGNORE INTO skill_packages (profile_id, package_id, origin, source_ref, created_at)
@@ -243,6 +336,7 @@ impl<'s> SkillRegistry<'s> {
                 at
             ],
         )?;
+        sources::record(&tx, &profile, &revision_id, origin, source_ref, &at)?;
         record_state(
             &tx,
             &profile,
@@ -284,9 +378,8 @@ impl<'s> SkillRegistry<'s> {
         load_revision(self.conn(), &profile, revision_id)
     }
 
-    /// Run the inspector on a `quarantined` revision (or resume an interrupted
-    /// `inspecting` one), hashing the object before (b) and after (c) the scan, and apply
-    /// the verdict mapping. Every failure keeps the revision quarantined.
+    /// Run a synchronous inspector. Production adapters use the split begin/complete
+    /// APIs so the native store remains available while the worker scans.
     pub fn inspect(
         &mut self,
         revision_id: &str,
@@ -294,14 +387,50 @@ impl<'s> SkillRegistry<'s> {
         policy_version: &str,
         now_ms: i64,
     ) -> Result<InspectionReceipt, SkillError> {
+        let identity = inspector.identity();
+        let prepared = self.begin_inspection(revision_id, &identity, policy_version, now_ms)?;
+        let outcome = if identity.pin.is_none() {
+            InspectionOutcome::Failed(super::inspect::Failure::ScannerUnavailable)
+        } else {
+            inspector.inspect(&prepared.request())
+        };
+        self.complete_inspection(prepared, outcome, &identity, policy_version, now_ms)
+    }
+
+    /// An explicit rescan invalidates earlier attestation/review applicability.
+    /// Active, approved, superseded and terminal revisions are never retargeted.
+    pub fn prepare_rescan(&mut self, revision_id: &str, now_ms: i64) -> Result<(), SkillError> {
+        let revision = self.require(
+            revision_id,
+            &[
+                RevisionState::Quarantined,
+                RevisionState::Inspected,
+                RevisionState::Validated,
+                RevisionState::ReviewRequired,
+                RevisionState::AwaitingApproval,
+            ],
+        )?;
+        self.verify_or_revoke(&revision, now_ms)?;
+        if revision.state != RevisionState::Quarantined {
+            self.requarantine(revision_id, "user-rescan", now_ms)?;
+        }
+        Ok(())
+    }
+
+    /// Record the inspection admission, returning owned immutable input metadata.
+    /// The store lock must be released before an external worker is executed.
+    pub fn begin_inspection(
+        &mut self,
+        revision_id: &str,
+        identity: &ScannerIdentity,
+        policy_version: &str,
+        now_ms: i64,
+    ) -> Result<PreparedInspection, SkillError> {
         let revision = self.revision(revision_id)?;
-        if !matches!(
-            revision.state,
-            RevisionState::Quarantined | RevisionState::Inspecting
-        ) {
+        if !matches!(revision.state, RevisionState::Quarantined) {
             return Err(SkillError::WrongState(revision.state));
         }
-        let identity = inspector.identity();
+        let identity = identity.clone();
         if !identity_fits(&identity) || policy_version.is_empty() || policy_version.len() > 128 {
             return Err(SkillError::Denied("scanner_identity_invalid"));
         }
@@ -322,18 +451,50 @@ impl<'s> SkillRegistry<'s> {
             )?;
             tx.commit()?;
         }
-        let object_dir = self.objects.object_dir(&revision.tree_sha256);
-        // An unpinned scanner is never run and never attests (ADR 0023 §1–§2).
-        let mut outcome = if identity.pin.is_none() {
-            InspectionOutcome::Failed(super::inspect::Failure::ScannerUnavailable)
-        } else {
-            inspector.inspect(&InspectionRequest {
-                revision_id,
-                tree_sha256: &revision.tree_sha256,
-                object_dir: &object_dir,
-                policy_version,
-            })
-        };
+        let event_seq = self.conn().query_row(
+            "SELECT MAX(event_seq) FROM skill_revision_events WHERE profile_id = ?1 AND revision_id = ?2",
+            params![profile, revision_id], |row| row.get(0),
+        )?;
+        Ok(PreparedInspection {
+            profile,
+            revision_id: revision_id.to_owned(),
+            tree_sha256: revision.tree_sha256.clone(),
+            object_dir: self.objects.object_dir(&revision.tree_sha256),
+            identity,
+            policy_version: policy_version.to_owned(),
+            started,
+            event_seq,
+        })
+    }
+
+    /// Consume exactly the admitted inspection. Revocation, recovery, another
+    /// inspection admission or changed scanner/policy can never be overwritten.
+    pub fn complete_inspection(
+        &mut self,
+        prepared: PreparedInspection,
+        mut outcome: InspectionOutcome,
+        identity: &ScannerIdentity,
+        policy_version: &str,
+        now_ms: i64,
+    ) -> Result<InspectionReceipt, SkillError> {
+        let profile = self.profile.as_str().to_owned();
+        if prepared.profile != profile {
+            return Err(SkillError::Denied("inspection_ticket_invalid"));
+        }
+        let revision_id = prepared.revision_id.as_str();
+        let revision = self.require(revision_id, &[RevisionState::Inspecting])?;
+        let event_seq: i64 = self.conn().query_row(
+            "SELECT MAX(event_seq) FROM skill_revision_events WHERE profile_id = ?1 AND revision_id = ?2",
+            params![profile, revision_id], |row| row.get(0),
+        )?;
+        if revision.tree_sha256 != prepared.tree_sha256 || event_seq != prepared.event_seq {
+            return Err(SkillError::Denied("inspection_ticket_invalid"));
+        }
+        if &prepared.identity != identity || prepared.policy_version != policy_version {
+            self.requarantine(revision_id, "scanner-unavailable", now_ms)?;
+            return Err(SkillError::Denied("attestation_invalid"));
+        }
+        let started = prepared.started;
         if let InspectionOutcome::Completed {
             report_ref: Some(report),
             ..
@@ -349,6 +510,17 @@ impl<'s> SkillRegistry<'s> {
             Err(error) => return Err(error),
         };
         let tx = immediate(self.conn())?;
+        let current = load_revision(&tx, &profile, revision_id)?;
+        let current_event: i64 = tx.query_row(
+            "SELECT MAX(event_seq) FROM skill_revision_events WHERE profile_id = ?1 AND revision_id = ?2",
+            params![profile, revision_id], |row| row.get(0),
+        )?;
+        if current.state != RevisionState::Inspecting
+            || current.tree_sha256 != prepared.tree_sha256
+            || current_event != prepared.event_seq
+        {
+            return Err(SkillError::Denied("inspection_ticket_invalid"));
+        }
         let (code, coverage, verdict, report_ref) = match (&outcome, intact) {
             (_, false) => ("integrity", Coverage::None, None, None),
             (InspectionOutcome::Failed(failure), true) => {
@@ -446,6 +618,64 @@ impl<'s> SkillRegistry<'s> {
         )?;
         tx.commit()?;
         Ok(RevisionState::Validated)
+    }
+
+    /// An explicitly approved instruction-only package needs no invented runtime
+    /// evaluation. This route never grants approval or activates a revision.
+    pub fn request_instruction_approval(
+        &mut self,
+        revision_id: &str,
+        ctx: &PolicyContext,
+        now_ms: i64,
+    ) -> Result<RevisionState, SkillError> {
+        let revision = self.require(revision_id, &[RevisionState::Validated])?;
+        self.verify_or_revoke(&revision, now_ms)?;
+        let inspection = self.require_attestation(&revision, ctx, now_ms)?;
+        self.require_resolvable(revision_id)?;
+        let tree = self.objects.verify(&revision.tree_sha256, &self.limits)?;
+        let medium_reviewed = inspection.verdict == Some(Severity::Medium)
+            && self.reviews(revision_id)?.iter().any(|review| {
+                review.inspection_id == inspection.id
+                    && review.tree_sha256 == revision.tree_sha256
+                    && review.decision == super::review::ReviewDecision::Accept
+                    && super::review::is_user_principal(&review.principal)
+            });
+        if revision.risk_class != RiskClass::Declarative
+            || revision.permissions != Permissions::default()
+            || !(matches!(inspection.verdict, Some(Severity::None | Severity::Low))
+                || medium_reviewed)
+            || tree.files.iter().any(|file| {
+                file.executable || !(file.path.ends_with(".md") || file.path == MANIFEST_FILE)
+            })
+        {
+            let profile = self.profile.as_str().to_owned();
+            let tx = immediate(self.conn())?;
+            tx.execute("UPDATE skill_revisions SET state_reason = 'evaluation-required' WHERE profile_id = ?1 AND revision_id = ?2 AND state = 'validated'", params![profile, revision_id])?;
+            record_state(
+                &tx,
+                &profile,
+                revision_id,
+                Some(RevisionState::Validated),
+                RevisionState::Validated,
+                Some("evaluation-required"),
+                &format_utc(now_ms),
+            )?;
+            tx.commit()?;
+            return Err(SkillError::Denied("instruction_approval_unavailable"));
+        }
+        let profile = self.profile.as_str().to_owned();
+        let tx = immediate(self.conn())?;
+        set_state(
+            &tx,
+            &profile,
+            revision_id,
+            RevisionState::Validated,
+            RevisionState::AwaitingApproval,
+            Some("manual-instruction-approval"),
+            &format_utc(now_ms),
+        )?;
+        tx.commit()?;
+        Ok(RevisionState::AwaitingApproval)
     }
 
     /// Record an evaluation result for a `validated` revision (hash point d before it is
@@ -1006,6 +1236,33 @@ impl<'s> SkillRegistry<'s> {
             }
         }
         Ok(stale)
+    }
+
+    /// Human review only: read literal instructions from an inactive revision.
+    /// This does not establish agent execution authority and never truncates text.
+    pub fn instruction_preview(
+        &mut self,
+        revision_id: &str,
+        now_ms: i64,
+    ) -> Result<Option<String>, SkillError> {
+        let revision = self.revision(revision_id)?;
+        self.verify_or_revoke(&revision, now_ms)?;
+        let tree = self.objects.verify(&revision.tree_sha256, &self.limits)?;
+        let entry = tree.file(SKILL_FILE).ok_or(SkillError::Integrity)?;
+        if entry.size > 65536 {
+            return Ok(None);
+        }
+        let bytes = match self
+            .objects
+            .read_file(&revision.tree_sha256, SKILL_FILE, entry)
+        {
+            Err(SkillError::Integrity) => return Err(self.integrity_failure(revision_id, now_ms)),
+            other => other?,
+        };
+        Ok(String::from_utf8(bytes).ok().filter(|text| {
+            text.chars()
+                .all(|ch| matches!(ch, '\t' | '\n' | '\r') || (ch as u32 >= 32 && ch as u32 != 127))
+        }))
     }
 
     /// Read a file of the package's active revision for execution (hash point g): the

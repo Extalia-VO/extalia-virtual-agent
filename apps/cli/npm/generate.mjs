@@ -26,6 +26,7 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { DAEMON_TARGETS, daemonBinaryName, npmPackageName, readExecutableKind } from '../../../tooling/daemon.mjs';
 import { ROOT } from '../../../tooling/workspace.mjs';
+import { SCANNER_BINDING, copyScannerBundle, verifyScannerBinding, verifyScannerSignatures } from '../../../tooling/scanner-distribution.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CLI = path.resolve(HERE, '..');
@@ -35,6 +36,7 @@ const { values } = parseArgs({
     out: { type: 'string', default: path.join(HERE, 'dist') },
     'require-all': { type: 'boolean', default: false },
     cli: { type: 'boolean', default: false },
+    'require-scanner-target': { type: 'string', multiple: true, default: [] },
   },
 });
 function fail(message) { console.error(`npm generate: ${message}`); process.exit(1); }
@@ -64,12 +66,22 @@ for (const target of DAEMON_TARGETS) {
   }
   const kind = await readExecutableKind(source);
   if (kind?.platform !== target.platform || kind.arch !== target.arch) fail(`${source} is ${kind ? `${kind.platform}-${kind.arch}` : 'not an executable'}, expected ${target.platform}-${target.arch}`);
+  const scanner = path.join(path.dirname(source), 'skillspector');
+  const scannerBinding = path.join(path.dirname(source), SCANNER_BINDING);
+  const hasScanner = Boolean(await stat(scanner).catch(() => undefined));
+  const hasBinding = Boolean(await stat(scannerBinding).catch(() => undefined));
+  if (hasScanner !== hasBinding) fail('incomplete scanner/daemon artifact pair.');
+  if (!hasScanner && values['require-scanner-target'].includes(`${target.platform}-${target.arch}`)) fail(`missing required scanner for ${target.platform}-${target.arch}.`);
+  const binding = hasScanner ? await verifyScannerBinding({ binary: source, bundle: scanner, bindingFile: scannerBinding, target }) : undefined;
+  // Cross-platform npm assembly can verify bytes; native signatures were checked by the source runner.
+  if (hasScanner && process.platform === 'darwin') await verifyScannerSignatures(scanner, target);
 
   const name = npmPackageName(target);
   const dir = path.join(out, `daemon-${target.platform}-${target.arch}`);
   await rm(dir, { recursive: true, force: true });
   await mkdir(path.join(dir, 'bin'), { recursive: true });
-  const fields = { name, version, platform: target.platform, arch: target.arch, triple: target.triple, binary: binaryName };
+  const fields = { name, version, platform: target.platform, arch: target.arch, triple: target.triple, binary: binaryName,
+    scannerNotice: hasScanner ? 'This platform package also contains the pinned, self-contained SkillSpector runtime. No system Python or first-use download is needed. Imported skill activation still requires a complete scan and user approval.' : 'No verified scanner bundle is provided for this target. Imported skills stay quarantined; ordinary chat and missions remain available.' };
   const manifest = {
     name,
     version,
@@ -82,7 +94,7 @@ for (const target of DAEMON_TARGETS) {
     ...(target.platform === 'linux' ? { libc: ['glibc'] } : {}),
     main: 'index.js',
     exports: { '.': './index.js', './package.json': './package.json' },
-    files: ['index.js', 'bin', 'README.md', 'LICENSE'],
+    files: ['index.js', 'bin', 'README.md', 'LICENSE', ...(hasScanner ? ['skillspector', SCANNER_BINDING] : [])],
     preferUnplugged: true,
   };
   await writeFile(path.join(dir, 'package.json'), `${JSON.stringify(manifest, null, 2)}\n`);
@@ -92,6 +104,11 @@ for (const target of DAEMON_TARGETS) {
   await copyFile(source, path.join(dir, 'bin', binaryName));
   // npm keeps the executable bit in the tarball (as other per-platform binary packages rely on).
   await chmod(path.join(dir, 'bin', binaryName), 0o755);
+  if (binding) {
+    await copyScannerBundle(scanner, path.join(dir, 'skillspector'), target, binding.manifestSha256);
+    await copyFile(scannerBinding, path.join(dir, SCANNER_BINDING));
+    await verifyScannerBinding({ binary: path.join(dir, 'bin', binaryName), bundle: path.join(dir, 'skillspector'), bindingFile: path.join(dir, SCANNER_BINDING), target });
+  }
   generated.push(name);
   console.log(`generated ${name}@${version} in ${path.relative(process.cwd(), dir)}`);
 }

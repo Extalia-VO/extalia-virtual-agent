@@ -77,7 +77,7 @@ function DeviceSet({
             data={data}
           />
 
-          <group position={[0.88, top, 0.235]} rotation={[0, diagonalFacing - 0.15, 0]}>
+          <group position={[0.88, top, 0.235]} rotation={[0, diagonalFacing - 0.15, 0]} userData={{ officeSmallDecor: true }}>
             <LaptopStand><Laptop position={[0, 0, 0]} slot={2} slots={2} data={data} /></LaptopStand>
           </group>
 

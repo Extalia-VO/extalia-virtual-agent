@@ -61,6 +61,7 @@ export interface ChatSpotPair {
 
 export const CHAT_SPOT_PAIRS: readonly ChatSpotPair[] = Object.freeze([
   { id: 'chat.f1-lounge-hall', floor: 1, attach: 'east-hall', a: [16.2, -7.2], b: [17.2, -7.2] },
+  { id: 'chat.f2-south-hall', floor: 2, attach: 'south-hall', a: [17.6, 9], b: [18.6, 9] },
   { id: 'chat.f3-terrace', floor: 3, attach: 'terrace-inside', a: [3.6, 15.4], b: [4.6, 15.4] },
   { id: 'chat.f3-south-hall', floor: 3, attach: 'south-hall', a: [17.6, 2.1], b: [18.6, 2.1] },
 ]);

@@ -7,6 +7,7 @@ import { SkillSecurityCenter } from './SkillSecurityCenter';
 import { useSkillRegistryMode } from './skillCenterModel';
 import { useBuiltinSkills } from './skillsModel';
 import { SkillLibrary } from './SkillLibrary';
+import { SkillMarketplace } from './SkillMarketplace';
 import { BuiltinSkillsCatalog } from './BuiltinSkillsCatalog';
 import { revealSkillManagement, SkillManagementDisclosure } from './SkillManagementDisclosure';
 
@@ -63,6 +64,7 @@ export function SkillsPageView({ t, agents, state, picker, mode, filter, onFilte
         {builtin && builtin.length > 0 && <a className="button small" href="#skills-builtin-title" onClick={() => revealSkillManagement('skills-builtin-title')}>{p.browseBuiltins}</a>}
       </header>
       <SkillLibrary t={t} agents={agents} state={state} builtin={builtin ?? []} refresh={refresh} />
+      <SkillMarketplace t={t} agents={agents} onChanged={onChanged} />
       <p className="note small" role="note">{p.scannerRequired}</p>
       <SkillManagementDisclosure summary={t.skillLibrary.management} defaultOpen={Boolean(filter)}>
       <p className="muted small">{p.promptLearning}</p>

@@ -36,6 +36,27 @@ most 200 child directories, omits files and symlinks, and exposes home/parent/ro
 navigation. `checkFolder` and `saveWorkspace` still validate the final selection
 and reject selecting a whole filesystem root as a project.
 
+## Folder selection across operating systems
+
+Desktop uses Electron's parented native directory dialog: the macOS folder
+panel, Windows folder chooser or the Linux desktop's dialog/portal. Workspace
+primary/additional folders, Knowledge vaults, per-profile vault folders, Skills
+imports and the Diagnostics chooser share this capability. Localized titles and
+an existing starting directory are presentation hints; invalid starting paths
+fall back to the OS home folder. A skill import selects an existing directory.
+Cancel, a closed owner window or a late result from a previous workspace/profile
+never saves a different selection. Selecting a folder does not bypass host-side
+validation, skill scanning, consent or a profile's explicit Save action.
+
+The Bridge uses authenticated host-folder browsing directly for workspace,
+Knowledge/profile vault and skill-import choices. It does not open a pathless
+browser picker first or guess an absolute path from a browser handle's name.
+Standalone browser Diagnostics can still demonstrate the browser picker while
+honestly omitting its hidden path. Text input remains an optional advanced path
+where offered, rather than the only way to select a custom profile vault.
+Linux portal versions before 4 can ignore a native starting-directory hint;
+Extalia does not force a GTK/KDE backend or change desktop settings.
+
 ## Desktop shell security
 
 - `contextIsolation`, `sandbox` and no Node integration in the renderer.
@@ -64,9 +85,11 @@ Failures travel as `{ ok: false, error }` so the renderer shows a short message.
 
 ### Updates
 
-Packaged builds check GitHub Releases a few seconds after start, download in
-the background and, when no agent turn is running, restart after a 10-second
-countdown that can be postponed (the update then installs on quit). See
+Supported packaged builds check GitHub Releases a few seconds after start.
+The user approves a download; after it finishes and no agent turn is running,
+a postponable 10-second countdown can restart and install it. A normal quit
+does not approve or install an update. Free ad-hoc macOS previews require manual
+replacement and do not use the automatic update feed. See
 [ADR 0006](../adr/0006-updates-and-packaging.md).
 
 ## Agent host
@@ -92,8 +115,9 @@ preferences), `sessions` (managed sessions as event logs plus model history),
 `workspaces` (per-workspace memory), `skills` (user skills), `state`
 (imported-session library, update checks, host lock, file-based credential
 fallback), `hooks` and `connect` (agent-app hooks), `cache`. Desktop keeps
-Chromium's own profile (caches, local storage) in the system's application-data
-folder (`Extalia Desktop` when packaged).
+Chromium's own profile (cache and local storage) in `desktop-profile/` inside
+the same active root. Logs/crash dumps and updater staging also stay under that
+root. See the [complete storage inventory and reset rules](storage.md).
 
 ### Profile API
 

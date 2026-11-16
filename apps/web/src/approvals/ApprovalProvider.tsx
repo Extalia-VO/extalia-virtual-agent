@@ -115,10 +115,12 @@ export function ApprovalProvider({ t, hostKind, agents, state, notifier, childre
       many: count => t.approvalInbox.notify.many(count),
       unnamed: t.approvalInbox.unnamedAgent,
     });
-    void notifier.notify(content).catch(() => undefined);
+    void notifier.notify({ ...content, ...(notifier.supportsTargets === true ? { target: { kind: 'approval-inbox' as const } } : {}) }).catch(() => undefined);
   }, [pending, ready, state, notifier, hostKind, t]);
 
-  useEffect(() => notifier?.onActivate(() => setInboxOpen(true)), [notifier]);
+  useEffect(() => notifier?.onActivate(target => {
+    if (target === undefined || target.kind === 'approval-inbox') setInboxOpen(true);
+  }), [notifier]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {

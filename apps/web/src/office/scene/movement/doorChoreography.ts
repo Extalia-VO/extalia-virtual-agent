@@ -1,5 +1,6 @@
 import type { Point3 } from '../layout';
 import { doorAxes, doorHandedness, doorLeafPoint, doorPoint, type DoorInfo } from '../interior/doorTraffic';
+import type { WalkableSegment } from './naturalWalking';
 
 /** Body capsule plus clearance from the leaf and jambs, in metres. */
 export const DOOR_BODY_CLEARANCE = 0.34;
@@ -80,7 +81,7 @@ function segmentDistance(a: P, b: P, c: P, d: P): number {
  * The hinge end is never a shortcut through the adjoining wall. No detour is
  * returned when the aperture cannot fit the capsule; callers keep waiting.
  */
-export function doorWalkPath(door: Readonly<DoorInfo>, amount: number, from: Readonly<Point3>, to: Readonly<Point3>): Point3[] | null {
+export function doorWalkPath(door: Readonly<DoorInfo>, amount: number, from: Readonly<Point3>, to: Readonly<Point3>, walkable?: WalkableSegment): Point3[] | null {
   const local = (p: Readonly<Point3>): P => { const a = doorAxes(door, p); return { x: a.across, z: a.through }; };
   const q = doorHandedness(door), w = door.clearWidth, theta = amount * door.openAngle;
   const hinge: P = { x: -q * w / 2, z: 0 };
@@ -102,6 +103,7 @@ export function doorWalkPath(door: Readonly<DoorInfo>, amount: number, from: Rea
   }
   const jambs = [{ x: -w / 2, z: 0 }, { x: w / 2, z: 0 }];
   const clear = (a: P, b: P): boolean => {
+    if (walkable && !walkable(doorPoint(door, a.x, a.z, [0, 0, 0]), doorPoint(door, b.x, b.z, [0, 0, 0]), .29)) return false;
     if (segmentDistance(a, b, hinge, tip) < DOOR_BODY_CLEARANCE - 1e-6) return false;
     if (jambs.some(jamb => pointSegment(jamb, a, b) < DOOR_BODY_CLEARANCE)) return false;
     if (a.z * b.z <= 0 && Math.abs(a.z - b.z) > 1e-8) {
@@ -112,6 +114,8 @@ export function doorWalkPath(door: Readonly<DoorInfo>, amount: number, from: Rea
     return ![a, b].some(p => (Math.abs(p.z) < 0.06 && Math.abs(p.x) > w / 2 - DOOR_BODY_CLEARANCE)
       || (Math.abs(p.x) > w / 2 && Math.abs(p.z) < DOOR_BODY_CLEARANCE));
   };
+  // A valid straight segment is already the shortest path; skip graph search.
+  if (clear(nodes[0]!, nodes[1]!)) return [[...to]];
   const distances = nodes.map(() => Infinity), previous = nodes.map(() => -1), visited = new Set<number>();
   distances[0] = 0;
   for (let k = 0; k < nodes.length; k++) {

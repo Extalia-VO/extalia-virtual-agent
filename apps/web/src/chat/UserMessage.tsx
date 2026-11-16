@@ -1,13 +1,13 @@
-import { useEffect, useState, type ReactNode } from 'react';
-import { createPortal } from 'react-dom';
+import { useState, type ReactNode } from 'react';
 import type { Messages } from '../i18n';
 import { CopyButton } from '../ui/CopyButton';
 import { Icon } from '../ui/Icon';
-import { formatBytes, type AttachmentMetadata, type AttachmentPreviewLoader } from './attachments';
+import { type AttachmentMetadata, type AttachmentPreviewLoader } from './attachments';
+import { MessageAttachments } from './MessageAttachments';
 import { Markdown } from './Markdown';
 import { presentUserMessage, type PresentedNotice } from './messagePresentation';
 import type { UserItem } from './transcript';
-import { useMessageFiles } from './MessageFilePreview';
+import './questionReply.css';
 
 const COLLAPSE_CHARS = 900;
 const COLLAPSE_LINES = 14;
@@ -85,9 +85,16 @@ function FoldedText({ t, text }: { t: Messages; text: string }) {
   </>;
 }
 
+/** The source question stays readable without letting a long question dominate its answer. */
+function ReplyQuestion({ question }: { question: string }) {
+  const [expanded, setExpanded] = useState(false);
+  return <button type="button" className="question-label" title={question} aria-expanded={expanded}
+    onClick={() => setExpanded(value => !value)}>{question}</button>;
+}
+
 export function UserMessage({ t, item, previewAttachment, language }: { t: Messages; item: UserItem; previewAttachment?: AttachmentPreviewLoader | undefined; language?: string | undefined }) {
   const message = presentUserMessage(item.text);
-  const text = message.questionReply?.map(reply => reply.answer).join('\n\n') ?? message.text;
+  const text = message.questionReply?.map(reply => `${reply.question}\n${reply.answer}`).join('\n\n') ?? message.text;
   // Prefer the host's attachment reference/size. A textual local path never becomes an image URL.
   const files: (AttachmentMetadata & { path?: string })[] = [...(item.attachments ?? [])];
   const matched = new Set<number>();
@@ -100,59 +107,19 @@ export function UserMessage({ t, item, previewAttachment, language }: { t: Messa
   // Only app metadata (e.g. an image note whose picture is listed with its prompt) has nothing to show.
   if (!text.trim() && !files.length) return null;
   const time = Date.parse(item.at);
-  return <li className="msg user"><span className="visually-hidden">{t.chat.you}: </span>
+  return <li data-transcript-id={item.id} className="msg user"><span className="visually-hidden">{t.chat.you}: </span>
     {text.trim() && <div className="message-actions">
       {Number.isFinite(time) && <time dateTime={item.at}>{new Intl.DateTimeFormat(language, { timeStyle: 'short' }).format(time)}</time>}
       <CopyButton text={text} label={t.chat.copyMessage} />
     </div>}
-    <div className="bubble">
-    {files.length > 0 && <ul className="bubble-files" aria-label={t.composer.sentAttachments}>{files.map((file, index) => (
-      file.kind === 'image' && file.ref && previewAttachment
-        ? <AttachmentThumb key={index} t={t} file={file} ref_={file.ref} load={previewAttachment} />
-        : <AttachmentRow key={index} file={file} />
-    ))}</ul>}
-    {text && <FoldedText t={t} text={text} />}
+    <div className={`bubble${message.questionReply ? ' question-reply-bubble' : ''}`}>
+    <MessageAttachments t={t} files={files} load={previewAttachment} label={t.composer.sentAttachments} allowOpenFile />
+    {message.questionReply
+      ? <div className="question-replies">{message.questionReply.map((reply, index) => <section className="question-answer" key={index}>
+        <ReplyQuestion question={reply.question} />
+        <div className="question-reply-answer"><FoldedText t={t} text={reply.answer} /></div>
+      </section>)}</div>
+      : text && <FoldedText t={t} text={text} />}
   </div></li>;
-}
-
-/** An attached file listed by name, kind and size. */
-function AttachmentRow({ file }: { file: AttachmentMetadata & { path?: string } }) {
-  const openFile = useMessageFiles();
-  const content = <><Icon name="file" /><span className="bubble-file-name">{file.name}</span>{file.size > 0 && <span className="bubble-file-size">{formatBytes(file.size)}</span>}</>;
-  return <li className={`bubble-file kind-${file.kind}`}>{openFile
-    ? <button type="button" className="message-file-chip" onClick={() => openFile({ name: file.name, path: file.path })}>{content}</button>
-    : content}</li>;
-}
-
-/** A small preview of an attached image the host kept a copy of; it opens full size and closes on a click or Escape. */
-function AttachmentThumb({ t, file, ref_, load }: { t: Messages; file: AttachmentMetadata; ref_: string; load: AttachmentPreviewLoader }) {
-  const [url, setUrl] = useState<string | null | undefined>(undefined);
-  const [open, setOpen] = useState(false);
-  useEffect(() => {
-    let live = true;
-    void load(ref_).then(found => { if (live) setUrl(found ?? null); });
-    return () => { live = false; };
-  }, [load, ref_]);
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(false); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open]);
-  // No copy (yet): the file is listed like any other.
-  if (url === null) return <AttachmentRow file={file} />;
-  return <li className="bubble-thumb">
-    <button type="button" className="bubble-thumb-button" title={file.name} aria-label={t.chat.openAttachment(file.name)} disabled={!url} onClick={() => setOpen(true)}>
-      {url ? <img src={url} alt="" /> : <span className="bubble-thumb-loading" aria-hidden="true" />}
-    </button>
-    {/* Rendered on the page body: dialogs with transforms or blur would otherwise clip a fixed overlay. */}
-    {open && url && typeof document !== 'undefined' && createPortal(<div className="attachment-viewer" role="dialog" aria-modal="true" aria-label={file.name} onClick={() => setOpen(false)}>
-      <figure onClick={event => event.stopPropagation()}>
-        <img src={url} alt={file.name} />
-        <figcaption><span>{file.name}</span>{file.size > 0 && <span>{formatBytes(file.size)}</span>}
-          <button type="button" className="icon-button small" aria-label={t.chat.closeAttachment} onClick={() => setOpen(false)}><Icon name="close" /></button></figcaption>
-      </figure>
-    </div>, document.body)}
-  </li>;
 }
 

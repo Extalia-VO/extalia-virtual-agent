@@ -8,8 +8,8 @@ them the same way, but what Extalia is allowed to do differs.
 | --- | --- | --- |
 | Who runs the agent | Extalia starts and drives it | The agent's own app (CLI, desktop app, IDE) |
 | Examples | Extalia Native (any API key or router); Hermes Agent | Codex CLI/Desktop, Claude Code, Gemini CLI, Antigravity |
-| Prompting from Extalia | Yes | No. Prompts are typed in the agent's own app |
-| Steer, pause, cancel | Where the runtime supports it | No |
+| Prompting from Extalia | Yes | Only through a verified source-bound native route, source queue or paired cooperative channel |
+| Steer, pause, cancel | Where the runtime supports it | Only the exact actions advertised by the selected source/transport; no universal control |
 | `session.started.control` | `managed` | `observed` |
 | Event channel | `stream` | `transcript`, `hook`, `mcp` |
 
@@ -36,9 +36,9 @@ Extalia ──► Runtime adapter ──► Runtime (e.g. Hermes Agent) ──�
 
 A provider alone gives model completions, not an agent with tools. When the
 user only has an API key or a router, Extalia's own runtime, **Extalia Native**,
-supplies the agent loop and the tools (read, search, write and edit files; run
-commands), all inside the workspace boundary and subject to the workspace
-permissions ([ADR 0005](../adr/0005-extalia-native-runtime.md)). External
+supplies the agent loop and scoped read, search, write and edit tools. Native
+terminal commands remain unavailable until a verified workspace-isolated executor
+exists; file tools remain subject to workspace permissions ([ADR 0005](../adr/0005-extalia-native-runtime.md)). External
 runtimes such as Hermes Agent keep their own loop and are connected through
 adapters.
 
@@ -58,6 +58,15 @@ them), or off. With OmniRoute and Extalia memory, Extalia sends
 `x-omniroute-no-memory: true`. Extalia's memory is per workspace and stored in
 the user-data directory; skills are `SKILL.md` files (built-in, user-wide, or in
 the project's `.extalia/skills/`).
+
+Native workers also have bounded `knowledge_search` and `knowledge_read` tools
+for the workspace's assigned Knowledge/Obsidian vault. This index is separate
+from the workspace MemoryStore and its connection toggle. The host pins the
+registered profile and folder for each turn; changed or unavailable bindings
+refuse access instead of selecting another vault. Read-only delegates receive
+only retrieval. Managed learning and meeting writers retain their own consent,
+provenance and root-identity checks; user-authored note-edit APIs are not agent
+write tools. See [Knowledge vault context](../design/knowledge-vault-context.md).
 
 ### Managed runtime adapter responsibilities
 
@@ -149,6 +158,22 @@ three observation channels, used together where available:
    instruction (skill or project instruction file) asking it to do so. This
    adds meaning, but it is best-effort: the model may skip it and it costs
    tokens. It never replaces channels 1 and 2 as the source of truth.
+
+Office history loading is scoped to the host and session. Adding or removing a
+watched session preserves the histories and pending reads of the others; changing
+hosts discards that cache. A busy sibling's recent-event window also retains a
+bounded roster of quiet agents' latest activity and terminal evidence. Source
+timestamps remain unchanged, so retaining a report does not renew its liveness.
+When events have no sequence number and share a timestamp, their delivery order
+is preserved; opaque event IDs are not a causal clock.
+
+Receiving a hook does not permanently disable transcript catch-up. Newer source
+events that hooks did not report can reach the live observation stream, with
+actor-scoped deduplication and the same authority rules on history reload.
+Older transcript states cannot replace a newer hook report. Explicit stop/end
+reports and user pauses remain authoritative. This is evidence-based catch-up,
+not a heartbeat: silence from both channels cannot prove that an outside process
+is still working.
 
 ### Why not "just one prompt"
 

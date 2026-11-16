@@ -1,13 +1,23 @@
 import type { HermesObservedAnswerInput, HermesObservedMessageInput, HermesObservedStatus } from '@extalia/platform';
 import { HermesObservedControl, type HermesObservedRpcFactory } from './hermesObservedControl.js';
-import { findOnPath, isExecutable } from './connect/util.js';
+import { findHermes, hermesEnvironment } from './hermes.js';
+import path from 'node:path';
 
-interface Target { app: string; nativeSessionId: string; watching: boolean }
-interface Options { target(id: string): Target | undefined; env: Readonly<Record<string, string | undefined>>; rpcFactory?: HermesObservedRpcFactory }
+export interface ObservedHermesTarget {
+  app: string; nativeSessionId: string; watching: boolean;
+  /** Canonical fields resolved from the retained observed SQLite reference. */
+  cwd: string; profile: string; profileHome: string; fingerprint: string;
+  /** Stable watch/workspace authority, not transcript content progress. */
+  revision?: string;
+}
+type Target = ObservedHermesTarget;
+interface Options { target(id: string): Target | undefined; env: Readonly<Record<string, string | undefined>>; homeDirectory?: string; rpcFactory?: HermesObservedRpcFactory }
+const sourceKey = (target: Target) => JSON.stringify([target.nativeSessionId, target.cwd, target.profile, target.profileHome, target.fingerprint, target.revision]);
+const boundPath = (value: unknown): value is string => typeof value === 'string' && value.length <= 4096 && path.isAbsolute(value) && !/\p{Cc}/u.test(value);
 
 /** Registry authorizes only the host's watched Hermes source and never starts a gateway. */
 export class ObservedHermesService {
-  private readonly controls = new Map<string, { nativeId: string; control: HermesObservedControl }>();
+  private readonly controls = new Map<string, { sourceKey: string; control: HermesObservedControl }>();
   private readonly work = new Map<string, Promise<unknown>>();
   private readonly blocked = new Set<string>();
   private readonly generations = new Map<string, number>();
@@ -18,7 +28,11 @@ export class ObservedHermesService {
   private target(id: string) {
     if (typeof id !== 'string' || !id || id.length > 200) throw new Error('Choose an observed Hermes session.');
     const target = this.options.target(id);
-    return target?.app === 'hermes' ? target : undefined;
+    return target?.app === 'hermes' && boundPath(target.cwd) && boundPath(target.profileHome) &&
+      typeof target.nativeSessionId === 'string' && target.nativeSessionId.length > 0 && target.nativeSessionId.length <= 256 &&
+      typeof target.profile === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(target.profile) &&
+      typeof target.fingerprint === 'string' && target.fingerprint.length > 0 && target.fingerprint.length <= 512 &&
+      (target.revision === undefined || typeof target.revision === 'string' && target.revision.length <= 512) ? { ...target } : undefined;
   }
   private unavailable(id: string, problem: string): HermesObservedStatus {
     return { sessionId: id, nativeSessionId: this.target(id)?.nativeSessionId ?? '', state: 'unavailable', running: false, canSend: false, canAnswer: false, requests: [], problem };
@@ -34,7 +48,7 @@ export class ObservedHermesService {
   }
   status(id: string): HermesObservedStatus {
     const target = this.target(id), entry = this.controls.get(id);
-    if (this.closed || !target?.watching || this.blocked.has(id) || entry && entry.nativeId !== target.nativeSessionId) {
+    if (this.closed || !target?.watching || this.blocked.has(id) || entry && entry.sourceKey !== sourceKey(target)) {
       if (entry) { this.controls.delete(id); void this.stop(id, entry.control).catch(() => undefined); }
       return this.unavailable(id, 'Choose a watched Hermes gateway session.');
     }
@@ -54,17 +68,23 @@ export class ObservedHermesService {
       if (this.blocked.has(id) || !target?.watching) return this.unavailable(id, 'Resume observation before connecting.');
       await this.cleanup.get(id);
       if (this.cleanupFailures.has(id)) throw new Error('Hermes connection cleanup could not be confirmed.');
-      if (profile !== undefined && (typeof profile !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(profile))) throw new Error('Choose a valid Hermes profile.');
+      if (profile !== undefined && profile !== target.profile) throw new Error('Choose the Hermes profile that owns this observed session.');
       const previous = this.controls.get(id); this.controls.delete(id); if (previous) await this.stop(id, previous.control);
-      const override = this.options.env.EXTALIA_HERMES_BIN;
-      const bin = override && await isExecutable(override) ? override : !override ? await findOnPath('hermes', this.options.env, process.platform) : undefined;
+      const bin = await findHermes(this.options.env, this.options.homeDirectory);
       if (!bin) return this.unavailable(id, 'Hermes with the public gateway attach command was not found.');
-      if (this.closed || this.blocked.has(id) || generation !== (this.generations.get(id) ?? 0) || this.target(id)?.nativeSessionId !== target.nativeSessionId || !this.target(id)?.watching) throw new Error('The observed Hermes session changed.');
-      const control = new HermesObservedControl({ sessionId: id, nativeSessionId: target.nativeSessionId, bin, env: { ...this.options.env }, ...(profile ? { profile } : {}), ...(this.options.rpcFactory ? { rpcFactory: this.options.rpcFactory } : {}) });
-      this.controls.set(id, { nativeId: target.nativeSessionId, control });
+      const key = sourceKey(target);
+      const assertCurrent = () => {
+        const current = this.target(id);
+        if (this.closed || this.blocked.has(id) || generation !== (this.generations.get(id) ?? 0) || !current?.watching || sourceKey(current) !== key) throw new Error('The observed Hermes session changed.');
+      };
+      assertCurrent();
+      const control = new HermesObservedControl({ sessionId: id, nativeSessionId: target.nativeSessionId, bin,
+        env: { ...hermesEnvironment(this.options.env), HERMES_HOME: target.profileHome }, expectedProfileId: target.profileHome, cwd: target.cwd, assertCurrent,
+        ...(this.options.rpcFactory ? { rpcFactory: this.options.rpcFactory } : {}) });
+      this.controls.set(id, { sourceKey: key, control });
       try {
         const status = await control.connect();
-        if (this.closed || this.blocked.has(id) || generation !== (this.generations.get(id) ?? 0) || this.target(id)?.nativeSessionId !== target.nativeSessionId || !this.target(id)?.watching) { await this.stop(id, control); throw new Error('The observed Hermes session changed.'); }
+        assertCurrent();
         return status;
       } catch (error) { await this.stop(id, control); throw error; }
     });

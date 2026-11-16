@@ -94,9 +94,10 @@ function renderBlock(block: Block, index: number, wikilink?: WikilinkRenderer): 
 }
 
 /** With `wikilink`, `[[…]]` links are parsed (Knowledge notes) and drawn by it; chat replies leave it out. */
-export function Markdown({ text, wikilink }: { text: string; wikilink?: WikilinkRenderer | undefined }) {
+export function Markdown({ text, wikilink, allowFileLinks = true }: { text: string; wikilink?: WikilinkRenderer | undefined; allowFileLinks?: boolean }) {
   const wikilinks = Boolean(wikilink);
-  const fileLinks = Boolean(useMessageFiles());
+  const openFile = useMessageFiles();
+  const fileLinks = allowFileLinks && Boolean(openFile);
   const blocks = useMemo(() => parseMarkdown(text, { wikilinks, fileLinks }), [text, wikilinks, fileLinks]);
   return <div className="markdown">{blocks.map((block, index) => renderBlock(block, index, wikilink))}</div>;
 }

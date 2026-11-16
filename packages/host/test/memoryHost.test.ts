@@ -2,7 +2,8 @@ import type { ExtaliaEvent } from '@extalia/protocol';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createAgentHost, type AgentHostRuntime } from '../src/service.js';
+import type { AgentHostRuntime } from '../src/service.js';
+import { createAgentHost } from '../src/service.js';
 import { useTempDirs } from './helpers.js';
 
 type Request = {

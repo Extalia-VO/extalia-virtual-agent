@@ -1,21 +1,23 @@
-import type { NotificationCapability } from '@extalia/platform';
+import { parseNotificationTarget, type NotificationCapability, type NotificationTarget } from '@extalia/platform';
 
 /**
- * Browser notifications for approval requests. Shown only when the page already
+ * Browser notifications. Shown only when the page already
  * has permission (the Settings toggle asks for it); a click focuses this window
- * and tells the shell to open the inbox. Undefined where the browser has no API.
+ * and returns that notification's navigation target. Undefined without the API.
  */
 export function browserNotifications(): NotificationCapability | undefined {
   if (typeof window === 'undefined' || !('Notification' in window)) return undefined;
-  const listeners = new Set<() => void>();
+  const listeners = new Set<(target?: NotificationTarget) => void>();
   return {
-    async notify({ title, body }) {
+    supportsTargets: true,
+    async notify({ title, body, target: value }) {
+      const target = value === undefined ? undefined : parseNotificationTarget(value);
       if (Notification.permission !== 'granted') return;
-      const note = new Notification(title, { ...(body ? { body } : {}), tag: 'extalia-approval' });
+      const note = new Notification(title, { ...(body ? { body } : {}), ...(target?.kind === 'observed-input' ? {} : { tag: 'extalia-approval' }) });
       note.onclick = () => {
         window.focus();
         note.close();
-        for (const listener of listeners) listener();
+        for (const listener of listeners) listener(target === undefined ? undefined : { ...target });
       };
     },
     onActivate(listener) {

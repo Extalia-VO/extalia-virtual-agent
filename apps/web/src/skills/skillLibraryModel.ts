@@ -1,13 +1,27 @@
-import type { BuiltinSkillInfo, SkillRegistryReport, WorkspaceSkills } from '@extalia/platform';
+import type { BuiltinSkillInfo, SkillRegistryReport, SkillRevisionSummary, WorkspaceSkills } from '@extalia/platform';
 import { catalogCategory, type CatalogCategory } from './builtinCatalogModel';
 
 export type BookSource = 'builtin' | 'project' | 'registry';
+export type SkillBookOrigin = 'builtin' | 'marketplace' | 'custom' | 'project' | 'imported';
+export type SkillBookSourceFilter = BookSource | SkillBookOrigin | 'all';
+export const SKILL_ORIGIN_FILTERS = ['all', 'builtin', 'marketplace', 'custom', 'project', 'imported'] as const;
+/** Source markers describe origin, never scanner approval or activation. Old peers stay generic. */
+export function registrySkillOrigin(revision: Pick<SkillRevisionSummary, 'origin'> & { marketplaceSource?: boolean }): SkillBookOrigin {
+  if (revision.origin === 'builtin') return 'builtin';
+  if (revision.origin === 'user' || revision.origin === 'generated') return 'custom';
+  if (revision.origin === 'workspace') return 'project';
+  return revision.origin === 'imported' && revision.marketplaceSource === true ? 'marketplace' : 'imported';
+}
+export function skillBookOrigin(book: Pick<SkillBook, 'source' | 'origin'>): SkillBookOrigin {
+  return book.origin ?? (book.source === 'registry' ? 'imported' : book.source);
+}
 export interface SkillBook {
   id: string;
   title: string;
   description: string;
   category: CatalogCategory;
   source: BookSource;
+  origin?: SkillBookOrigin;
   status: string;
   workspace?: string;
   digest?: string;
@@ -25,16 +39,16 @@ export const BOOK_COLORS: Record<CatalogCategory, string> = {
 /** Presentation only. Distinct workspaces and exact revisions never collapse into one approval. */
 export function skillBooks(builtin: readonly BuiltinSkillInfo[], projects: readonly { name: string; report: WorkspaceSkills }[], registry?: SkillRegistryReport): SkillBook[] {
   const books: SkillBook[] = builtin.map(skill => ({ id: `builtin:${skill.name}`, title: skill.name, description: skill.description,
-    category: catalogCategory(skill), source: 'builtin', status: 'bundled', ...(skill.body !== undefined ? { body: skill.body } : {}) }));
+    category: catalogCategory(skill), source: 'builtin', origin: 'builtin', status: 'bundled', ...(skill.body !== undefined ? { body: skill.body } : {}) }));
   if (registry?.mode === 'registry') {
     for (const revision of registry.revisions) books.push({ id: `registry:${revision.revisionId}`, title: revision.packageId,
-      description: revision.version, category: 'uncategorized', source: 'registry', status: revision.active ? 'active' : revision.state,
+      description: revision.version, category: 'uncategorized', source: 'registry', origin: registrySkillOrigin(revision), status: revision.active ? 'active' : revision.state,
       digest: revision.treeSha256, revision: revision.revisionId });
   } else {
     for (const { name, report } of projects) {
       for (const [status, entries] of [['reviewed', report.allowed], ['pending', report.pending]] as const) {
         for (const skill of entries) books.push({ id: `project:${report.workspaceId}:${skill.name}:${skill.sha256}`, title: skill.name,
-          description: skill.description, category: 'uncategorized', source: 'project', status, workspace: name, digest: skill.sha256 });
+          description: skill.description, category: 'uncategorized', source: 'project', origin: 'project', status, workspace: name, digest: skill.sha256 });
       }
     }
   }
@@ -52,14 +66,14 @@ export function createSkillBookIndex(books: readonly SkillBook[]): SkillBookInde
 }
 
 /** A keystroke normalizes only its query, never all catalog metadata again. */
-export function filterSkillBookIndex(index: SkillBookIndex, query: string, source: BookSource | 'all', category: CatalogCategory | 'all'): SkillBook[] {
+export function filterSkillBookIndex(index: SkillBookIndex, query: string, source: SkillBookSourceFilter, category: CatalogCategory | 'all'): SkillBook[] {
   const terms = query.normalize('NFKC').toLocaleLowerCase().trim().slice(0, 200).split(/\s+/).filter(Boolean);
-  return index.filter(({ book, searchText }) => (source === 'all' || book.source === source) && (category === 'all' || book.category === category)
+  return index.filter(({ book, searchText }) => (source === 'all' || (source === 'registry' ? book.source === 'registry' : skillBookOrigin(book) === source)) && (category === 'all' || book.category === category)
     && terms.every(term => searchText.includes(term))).map(entry => entry.book);
 }
 
 /** Compatibility convenience; interactive callers can memoize createSkillBookIndex separately. */
-export function filterSkillBooks(books: readonly SkillBook[], query: string, source: BookSource | 'all', category: CatalogCategory | 'all'): SkillBook[] {
+export function filterSkillBooks(books: readonly SkillBook[], query: string, source: SkillBookSourceFilter, category: CatalogCategory | 'all'): SkillBook[] {
   return filterSkillBookIndex(createSkillBookIndex(books), query, source, category);
 }
 

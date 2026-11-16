@@ -108,3 +108,17 @@ describe('camera attention from explicit waiting phases', () => {
     expect(cameraAttentionIds([agent()], [wait(1, 'input', { source: { runtime: 'example', channel: 'import' } }), request(2, 'a', { source: { runtime: 'example', channel: 'import' } })], [])).toEqual([]);
   });
 });
+
+it('keeps observed async input in attention while work continues, without inventing a waiting state', () => {
+  const visible = agent('outside', 'primary', { control: 'observed', status: 'working' });
+  const input = { sessionId: 'outside', id: 'question', requestedAt: at(1) };
+  expect(cameraAttentionIds([visible], [], [], [input])).toEqual(['outside:primary']);
+  expect(visible.status).toBe('working');
+  expect(cameraAttentionIds([visible], [], [], [])).toEqual([]);
+});
+it('routes input attention only to the matching admitted observed character', () => {
+  const inputs = [{ sessionId: 'outside', id: 'question', requestedAt: at(1) }, { sessionId: 'missing', id: 'foreign', requestedAt: at(0) }];
+  for (const visible of [agent('outside'), agent('outside', 'primary', { control: 'observed', earlier: true }), agent('outside', 'primary', { control: 'observed', status: 'paused' })]) {
+    expect(cameraAttentionIds([visible], [], [], inputs)).toEqual([]);
+  }
+});

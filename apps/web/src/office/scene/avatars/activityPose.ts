@@ -16,12 +16,13 @@ export type ActivityClip =
   // Seated at a desk.
   | 'desk-idle' | 'typing' | 'mouse' | 'read-screen' | 'thinking' | 'lean-back' | 'watch-output' | 'stretch' | 'sip' | 'phone'
   // Seated elsewhere.
-  | 'lounge' | 'watch-tv' | 'cycle' | 'bench-curl' | 'cable-row' | 'eat' | 'console-play'
+  | 'lounge' | 'watch-tv' | 'cycle' | 'bench-curl' | 'cable-row' | 'eat' | 'console-play' | 'seated-chat-talk' | 'seated-chat-listen'
   // Standing.
   | 'chat-talk' | 'chat-listen' | 'jog' | 'lift' | 'yoga' | 'arcade' | 'foosball' | 'look-around' | 'bar-prep' | 'bar-shake' | 'bar-serve';
 
 const SEATED_CLIPS: ReadonlySet<ActivityClip> = new Set<ActivityClip>([
   'desk-idle', 'typing', 'mouse', 'read-screen', 'thinking', 'lean-back', 'watch-output', 'stretch', 'sip', 'phone', 'lounge', 'watch-tv', 'cycle', 'bench-curl', 'cable-row', 'eat', 'console-play',
+  'seated-chat-talk', 'seated-chat-listen',
 ]);
 
 /** Seated clips blend in with the sit amount; standing clips while standing still. */
@@ -242,6 +243,7 @@ export function writeActivityPose(out: ActivityPose, clip: ActivityClip, time: n
       out.knee[0] = 0.25 * Math.max(0, pedal); out.knee[1] = 0.25 * Math.max(0, -pedal);
       return out;
     }
+    case 'seated-chat-talk':
     case 'chat-talk': {
       // Open-palm conversational hands, alternating, with small torso turns.
       const left = pulse(time, 1.15, phase), right = pulse(time, 1.15, phase + Math.PI);
@@ -254,6 +256,7 @@ export function writeActivityPose(out: ActivityPose, clip: ActivityClip, time: n
       out.wrist[0] = -0.15 * left; out.wrist[1] = -0.15 * right;
       return out;
     }
+    case 'seated-chat-listen':
     case 'chat-listen': {
       // Hands loosely clasped, an attentive nod now and then.
       const nod = pulse(time, 0.7, phase);

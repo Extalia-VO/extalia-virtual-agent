@@ -1,13 +1,27 @@
-import type { AgentHostApi, HostState, ImportLocation } from '@extalia/platform';
-import { useEffect, useId, useState } from 'react';
+import type { AgentHostApi, FileSystemCapability, HostState, ImportLocation } from '@extalia/platform';
+import { useEffect, useId, useRef, useState } from 'react';
 import { errorMessage } from '../host/remote';
 import type { Messages } from '../i18n';
 import { Icon } from '../ui/Icon';
+import { CopyButton } from '../ui/CopyButton';
+import { HostFolderPicker } from '../ui/HostFolderPicker';
 import { AgentAppLogo } from '../ui/OriginMark';
 import { addIgnoredFolder, DEFAULT_IGNORED_FOLDERS, isDefaultIgnoredFolder, missesDefaults, readDefaultIgnoreFolders, readIgnoreFolders, removeIgnoredFolder } from './ignoredFolders';
 
+type WatchProps = { t: Messages; agents: AgentHostApi; onState: (state: HostState) => void };
+type IgnoreProps = WatchProps & { picker?: FileSystemCapability | undefined };
+
 /** Per-location opt-in for "watch new sessions automatically". */
-export function AutoWatchLocations({ t, agents, onState }: { t: Messages; agents: AgentHostApi; onState: (state: HostState) => void }) {
+export function AutoWatchLocations(props: WatchProps) {
+  const [source, setSource] = useState({ agents: props.agents, key: 0 });
+  const changed = source.agents !== props.agents;
+  const key = source.key + (changed ? 1 : 0);
+  if (changed) setSource({ agents: props.agents, key });
+  return <AutoWatchLocationsForm key={key} {...props} />;
+}
+
+function AutoWatchLocationsForm({ t, agents, onState }: WatchProps) {
+  const owner = useRef({ active: true, busy: false });
   const [locations, setLocations] = useState<ImportLocation[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string>();
@@ -15,16 +29,22 @@ export function AutoWatchLocations({ t, agents, onState }: { t: Messages; agents
   useEffect(() => {
     let active = true;
     agents.importLocations().then(list => { if (active) setLocations(list); }, failure => { if (active) { setLocations([]); setError(errorMessage(failure)); } });
-    return () => { active = false; };
+    const scope = owner.current;
+    scope.active = true;
+    return () => { active = false; scope.active = false; };
   }, [agents]);
 
   const toggle = async (location: ImportLocation, enabled: boolean) => {
-    setBusy(location.id); setError(undefined);
+    if (!owner.current.active || owner.current.busy || !location.available || !location.supported || Boolean(location.autoWatch) === enabled) return;
+    owner.current.busy = true; setBusy(location.id); setError(undefined);
     try {
-      setLocations(await agents.setAutoWatch(location.id, enabled));
-      onState(await agents.getState());
-    } catch (failure) { setError(errorMessage(failure)); }
-    finally { setBusy(null); }
+      const next = await agents.setAutoWatch(location.id, enabled);
+      if (!owner.current.active) return;
+      setLocations(next);
+      const state = await agents.getState();
+      if (owner.current.active) onState(state);
+    } catch (failure) { if (owner.current.active) setError(errorMessage(failure)); }
+    finally { owner.current.busy = false; if (owner.current.active) setBusy(null); }
   };
   const usable = (locations ?? []).filter(location => location.available && location.supported);
   return <section className="card settings-section" aria-labelledby="observer-auto">
@@ -57,11 +77,20 @@ export function AutoWatchLocations({ t, agents, onState }: { t: Messages; agents
  * v0.0.37: folders whose sessions are never shown in the Office (default `~/.claude-mem`), wired to the host's
  * `setHookPrivacy({ ignoreFolders })`. Hidden on hosts that do not report an ignore list.
  */
-export function IgnoredFolders({ t, agents, onState }: { t: Messages; agents: AgentHostApi; onState: (state: HostState) => void }) {
+export function IgnoredFolders(props: IgnoreProps) {
+  const [source, setSource] = useState({ agents: props.agents, picker: props.picker, key: 0 });
+  const changed = source.agents !== props.agents || source.picker !== props.picker;
+  const key = source.key + (changed ? 1 : 0);
+  if (changed) setSource({ agents: props.agents, picker: props.picker, key });
+  return <IgnoredFoldersForm key={key} {...props} />;
+}
+
+function IgnoredFoldersForm({ t, agents, picker, onState }: IgnoreProps) {
+  const owner = useRef({ active: true, busy: false });
   const o = t.observedOrigin;
   const [folders, setFolders] = useState<string[] | null | undefined>(null);
   const [defaults, setDefaults] = useState<readonly string[]>(DEFAULT_IGNORED_FOLDERS);
-  const [draft, setDraft] = useState('');
+  const [picking, setPicking] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const inputId = useId();
@@ -71,26 +100,32 @@ export function IgnoredFolders({ t, agents, onState }: { t: Messages; agents: Ag
     let active = true;
     agents.hookIngest().then(status => { if (active) { setFolders(readIgnoreFolders(status)); setDefaults(readDefaultIgnoreFolders(status)); } },
       () => { if (active) setFolders(undefined); });
-    return () => { active = false; };
+    const scope = owner.current;
+    scope.active = true;
+    return () => { active = false; scope.active = false; };
   }, [agents]);
 
   // `null` restores the host's default list.
   const save = async (next: string[] | null) => {
-    setBusy(true); setError(undefined);
+    if (!owner.current.active || owner.current.busy) return false;
+    owner.current.busy = true; setBusy(true); setError(undefined);
     try {
       const status = await agents.setHookPrivacy({ ignoreFolders: next });
+      if (!owner.current.active) return false;
       setFolders(readIgnoreFolders(status) ?? next ?? [...defaults]);
-      onState(await agents.getState());
+      const state = await agents.getState();
+      if (!owner.current.active) return false;
+      onState(state);
       return true;
-    } catch (failure) { setError(errorMessage(failure)); return false; }
-    finally { setBusy(false); }
+    } catch (failure) { if (owner.current.active) setError(errorMessage(failure)); return false; }
+    finally { owner.current.busy = false; if (owner.current.active) setBusy(false); }
   };
   if (folders === undefined) return null;
-  const add = async () => {
-    if (!folders) return;
-    const next = addIgnoredFolder(folders, draft);
+  const add = async (path: string) => {
+    if (!owner.current.active || owner.current.busy || !folders) return;
+    const next = addIgnoredFolder(folders, path);
     if (next.duplicate) { setError(o.ignoredDuplicate); return; }
-    if (next.added && await save(next.list)) setDraft('');
+    if (next.added) await save(next.list);
   };
   return <section className="card settings-section ignored-folders" aria-labelledby={`${inputId}-title`}>
     <h2 id={`${inputId}-title`}>{o.ignoredTitle}</h2>
@@ -99,18 +134,17 @@ export function IgnoredFolders({ t, agents, onState }: { t: Messages; agents: Ag
       {!folders.length ? <p className="muted small">{o.ignoredEmpty}</p> : <ul className="ignored-folder-list">
         {folders.map(folder => <li key={folder} className="ignored-folder">
           <code className="entity-path" title={folder}>{folder}</code>
+          <CopyButton text={folder} label={folder} />
           {isDefaultIgnoredFolder(folder, defaults) && <span className="badge">{o.ignoredDefault}</span>}
-          <button type="button" className="icon-button small" disabled={busy} aria-label={o.ignoredRemove(folder)} title={o.ignoredRemove(folder)}
+          <button type="button" className="icon-button small" disabled={busy || picking} aria-label={o.ignoredRemove(folder)} title={o.ignoredRemove(folder)}
             onClick={() => { void save(removeIgnoredFolder(folders, folder)); }}><Icon name="close" /></button>
         </li>)}
       </ul>}
-      <form className="ignored-folder-add" onSubmit={event => { event.preventDefault(); void add(); }}>
-        <label className="visually-hidden" htmlFor={inputId}>{o.ignoredLabel}</label>
-        <input id={inputId} type="text" value={draft} placeholder={o.ignoredPlaceholder} aria-describedby={hintId} spellCheck={false} autoComplete="off"
-          disabled={busy} onChange={event => { setDraft(event.target.value); setError(undefined); }} />
-        <button type="submit" className="button" disabled={busy || !draft.trim()}><Icon name="plus" />{o.ignoredAdd}</button>
-        {missesDefaults(folders, defaults) && <button type="button" className="button" disabled={busy} onClick={() => { void save(null); }}><Icon name="refresh" />{o.ignoredRestore}</button>}
-      </form>
+      <div className="ignored-folder-add" aria-describedby={hintId}>
+        <HostFolderPicker t={t} agents={agents} picker={picker} disabled={busy} label={o.ignoredAdd} title={o.ignoredLabel}
+          onSelect={add} onBusyChange={setPicking} />
+        {missesDefaults(folders, defaults) && <button type="button" className="button" disabled={busy || picking} onClick={() => { void save(null); }}><Icon name="refresh" />{o.ignoredRestore}</button>}
+      </div>
     </>}
     {error && <p role="alert" className="form-error">{error}</p>}
   </section>;

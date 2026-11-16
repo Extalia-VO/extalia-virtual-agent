@@ -1,0 +1,6 @@
+.conversation-tools-tabs { display: grid; gap: 10px; min-width: 0; }
+.conversation-tools-tabs > [role='tablist'] { display: flex; gap: 4px; flex-wrap: wrap; border-bottom: 1px solid var(--line); }
+.conversation-tools-tabs > [role='tablist'] > button { padding: 8px 10px; border: 0; border-radius: 10px 10px 0 0; background: transparent; color: var(--muted); font: inherit; font-size: .8rem; }
+.conversation-tools-tabs > [role='tablist'] > button[aria-selected='true'] { background: var(--accent-soft); color: var(--text); }
+.conversation-tools-tabs > [role='tabpanel'] { min-width: 0; }
+.conversation-tools-tabs > [role='tabpanel'][hidden] { display: none; }

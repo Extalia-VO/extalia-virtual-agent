@@ -28,6 +28,8 @@ export interface DaemonSidecarOptions {
    * at every start; `undefined` keeps the default `<data>/vaults/<profile>`.
    */
   vaultRoot?(): string | undefined | Promise<string | undefined>;
+  /** Trusted semantic ID of the host's default Knowledge profile; never a request/model input. */
+  knowledgeProfileAlias?: string;
   clientVersion: string;
   /** Environment the allow-list is taken from; provider credentials never pass. */
   env?: Readonly<Record<string, string | undefined>>;
@@ -87,7 +89,10 @@ export class DaemonSidecar {
     let vaultRoot: string | undefined;
     try { vaultRoot = await this.options.vaultRoot?.(); } catch { vaultRoot = undefined; }
     if (this.stopped) throw new DaemonUnavailableError('shutting_down');
-    const args = ['--data-dir', this.options.dataDirectory, '--profile', this.options.profile, ...(vaultRoot ? ['--vault-root', vaultRoot] : [])];
+    const alias = this.options.knowledgeProfileAlias;
+    if (alias !== undefined && (this.options.profile !== 'default' || alias === 'default' || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(alias))) throw this.failed('invalid_arguments');
+    const args = ['--data-dir', this.options.dataDirectory, '--profile', this.options.profile, ...(vaultRoot ? ['--vault-root', vaultRoot] : []),
+      ...(alias ? ['--knowledge-profile-alias', alias] : [])];
     let child: DaemonProcess;
     try {
       child = (this.options.spawn ?? spawnChild)(binary, args, { cwd: this.options.dataDirectory, env });

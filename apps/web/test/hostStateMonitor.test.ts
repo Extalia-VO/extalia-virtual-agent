@@ -13,6 +13,25 @@ const deferred = <T>() => {
 afterEach(() => vi.useRealTimers());
 
 describe('host connection monitor', () => {
+  it('confirms recovery only with a fresh host read, not an applied cached snapshot', async () => {
+    vi.useFakeTimers();
+    const fresh = deferred<HostState>();
+    const getState = vi.fn<() => Promise<HostState>>().mockRejectedValueOnce(new Error('Service stopped')).mockReturnValue(fresh.promise);
+    const onConnected = vi.fn();
+    const onState = vi.fn();
+    const monitor = createHostStateMonitor({ getState, onState, onConnected, onError: vi.fn() });
+    await vi.advanceTimersByTimeAsync(0);
+    monitor.apply(state('cached'));
+    expect(onState).toHaveBeenLastCalledWith(state('cached'));
+    expect(onConnected).not.toHaveBeenCalled();
+    monitor.refresh(); await vi.advanceTimersByTimeAsync(0);
+    expect(onConnected).not.toHaveBeenCalled();
+    fresh.resolve(state('reconnected')); await vi.advanceTimersByTimeAsync(0);
+    expect(onConnected).toHaveBeenCalledOnce();
+    expect(onState).toHaveBeenLastCalledWith(state('reconnected'));
+    monitor.dispose();
+  });
+
   it('detects an idle host disconnect and recovers when polling succeeds again', async () => {
     vi.useFakeTimers();
     const first = state('first');

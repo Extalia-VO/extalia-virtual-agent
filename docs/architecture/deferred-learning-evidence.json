@@ -1,0 +1,65 @@
+{
+  "date": "2026-11-11",
+  "featureVersion": "0.4.262",
+  "combinedVerificationVersion": "0.4.263",
+  "decision": "docs/adr/0074-deferred-learning-and-workspace-knowledge.md",
+  "placement": {
+    "admissionAndCountdown": "TypeScript host",
+    "curatorStateEvidenceReceiptsAndArtifacts": "Rust",
+    "knowledgeIndexAndScopedCache": "Rust",
+    "providerHttpAndEffectDrain": "TypeScript host",
+    "inference": "Approved model provider",
+    "notificationsAndControls": "React presentation"
+  },
+  "fullGate": {
+    "command": "pnpm check",
+    "exitCode": 0,
+    "typescriptTestFilesPassed": 585,
+    "typescriptTestFilesSkipped": 3,
+    "typescriptTestsPassed": 8337,
+    "typescriptTestsSkipped": 26,
+    "rustTestsPassed": 546,
+    "checks": ["eslint", "boundaries", "backend-ownership-baseline", "public-safety", "schemas", "types", "rust-format", "clippy", "daemon-build", "web-build", "desktop-build", "cli-build", "versions", "hair-assets"]
+  },
+  "integration": {
+    "environment": "Temporary data/home directories, real Rust daemon, synthetic model provider",
+    "cases": [
+      "Source completion and idle precede scheduled curator inference",
+      "Deadline expiry, revision-checked snooze/run-now and exactly-once claim",
+      "Foreground deferral preserves source and a longer snooze",
+      "New foreground prompts work during an active curator",
+      "Profile/folder changes cancel pending work without retargeting",
+      "Shutdown awaits physically entered provider and publication effects",
+      "Managed defaults, explicit disabled policy and custom-root consent",
+      "Dedicated isolated profiles and refusal of shared/default reassignment",
+      "Actual profile-scoped Rust sync, CAS edits, search and overview",
+      "Custom-root replacement/reopening and symlink refusal without fallback",
+      "Shared Knowledge admission deadlines and retained evicted-service drain",
+      "Unavailable scoped status names the selected vault"
+    ]
+  },
+  "browser": {
+    "source": "Actual countdown and KnowledgePage components with synthetic host responses",
+    "countdownCases": 8,
+    "knowledgeCases": 4,
+    "languages": ["en", "id"],
+    "themes": ["light", "dark"],
+    "widths": [1440, 390],
+    "observations": [
+      "Keyboard snooze/run-now and dismissal work",
+      "Alpha vault shows 14 notes and 18 links; Beta shows zero notes and no retained canvas",
+      "Switching back restores the selected graph",
+      "Scoped folder change uses the same workspace and removes the previous reader",
+      "No horizontal overflow or runtime errors in final flows"
+    ]
+  },
+  "limits": [
+    "Automatic source completion hook covers eligible saved Native Chat; canonical missions and observed/external runtimes retain separate hooks",
+    "No live-provider certification or real profile configuration mutation",
+    "Countdowns are connection-scoped, not durable restart jobs",
+    "Skill candidates remain inspected and require separate user approval/activation",
+    "Unix learning artifact capability remains unavailable on Windows",
+    "Vault profiles do not create private credential stores or skill registries",
+    "Existing Vite chunk-size warning remains"
+  ]
+}

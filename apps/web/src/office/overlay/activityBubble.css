@@ -1,0 +1,106 @@
+/* Keep the anchor stationary; only the small icon and dots animate during work. */
+.office-character-bubble {
+  --bubble-accent: var(--accent);
+  translate: 0 calc(-50% - 20px);
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: max-content;
+  max-width: min(248px, calc(100vw - 40px));
+  padding: 7px 11px 7px 7px;
+  border: 1px solid color-mix(in srgb, var(--bubble-accent) 22%, var(--line));
+  border-radius: 16px;
+  background: var(--office-overlay, var(--surface-solid));
+  color: var(--text);
+  box-shadow: 0 3px 12px rgb(0 0 0 / 9%), inset 0 1px 0 var(--highlight);
+  font: 550 12px/1.4 var(--font-ui);
+  pointer-events: none;
+  transform-origin: center bottom;
+  animation: office-bubble-arrive 220ms var(--ease);
+  transition: opacity 380ms ease, transform 380ms ease;
+}
+.office-character-bubble::after {
+  content: '';
+  position: absolute;
+  bottom: -5px;
+  left: calc(50% - 4px);
+  width: 8px;
+  height: 8px;
+  background: inherit;
+  border-right: inherit;
+  border-bottom: inherit;
+  transform: rotate(45deg);
+}
+.office-character-bubble[data-motion='thinking'] { --bubble-accent: #6574b9; }
+.office-character-bubble.tone-handoff { --bubble-accent: #8262b0; }
+:root[data-theme='dark'] .office-character-bubble[data-motion='thinking'] { --bubble-accent: #b6bfff; }
+:root[data-theme='dark'] .office-character-bubble.tone-handoff { --bubble-accent: #cbb2f3; }
+.office-character-bubble.tone-attention { --bubble-accent: var(--warn); }
+.office-character-bubble.tone-error { --bubble-accent: var(--error); }
+.office-character-bubble[data-motion='deleting'] { --bubble-accent: var(--warn); }
+.office-bubble-symbol {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: 0 0 27px;
+  width: 27px;
+  height: 27px;
+  border-radius: 9px;
+  color: var(--bubble-accent);
+  background: color-mix(in srgb, var(--bubble-accent) 10%, transparent);
+}
+.office-bubble-symbol > .icon { width: 16px; height: 16px; }
+.office-bubble-symbol > .office-bubble-gears { width: 20px; height: 20px; }
+.office-bubble-gear { transform-box: fill-box; transform-origin: center; animation: office-bubble-think 6s linear infinite; }
+.office-bubble-gear.small { animation-duration: 4500ms; animation-direction: reverse; }
+.office-bubble-orbit { position: absolute; inset: -2px; border: 1.5px solid transparent; border-top-color: currentColor; border-right-color: color-mix(in srgb, currentColor 30%, transparent); border-radius: 50%; animation: office-bubble-think 2400ms linear infinite; }
+.office-bubble-phrase { min-width: 0; overflow-wrap: anywhere; }
+.office-bubble-dots { display: flex; align-items: center; gap: 3px; flex: none; margin-left: 1px; color: var(--bubble-accent); }
+.office-bubble-dots i { width: 3px; height: 3px; border-radius: 50%; background: currentColor; animation: office-bubble-dot 1600ms ease-in-out infinite; }
+.office-bubble-dots i:nth-child(2) { animation-delay: 160ms; }
+.office-bubble-dots i:nth-child(3) { animation-delay: 320ms; }
+.office-character-bubble[data-motion='thinking'] .office-bubble-symbol > .icon { animation: office-bubble-scan 2600ms ease-in-out infinite; }
+.office-character-bubble[data-motion='terminal'] .office-bubble-cursor { animation: office-bubble-cursor 1400ms steps(2, end) infinite; }
+.office-character-bubble[data-motion='testing'] .office-bubble-symbol > .icon { animation: office-bubble-scan 1800ms ease-in-out infinite; }
+.office-character-bubble[data-motion='searching'] .office-bubble-symbol > .icon { animation: office-bubble-search 2800ms ease-in-out infinite; }
+.office-character-bubble[data-motion='reading'] .office-bubble-symbol > .icon { animation: office-bubble-read 2600ms ease-in-out infinite; }
+.office-character-bubble[data-motion='repository'] .office-bubble-symbol > .icon { animation: office-bubble-handoff 2400ms ease-in-out infinite; }
+.office-character-bubble[data-motion='repository'] .office-bubble-symbol path:last-child { animation: office-bubble-scan 2400ms ease-in-out infinite; }
+.office-character-bubble[data-motion='writing'] .office-bubble-symbol > .icon { animation: office-bubble-write 2000ms ease-in-out infinite; }
+.office-character-bubble[data-motion='browsing'] .office-bubble-symbol > .icon { animation: office-bubble-turn 3600ms ease-in-out infinite; }
+.office-character-bubble[data-motion='learning'] .office-bubble-symbol > .icon { animation: office-bubble-turn 2800ms ease-in-out infinite; }
+.office-character-bubble[data-motion='reviewing'] .office-bubble-symbol > .icon { animation: office-bubble-scan 3000ms ease-in-out infinite; }
+.office-character-bubble[data-motion='writing-file'] .office-bubble-symbol > .icon,
+.office-character-bubble[data-motion='formatting'] .office-bubble-symbol > .icon { animation: office-bubble-write 2200ms ease-in-out infinite; }
+.office-character-bubble[data-motion='creating'] .office-bubble-symbol > .icon { animation: office-bubble-create 2600ms ease-in-out infinite; }
+.office-character-bubble[data-motion='deleting'] .office-bubble-symbol > .icon { animation: office-bubble-remove 2600ms ease-in-out infinite; }
+.office-character-bubble[data-motion='moving'] .office-bubble-file-arrow { animation: office-bubble-handoff 1800ms ease-in-out infinite; }
+.office-character-bubble[data-motion='copying'] .office-bubble-symbol path:last-child { animation: office-bubble-copy 2400ms ease-in-out infinite; }
+.office-character-bubble[data-motion='installing'] .office-bubble-symbol > .icon { animation: office-bubble-scan 2200ms ease-in-out infinite; }
+.office-character-bubble[data-motion='processing'] .office-bubble-symbol > .icon { animation: office-bubble-scan 2000ms ease-in-out infinite; }
+.office-character-bubble[data-motion='handoff'] .office-bubble-symbol > .icon { animation: office-bubble-handoff 2400ms ease-in-out infinite; }
+.office-character-bubble[data-motion='waiting'] .office-bubble-symbol::before { content: ''; position: absolute; inset: 3px; border: 1px solid currentColor; border-radius: 7px; opacity: 0; animation: office-bubble-wait 3200ms ease-in-out infinite; }
+.office-character-bubble.fading { animation: none; opacity: 0; transform: translateY(4px) scale(.98); }
+.office-character-bubble.fading *, .office-character-bubble.fading *::before { animation-play-state: paused; }
+@keyframes office-bubble-arrive { from { opacity: 0; transform: translateY(5px) scale(.96); } to { opacity: 1; transform: none; } }
+@keyframes office-bubble-dot { 0%, 65%, 100% { opacity: .3; transform: translateY(0); } 25% { opacity: 1; transform: translateY(-2px); } }
+@keyframes office-bubble-think { to { transform: rotate(360deg); } }
+@keyframes office-bubble-scan { 0%, 100% { opacity: .65; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-1px); } }
+@keyframes office-bubble-handoff { 0%, 100% { transform: translateX(-1px); } 50% { transform: translateX(1px); } }
+@keyframes office-bubble-wait { 0%, 100% { opacity: 0; transform: scale(.85); } 50% { opacity: .5; transform: scale(1); } }
+@keyframes office-bubble-cursor { 0%, 100% { opacity: 1; } 50% { opacity: .2; } }
+@keyframes office-bubble-search { 0%, 100% { transform: translate(-1px, 0); } 35% { transform: translate(1px, -1px); } 65% { transform: translate(1px, 1px); } }
+@keyframes office-bubble-read { 0%, 100% { transform: translateY(0) rotate(0); } 40% { transform: translateY(-1px) rotate(-5deg); } 65% { transform: translateY(0) rotate(4deg); } }
+@keyframes office-bubble-write { 0%, 60%, 100% { transform: translate(0, 0) rotate(0); } 20% { transform: translate(1px, -1px) rotate(-9deg); } 40% { transform: translate(-1px, 1px) rotate(4deg); } }
+@keyframes office-bubble-turn { 0%, 100% { transform: perspective(50px) rotateY(-16deg); } 50% { transform: perspective(50px) rotateY(16deg); } }
+@keyframes office-bubble-create { 0%, 100% { transform: scale(1); } 40% { transform: scale(1.08); } }
+@keyframes office-bubble-remove { 0%, 100% { transform: translateY(0); } 40% { transform: translateY(1px) rotate(-4deg); } 60% { transform: translateY(0) rotate(3deg); } }
+@keyframes office-bubble-copy { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(-1px, -1px); } }
+/* Both the Office setting and the OS preference stop entry, exit and ongoing motion. */
+.office-character-bubble.reduced, .office-character-bubble.reduced *, .office-character-bubble.reduced *::before { animation: none !important; transition: none !important; }
+.office-character-bubble.reduced .office-bubble-dots i { opacity: .6; }
+@media (prefers-reduced-motion: reduce) {
+  .office-character-bubble, .office-character-bubble *, .office-character-bubble *::before { animation: none !important; transition: none !important; }
+  .office-character-bubble .office-bubble-dots i { opacity: .6; }
+}

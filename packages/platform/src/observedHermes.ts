@@ -22,7 +22,11 @@ export interface HermesObservedStatus {
   problem?: string;
   delivery?: 'submitted' | 'resolved' | 'unknown';
 }
-export interface HermesObservedMessageInput { connectionId: string; text: string; executionGeneration?: number }
+export interface HermesObservedMessageInput {
+  connectionId: string; text: string; executionGeneration?: number;
+  /** Explicit control-hub intent must not change across an asynchronous refresh. */
+  intent?: 'start' | 'steer';
+}
 export interface HermesObservedAnswerInput {
   connectionId: string;
   requestId: string;

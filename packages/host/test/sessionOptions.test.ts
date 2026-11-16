@@ -1,8 +1,10 @@
+import { createAgentHost } from '../src/service.js';
 import type { ExtaliaEvent } from '@extalia/protocol';
 import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createAgentHost, type AgentHostRuntime } from '../src/service.js';
+import { type AgentHostRuntime } from '../src/service.js';
+import { mockModelDiscovery } from './modelDiscoveryFixture.js';
 import { useTempDirs } from './helpers.js';
 
 const tempDir = useTempDirs();
@@ -30,7 +32,7 @@ async function setup(root?: string, scripted = recordingFetch()) {
   const base = root ?? await tempDir();
   const project = path.join(base, 'project');
   await mkdir(project, { recursive: true });
-  const runtime = await createAgentHost({ kind: 'bridge', version: '0.0.0-test', dataDirectory: path.join(base, 'data'), importHome: path.join(base, 'home'), env: { EXTALIA_SECRET_STORE: 'memory', PATH: process.env.PATH, HERMES_MANAGED_DIR: path.join(base, 'no-managed-scope') }, fetch: scripted.fetch });
+  const runtime = await createAgentHost({ kind: 'bridge', version: '0.0.0-test', dataDirectory: path.join(base, 'data'), importHome: path.join(base, 'home'), env: { EXTALIA_SECRET_STORE: 'memory', PATH: process.env.PATH, HERMES_MANAGED_DIR: path.join(base, 'no-managed-scope') }, fetch: scripted.fetch, modelDiscovery: mockModelDiscovery(scripted.fetch) });
   runtimes.push(runtime);
   const events: ExtaliaEvent[] = [];
   runtime.host.subscribe(event => events.push(event));

@@ -14,19 +14,27 @@ use super::{SkillError, is_package_name};
 
 /// Largest page of [`SkillRegistry::list`].
 pub const MAX_LIST_LIMIT: usize = 100;
-/// Latest inspections, approvals and state events returned by [`SkillRegistry::details`].
+/// Latest inspections and state events returned by [`SkillRegistry::details`].
 pub const MAX_DETAIL_INSPECTIONS: usize = 20;
+/// The active pointer's approval plus the newest remaining approvals, at most 20.
 pub const MAX_DETAIL_APPROVALS: usize = 20;
 pub const MAX_DETAIL_EVENTS: usize = 50;
+pub const MAX_DETAIL_SOURCES: usize = 20;
 
 /// A revision with its package origin, times and whether it is the package's active one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RevisionSummary {
     pub revision: Revision,
     pub origin: String,
+    /// A valid pinned marketplace source was recorded for this exact revision.
+    /// This is source metadata, not scanner, publisher or activation approval.
+    pub marketplace_source: bool,
     pub created_at: String,
     pub updated_at: String,
     pub active: bool,
+    /// Approval actually named by the package's activation pointer, never an
+    /// unrelated approval for the same revision.
+    pub activation_approval_id: Option<i64>,
 }
 
 /// One stored inspection (attestation) row, without the report reference.
@@ -68,6 +76,14 @@ pub struct StateEvent {
     pub at: String,
 }
 
+/// Evidence recorded at import, without claiming license or publisher verification.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RevisionSource {
+    pub origin: String,
+    pub source_ref: String,
+    pub recorded_at: String,
+}
+
 /// Everything `skill.inspect` shows about one revision.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RevisionDetails {
@@ -77,6 +93,9 @@ pub struct RevisionDetails {
     pub inspections: Vec<InspectionRecord>,
     pub approvals: Vec<ApprovalRecord>,
     pub history: Vec<StateEvent>,
+    /// Latest import sources, oldest first. Zero means no recorded revision evidence.
+    pub sources: Vec<RevisionSource>,
+    pub sources_total: u64,
 }
 
 /// A W0 consent that matches a revision's stored `SKILL.md` (review input only).
@@ -156,14 +175,19 @@ impl SkillRegistry<'_> {
                 ))
             },
         )?;
-        let active = active_pointer(conn, &profile, &revision.package_id)?
-            .is_some_and(|pointer| pointer.revision_id == revision_id);
+        let activation = active_pointer(conn, &profile, &revision.package_id)?
+            .filter(|pointer| pointer.revision_id == revision_id);
+        let active = activation.is_some();
+        let activation_approval_id = activation.map(|pointer| pointer.approval_id);
+        let marketplace_source = self.revision_has_market_source(revision_id)?;
         Ok(RevisionSummary {
             revision,
             origin,
+            marketplace_source,
             created_at,
             updated_at,
             active,
+            activation_approval_id,
         })
     }
 
@@ -223,11 +247,16 @@ impl SkillRegistry<'_> {
                 "SELECT approval_id, kind, approver, status, workspace_id, permission_digest,
                         created_at, expires_at, revoked_at
                  FROM skill_approvals WHERE profile_id = ?1 AND revision_id = ?2
-                 ORDER BY approval_id DESC LIMIT ?3",
+                 ORDER BY (approval_id = ?4) DESC, approval_id DESC LIMIT ?3",
             )?;
             statement
                 .query_map(
-                    params![profile, revision_id, MAX_DETAIL_APPROVALS as i64],
+                    params![
+                        profile,
+                        revision_id,
+                        MAX_DETAIL_APPROVALS as i64,
+                        summary.activation_approval_id
+                    ],
                     |row| {
                         Ok(ApprovalRecord {
                             approval_id: row.get(0)?,
@@ -244,7 +273,9 @@ impl SkillRegistry<'_> {
                 )?
                 .collect::<rusqlite::Result<Vec<_>>>()?
         };
-        approvals.reverse();
+        // Include the pointer's approval even if newer unrelated rows have
+        // pushed it beyond the latest page, retaining the same bounded size.
+        approvals.sort_by_key(|approval| approval.approval_id);
         let rows = {
             let mut statement = conn.prepare(
                 "SELECT event_seq, from_state, to_state, reason, at FROM skill_revision_events
@@ -276,12 +307,36 @@ impl SkillRegistry<'_> {
                 at,
             });
         }
+        let sources_total: u32 = conn.query_row(
+            "SELECT count(*) FROM skill_revision_sources WHERE profile_id=?1 AND revision_id=?2",
+            params![profile, revision_id],
+            |row| row.get(0),
+        )?;
+        let mut sources = conn
+            .prepare(
+                "SELECT origin, source_ref, recorded_at FROM skill_revision_sources
+             WHERE profile_id=?1 AND revision_id=?2 ORDER BY source_seq DESC LIMIT ?3",
+            )?
+            .query_map(
+                params![profile, revision_id, MAX_DETAIL_SOURCES as i64],
+                |row| {
+                    Ok(RevisionSource {
+                        origin: row.get(0)?,
+                        source_ref: row.get(1)?,
+                        recorded_at: row.get(2)?,
+                    })
+                },
+            )?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        sources.reverse();
         Ok(RevisionDetails {
             summary,
             files,
             inspections,
             approvals,
             history,
+            sources,
+            sources_total: u64::from(sources_total),
         })
     }
 

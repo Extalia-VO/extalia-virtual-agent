@@ -66,11 +66,14 @@ export function SmartScreen({
   // The owner's work shows only while the owner sits here; walking away (tablet in hand) locks the screen.
   const present = useSeatedAt(agent?.id, seatId);
   const occupant = useMemo(() => present ? occupantFromAgent(agent) : undefined, [agent, present]);
+  const meeting = variant === 'presentation' && authoredData.sessionBacked ? authoredData.meeting : undefined;
   const resolved = resolveScreenContent({
-    device: resolvedDevice, variant, slot, slots, occupant, idleContent, powered,
+    device: resolvedDevice, variant: meeting ? 'agents' : variant, slot, slots, occupant, idleContent, powered,
     lightsOn: env.lightsOn, night: isNight(effectiveNight), reducedMotion: env.reducedMotion,
   });
-  const board = useMemo(() => (resolved.kind === 'agents' ? boardFromAgents(state.agents) : undefined), [resolved.kind, state.agents]);
+  const board = useMemo(() => (resolved.kind === 'agents' ? boardFromAgents(meeting
+    ? state.agents.filter(agent => agent.sessionId === meeting.sessionId && agent.meeting?.meetingId === meeting.meetingId)
+    : state.agents) : undefined), [resolved.kind, state.agents, meeting]);
   const titled = wall && TITLED_KINDS.has(resolved.kind);
   const spec = buildSurfaceSpec(resolved, surfaceGeometry(width, height), {
     language: state.language,
@@ -117,7 +120,7 @@ export function SmartScreen({
     if (!node || !import.meta.env.DEV) return;
     node.userData.screenDiagnostics = {
       resourceId: seatId, device: resolvedDevice, slot, slots, mode: resolved.mode, kind: resolved.kind,
-      detail: resolved.detail, hot: resolved.hot, style: resolved.style, key: lit ? key : null,
+      detail: resolved.detail, meeting, hot: resolved.hot, style: resolved.style, key: lit ? key : null,
     };
   });
 

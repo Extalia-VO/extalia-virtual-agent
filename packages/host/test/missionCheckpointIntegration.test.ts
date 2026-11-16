@@ -1,3 +1,4 @@
+import { createAgentHost } from '../src/service.js';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -5,7 +6,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { HostMissionRun } from '@extalia/platform';
 import { MissionCheckpointStore } from '../src/missionCheckpoints.js';
-import { createAgentHost } from '../src/service.js';
+
 
 const roots: string[] = [];
 const hostClosers: (() => Promise<void>)[] = [];

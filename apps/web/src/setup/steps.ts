@@ -90,6 +90,7 @@ export function canFinish(state: Pick<HostState, 'connections' | 'workspaces'>, 
     : Boolean(deferred.connectionId && state.connections.some(item => item.id === deferred.connectionId));
   const workspace = workspaceId ? state.workspaces.find(item => item.id === workspaceId) : undefined;
   if (!workspace) return false;
+  if (workspace.mode === 'observe') return false;
   if ((workspace.runtimeId ?? 'extalia-native') === 'hermes') return true;
   return Boolean(workspace.providerProfileId && state.connections.some(item => item.id === workspace.providerProfileId));
 }

@@ -10,8 +10,10 @@ import { ConnectAgentAppsCard } from '../src/pages/ConnectAgentAppsCard';
 import { ConnectionsSection } from '../src/pages/settings/ConnectionsSection';
 import { WorkspacesSection } from '../src/pages/settings/WorkspacesSection';
 import { KnowledgeVaultSection } from '../src/pages/settings/KnowledgeVaultSection';
+import { OperatingProfilesSection } from '../src/operatingProfiles/OperatingProfilesSection';
 import { availableSettingsSections, nextSettingsSection, SETTINGS_SECTIONS } from '../src/pages/settings/settingsSections';
 import { DEFAULT_PREFERENCES } from '../src/preferences';
+import { Select } from '../src/ui/Select';
 
 type HookStore = { state: unknown[]; effects: Map<number, { dependencies?: unknown[]; cleanup?: () => void }> };
 const hooks = vi.hoisted(() => ({ index: 0, store: null as HookStore | null, pending: [] as (() => void)[] }));
@@ -89,6 +91,36 @@ async function fixture() {
 beforeEach(() => { hooks.pending = []; });
 
 describe('Settings section ownership and navigation', () => {
+  it('localizes preference option descriptions and preserves other preferences on input', async () => {
+    for (const language of ['en', 'id'] as const) {
+      const base = await fixture(), t = MESSAGES[language];
+      const props = { ...base, t, preferences: { ...base.preferences, language } };
+      const page = mount(props), tree = page.draw();
+      const selects = elements(tree).filter(node => node.type === Select);
+      const font = selects.find(node => node.props.label === t.settings.font)!;
+      expect(font.props.options).toEqual(expect.arrayContaining(Object.entries(t.settings.fontDescriptions).map(([value, description]) => expect.objectContaining({ value, description }))));
+      const theme = selects.find(node => node.props.label === t.settings.theme)!;
+      expect(theme.props.options).toEqual(expect.arrayContaining([expect.objectContaining({ value: 'solar', badge: t.settings.automaticBadge })]));
+      (font.props.onChange as (value: string) => void)('geist');
+      expect(props.onChange).toHaveBeenLastCalledWith({ ...props.preferences, font: 'geist' });
+      page.close();
+    }
+  });
+
+  it('registers one normal-flow learning slot above the settings panels and releases its target', async () => {
+    const props = await fixture(), onLearningTarget = vi.fn();
+    const page = mount({ ...props, onLearningTarget, section: 'profiles' });
+    const tree = page.draw(), all = elements(tree), slots = all.filter(element => element.props.className === 'settings-learning-slot');
+    expect(slots).toHaveLength(1);
+    expect(all.indexOf(slots[0]!)).toBeLessThan(all.findIndex(element => element.props.role === 'tablist'));
+    const ref = slots[0]!.props.ref as (target: HTMLDivElement | null) => void;
+    const target = { id: 'settings-slot' } as HTMLDivElement; ref(target);
+    const projects = page.draw({ section: 'workspaces' });
+    expect(elements(projects).find(element => element.props.className === 'settings-learning-slot')?.props.ref).toBe(ref);
+    ref(null); expect(onLearningTarget.mock.calls).toEqual([[target], [null]]);
+    page.close();
+  });
+
   it('hides sections without their capabilities and falls back from an unavailable deep link', async () => {
     expect(availableSettingsSections({ agents: true, system: true })).toEqual(SETTINGS_SECTIONS);
     expect(availableSettingsSections({ agents: false, system: false })).toEqual(['general']);
@@ -131,6 +163,20 @@ describe('Settings section ownership and navigation', () => {
     expect(find(panel(general, 'connections'), ConnectionsSection)).toBeDefined();
     expect(find(panel(general, 'agent-apps'), ConnectAgentAppsCard)).toBeDefined();
     expect(panel(general, 'general').props.hidden).toBe(false);
+    page.close();
+  });
+
+  it('invalidates a visited project profile catalog after profile saves even when host state is structurally unchanged', async () => {
+    const props = await fixture(), page = mount({ ...props, section: 'workspaces' });
+    const initial = find(page.draw(), WorkspacesSection)!;
+    expect(initial.props.profileCatalogRevision).toBe(0);
+    const profiles = find(page.draw({ section: 'profiles' }), OperatingProfilesSection)!;
+    (profiles.props.onCatalogChanged as () => void)();
+    const projects = find(page.draw({ section: 'workspaces', hostState: props.hostState }), WorkspacesSection)!;
+    expect(projects.props.profileCatalogRevision).toBe(1);
+    expect(projects.props.state).toBe(props.hostState);
+    expect((projects.props.state as HostState).workspaces).toBe(props.hostState.workspaces);
+    expect(projects.key).toBe(initial.key);
     page.close();
   });
 
@@ -178,6 +224,28 @@ describe('Settings section ownership and navigation', () => {
     const changed = page.draw({ hostState, platform });
     expect(tab(changed, 'general').props['aria-selected']).toBe(true);
     expect(find(changed, ConnectionsSection)).toBeUndefined();
+    page.close();
+  });
+
+  it('hides Native skill shortcuts in Observe and upgrades through connection setup without clearing history', async () => {
+    const props = await fixture();
+    props.hostState = { ...props.hostState, workflow: 'observe', connections: [] };
+    const onSectionChange = vi.fn();
+    const next = { ...props.hostState, workflow: 'managed' as const };
+    const workflow = vi.spyOn(props.platform.capabilities.agents!, 'setWorkflow').mockResolvedValue(next);
+    const page = mount({ ...props, onSectionChange });
+    const general = page.draw();
+    const upgrade = elements(general).find(element => element.type === 'button' && element.props.children === MESSAGES.en.observer.setupFull)!;
+    expect(upgrade).toBeDefined();
+    const workspaces = page.draw({ section: 'workspaces' });
+    expect(find(workspaces, SkillsMovedPointer)).toBeUndefined();
+    expect(find(workspaces, WorkspacesSection)?.props.onReviewSkills).toBeUndefined();
+    click(upgrade); click(upgrade);
+    await Promise.resolve(); await Promise.resolve();
+    expect(workflow).toHaveBeenCalledExactlyOnceWith('managed');
+    expect(props.onHostState).toHaveBeenCalledWith(next);
+    expect(onSectionChange).toHaveBeenCalledWith('connections');
+    expect(next.sessions).toBe(props.hostState.sessions);
     page.close();
   });
 

@@ -1,8 +1,8 @@
 {
   "name": "extalia",
-  "description": "Open-source spatial AI-agent workspace: orchestrate and observe agents through conventional views and a living 3D office.",
+  "description": "Open-source 3D virtual office for AI agents: orchestrate and observe coding agents through conventional views and a living 3D office.",
   "private": true,
-  "version": "0.4.227",
+  "version": "0.4.334",
   "license": "MIT",
   "type": "module",
   "packageManager": "pnpm@12.7.0",
@@ -18,7 +18,12 @@
     "dev:desktop": "pnpm --filter @extalia/web build && pnpm --filter @extalia/desktop dev",
     "build": "pnpm --filter @extalia/web build && pnpm -r --filter '!@extalia/web' build",
     "typecheck": "pnpm -r typecheck",
-    "lint": "eslint . && node tooling/check-boundaries.mjs && node tooling/check-public-safety.mjs && node tooling/generate-schemas.mjs --check",
+    "lint": "eslint . && node tooling/check-boundaries.mjs && node tooling/backend-ownership.mjs --check-baseline && node tooling/check-public-safety.mjs && node tooling/generate-schemas.mjs --check",
+    "audit:backend": "node tooling/backend-ownership.mjs",
+    "audit:backend:strict": "node tooling/backend-ownership.mjs --strict",
+    "acceptance:continuity": "node tooling/continuity-acceptance/preflight.mjs",
+    "acceptance:continuity:evaluate": "node tooling/continuity-acceptance/evaluate.mjs",
+    "acceptance:continuity:workload": "node tooling/continuity-acceptance/workload.mjs",
     "test": "vitest run",
     "test:desktop": "pnpm --filter @extalia/web build && pnpm --filter @extalia/desktop smoke",
     "check": "pnpm lint && pnpm typecheck && node tooling/check-rust.mjs --build-daemon && pnpm test && node tooling/check-rust.mjs && pnpm build && node tooling/check-versions.mjs && node tooling/check-character-hair.mjs",
@@ -30,6 +35,7 @@
     "eslint": "^10.12.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "^17.13.0",
+    "meshoptimizer": "1.1.1",
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.71.2",
     "vitest": "^5.0.4"
@@ -38,7 +44,20 @@
   "directories": {
     "doc": "docs"
   },
-  "keywords": [],
+  "keywords": [
+    "virtual-office",
+    "3d-virtual-office",
+    "ai-virtual-office",
+    "ai-agents",
+    "multi-agent",
+    "agent-orchestration",
+    "claude-code",
+    "codex",
+    "gemini-cli",
+    "hermes-agent",
+    "threejs",
+    "obsidian"
+  ],
   "bugs": {
     "url": "https://github.com/Extalia-VO/extalia-virtual-agent/issues"
   },

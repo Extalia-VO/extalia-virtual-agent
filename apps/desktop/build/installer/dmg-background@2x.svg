@@ -12,4 +12,4 @@
       <rect x="166" y="444" width="116" height="116" rx="25" fill="#e6edf3"/><rect x="513" y="444" width="116" height="116" rx="25" fill="#e6edf3"/>
       <path d="M322 502H469m-12-10 13 10-13 10" fill="none" stroke="#27a8a2" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
       <text x="349" y="479" font-size="12" fill="#3a8d91" font-weight="550">drag to install</text>
-      <text x="49" y="604" font-size="11" fill="#718596" >Your projects and settings stay in your Extalia profile.</text></g></svg>
+      <text x="49" y="604" font-size="11" fill="#718596" >Your Extalia profile and project folders are kept separately from the app.</text></g></svg>

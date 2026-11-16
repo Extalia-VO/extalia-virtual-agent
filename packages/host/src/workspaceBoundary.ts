@@ -32,6 +32,32 @@ export function workspaceBoundaryKey(workspaces: readonly Workspace[]): string {
   return createHash('sha256').update(JSON.stringify(policy)).digest('hex');
 }
 
+/**
+ * History follows this workspace's effective grants, rather than unrelated
+ * isolated projects. Registered paths are canonicalized by workspace saving.
+ * Keep the unprefixed global key above for conservative legacy migration.
+ */
+export function workspaceSessionBoundaryKey(workspaceId: string, workspaces: readonly Workspace[]): string {
+  const own = workspaces.find(workspace => workspace.id === workspaceId);
+  if (!own) throw new WorkspacePathError('The workspace is not available.');
+  const roots = workspaces.flatMap(workspace => [workspace.projectLocation, ...(workspace.additionalProjectLocations ?? [])]
+    .flatMap((selected, index) => selected ? [{ id: workspace.id, root: path.resolve(selected), primary: index === 0,
+      policy: workspaceCrossAccess(workspace), readable: workspace.id === workspaceId
+        || (workspaceCrossAccess(own) !== 'isolated' && workspaceCrossAccess(workspace) !== 'isolated') }] : []));
+  const readable = roots.filter(root => root.readable);
+  // Denied nested folders restrict a readable tree; denied ancestors can restrict
+  // the whole tree. Disjoint denied folders have never supplied this history.
+  const relevant = roots.filter(root => root.readable || readable.some(allowed =>
+    isWithin(root.root, allowed.root) || isWithin(allowed.root, root.root)))
+    .sort((a, b) => a.id.localeCompare(b.id) || a.root.localeCompare(b.root));
+  return `workspace-v1:${createHash('sha256').update(JSON.stringify({ workspaceId, policy: workspaceCrossAccess(own), roots: relevant })).digest('hex')}`;
+}
+
+/** Legacy history is usable only when its complete original grants still match. */
+export function workspaceBoundaryMatches(recorded: string | undefined, workspaceId: string, workspaces: readonly Workspace[]): boolean {
+  return recorded === workspaceSessionBoundaryKey(workspaceId, workspaces) || recorded === workspaceBoundaryKey(workspaces);
+}
+
 /** Isolated memory has no automatic import from a previously shared context. */
 export function workspaceMemoryDirectory(base: string, workspace: Workspace): string {
   const name = workspaceCrossAccess(workspace) === 'isolated'

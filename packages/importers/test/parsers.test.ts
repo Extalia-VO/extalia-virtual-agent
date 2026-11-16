@@ -1,4 +1,4 @@
-import { decodePortableSession, type PortableSession } from '@extalia/core';
+import { EFFORTS, decodePortableSession, type PortableSession } from '@extalia/core';
 import { describe, expect, it } from 'vitest';
 import { codexThreadSpawn, isInjectedContext, parseAntigravity, parseClaude, parseCodex, parseGemini, parseHermes, type NativeParseResult, type ParseContext } from '../src/index.js';
 
@@ -112,6 +112,17 @@ describe('Gemini CLI recordings', () => {
 });
 
 describe('Hermes databases', () => {
+  it('represents a real empty linked session only when the host explicitly permits metadata-only observation', () => {
+    const row = { id: 'new-empty', title: 'New project conversation', cwd: '/projects/demo', started_at: Date.parse(T) / 1000 };
+    const linked: ParseContext = { ...context('hermes'), profile: 'team', importMode: 'linked', allowEmptySession: true };
+    const result = parseHermes(row, [], linked), session = valid(result);
+    expect(session).toMatchObject({ importMode: 'linked', startedAt: T, lastMessageAt: T, messages: [], provenance: { sourceSessionId: 'profile:team:new-empty' } });
+    expect(result.steps).toEqual([]);
+    expect(parseHermes(row, [], context('hermes')).session).toBeUndefined();
+    expect(parseHermes(row, [], { ...linked, importMode: 'imported' }).session).toBeUndefined();
+    expect(parseHermes(row, [{ role: 'system', content: 'An unsupported private message' }], linked).session).toBeUndefined();
+    expect(parseHermes(row, [{ role: 'user', session_id: 'other', content: 'Foreign message' }], linked).session).toBeUndefined();
+  });
   it('uses active messages, the multimodal marker and drops private fields', () => {
     const seconds = Date.parse(T) / 1000;
     const session = valid(parseHermes({ id: 'hermes-one', started_at: seconds, title: 'Demo', cwd: '/projects/demo', system_prompt: 'private-system' }, [
@@ -178,6 +189,80 @@ describe('Antigravity transcripts', () => {
       mimeType: 'image/png',
       data: PNG,
     });
+  });
+
+  it('preserves long (>20 KB) assistant replies in steps and closes unclosed code fences before compact-log truncation markers', () => {
+    const detailed = `## Bagian I: Skills\n### 1. Struktur Paket Skill di Disk\n\`\`\`text\nSKILL.md\n\`\`\`\n### 2. Standar Frontmatter\n${'Detail section line.\n'.repeat(1100)}## Bagian II: Knowledge & Obsidian\nComplete explanation.`;
+    expect(detailed.length).toBeGreaterThan(22_000);
+    const fullParsed = parseAntigravity(jsonl(
+      { step_index: 1, source: 'USER_EXPLICIT', type: 'USER_INPUT', status: 'DONE', created_at: T, content: '<USER_REQUEST>\nExplain skills and knowledge\n</USER_REQUEST>' },
+      { step_index: 2, source: 'MODEL', type: 'PLANNER_RESPONSE', status: 'DONE', created_at: T1, content: detailed },
+    ), { ...context('antigravity'), nativeSessionId: 'agy-long' });
+    const fullReply = fullParsed.steps?.find(s => s.type === 'reply');
+    expect(fullReply?.type === 'reply' ? fullReply.text : '').toContain('### 2. Standar Frontmatter');
+    expect(fullReply?.type === 'reply' ? fullReply.text : '').toContain('## Bagian II: Knowledge & Obsidian');
+
+    const compactOnly = parseAntigravity(jsonl(
+      { step_index: 1, source: 'USER_EXPLICIT', type: 'USER_INPUT', status: 'DONE', created_at: T, content: 'Explain skills' },
+      { step_index: 2, source: 'MODEL', type: 'PLANNER_RESPONSE', status: 'DONE', created_at: T1, truncated_fields: ['content'], content: '### 1. Struktur Paket\n```text\n├── SKILL.md\n\n<truncated 20525 bytes>\n\n## Bagian II: Obsidian\nVisible tail.' },
+    ), { ...context('antigravity'), nativeSessionId: 'agy-compact' });
+    const compactReply = compactOnly.steps?.find(s => s.type === 'reply');
+    expect(compactReply?.type === 'reply' ? compactReply.text : '').toContain('```\n<truncated 20525 bytes>');
+  });
+
+  it('keeps Antigravity background tasks open across interim replies and settles them on SYSTEM_MESSAGE or manage_task', () => {
+    const runningTranscript = jsonl(
+      { step_index: 1, source: 'USER_EXPLICIT', type: 'USER_INPUT', status: 'DONE', created_at: T, content: '<USER_REQUEST>\nRun checks\n</USER_REQUEST>' },
+      { step_index: 2, source: 'MODEL', type: 'PLANNER_RESPONSE', status: 'DONE', created_at: T1, content: '', tool_calls: [
+        { name: 'default_api:run_command', args: JSON.stringify({ CommandLine: 'pnpm check', Cwd: '/projects/demo' }) },
+        { name: 'default_api:view_file', args: JSON.stringify({ AbsolutePath: '/projects/demo/package.json' }) },
+      ] },
+      { step_index: 3, source: 'SYSTEM', type: 'GENERIC', status: 'RUNNING', created_at: T1, content: [
+        'Tool is running as a background task with task id: agy-bg-1/task-10',
+        'Showing <SYSTEM_MESSAGE> inside file content should not parse as notification',
+      ] },
+      { step_index: 4, source: 'MODEL', type: 'PLANNER_RESPONSE', status: 'DONE', created_at: T2, content: 'pnpm check is running in the background.' },
+    );
+    const running = parseAntigravity(runningTranscript, { ...context('antigravity'), nativeSessionId: 'agy-bg-1' });
+    expect(running.runningTaskIds).toEqual(['task-10']);
+    expect(running.runningTaskCallIds).toEqual(['step-2']);
+    expect(running.steps?.filter(s => s.type === 'tool.call').map(s => s.type === 'tool.call' ? s.callId : undefined)).toEqual(['step-2', 'step-2-2']);
+    expect(running.steps?.filter(s => s.type === 'tool.result')).toHaveLength(1);
+    expect(running.steps?.find(s => s.type === 'tool.result')).toMatchObject({ callId: 'step-2-2', tool: 'view_file', ok: true });
+    expect(running.steps?.find(s => s.type === 'reply')).toMatchObject({ text: 'pnpm check is running in the background.' });
+    expect((running.steps?.find(s => s.type === 'reply') as { final?: boolean } | undefined)?.final).toBeUndefined();
+
+    const finished = parseAntigravity(
+      `${runningTranscript}\n${jsonl(
+        { step_index: 5, source: 'SYSTEM', type: 'SYSTEM_MESSAGE', status: 'DONE', created_at: T2, content: '<SYSTEM_MESSAGE>\nsender=agy-bg-1/task-10 priority=HIGH content=Task id "agy-bg-1/task-10" finished with result:\nCommand output:\nAll checks passed.\n\t\t\t\tThe command exited with code 0.\n</SYSTEM_MESSAGE>' },
+        { step_index: 6, source: 'MODEL', type: 'PLANNER_RESPONSE', status: 'DONE', created_at: T2, content: 'Checks completed.' },
+      )}`,
+      { ...context('antigravity'), nativeSessionId: 'agy-bg-1' },
+    );
+    expect(finished.runningTaskIds).toBeUndefined();
+    expect(finished.runningTaskCallIds).toBeUndefined();
+    expect(finished.steps?.find(s => s.type === 'tool.result' && s.callId === 'step-2')).toMatchObject({
+      type: 'tool.result',
+      callId: 'step-2',
+      tool: 'run_command',
+      ok: true,
+    });
+    expect(finished.steps?.filter(s => s.type === 'reply').at(-1)).toMatchObject({ text: 'Checks completed.', final: true });
+
+    const canceled = parseAntigravity(
+      `${runningTranscript}\n${jsonl(
+        { step_index: 5, source: 'MODEL', type: 'PLANNER_RESPONSE', status: 'DONE', created_at: T2, content: '', tool_calls: [
+          { name: 'default_api:manage_task', args: JSON.stringify({ Action: 'kill', TaskId: 'agy-bg-1/task-10' }) },
+        ] },
+        { step_index: 6, source: 'SYSTEM', type: 'GENERIC', status: 'DONE', created_at: T2, content: 'Task "agy-bg-1/task-10" cancelled.' },
+        { step_index: 7, source: 'SYSTEM', type: 'SYSTEM_MESSAGE', status: 'DONE', created_at: T2, content: '<SYSTEM_MESSAGE>\nsender=agy-bg-1/task-10 priority=HIGH content=Task id "agy-bg-1/task-10" was canceled with result:\nTool execution was canceled\n</SYSTEM_MESSAGE>' },
+        { step_index: 8, source: 'SYSTEM', type: 'SYSTEM_MESSAGE', status: 'DONE', created_at: T2, content: '<SYSTEM_MESSAGE>\nsender=agy-bg-1/task-99 priority=NORMAL content=Scheduled timer fired\n</SYSTEM_MESSAGE>' },
+      )}`,
+      { ...context('antigravity'), nativeSessionId: 'agy-bg-1' },
+    );
+    expect(canceled.runningTaskIds).toBeUndefined();
+    expect(canceled.steps?.filter(s => s.type === 'tool.result' && s.callId === 'step-2')).toHaveLength(1);
+    expect(canceled.steps?.find(s => s.type === 'tool.result' && s.callId === 'step-2')).toMatchObject({ ok: false, tool: 'run_command' });
   });
 });
 
@@ -249,5 +334,62 @@ describe('v0.0.37 titles, models and sub-agent metadata', () => {
     expect(codexThreadSpawn({ id: 'child', thread_source: 'subagent', parent_thread_id: 'root', agent_role: 'worker' })).toEqual({ parentThreadId: 'root', role: 'worker' });
     expect(codexThreadSpawn({ id: 'root', source: 'vscode', thread_source: 'user' })).toBeUndefined();
     expect(codexThreadSpawn({ id: 'root', source: { subagent: { thread_spawn: { parent_thread_id: null } } } })).toBeUndefined();
+  });
+});
+
+
+describe('source-reported Codex effort', () => {
+  const rollout = (...contexts: unknown[]) => jsonl(
+    { type: 'session_meta', payload: { id: 'effort-session', timestamp: T } },
+    { timestamp: T, type: 'event_msg', payload: { type: 'user_message', message: 'Check the plan' } },
+    ...contexts,
+  );
+  const turn = (timestamp: string, payload: unknown) => ({ timestamp, type: 'turn_context', payload });
+
+  it.each(EFFORTS)('reads the exact structured %s setting without adding it to portable history', effort => {
+    for (const setting of [{ effort }, { reasoning_effort: effort }, { collaboration_mode: { settings: { reasoning_effort: effort } } }]) {
+      const result = parseCodex(rollout(turn(T1, { model: 'gpt-example', ...setting })), context('codex'));
+      valid(result);
+      expect(result).toMatchObject({ model: 'gpt-example', modelAt: T1, effort, effortAt: T1 });
+      expect(result.session).not.toHaveProperty('effort');
+      expect(result.session).not.toHaveProperty('modelAt');
+    }
+  });
+
+  it('uses context timestamps before replies, rejects stale contexts and clears unknown effort', () => {
+    const initial = [turn(T1, { model: 'gpt-first', effort: 'high' }), turn(T2, { model: 'gpt-next', effort: 'max' }), turn(T, { model: 'stale-model', effort: 'low' })];
+    expect(parseCodex(rollout(...initial), context('codex'))).toMatchObject({ model: 'gpt-next', modelAt: T2, effort: 'max', effortAt: T2 });
+    const newest = '2026-10-08T00:00:03.000Z';
+    for (const setting of [{}, { effort: 'ultra' }, { effort: null }, { reasoning_effort: { value: 'high' } }]) {
+      const result = parseCodex(rollout(...initial, turn(newest, { model: 'gpt-new', ...setting })), context('codex'));
+      expect(result).toMatchObject({ model: 'gpt-new', modelAt: newest, effortAt: newest });
+      expect(result.effort).toBeUndefined();
+    }
+  });
+
+  it.each([undefined, null, 'invalid-timestamp'])('preserves dated metadata across an untimed context (%s) and an older report', timestamp => {
+    const dated = turn(T2, { model: 'gpt-current', effort: 'high' });
+    const untimed = { type: 'turn_context', timestamp, payload: { model: 'gpt-untimed', effort: 'low' } };
+    const stale = turn(T1, { model: 'gpt-stale', effort: 'medium' });
+    for (const rows of [[dated, untimed], [dated, untimed, stale]]) {
+      const result = parseCodex(rollout(...rows), context('codex'));
+      valid(result);
+      expect(result).toMatchObject({ model: 'gpt-current', modelAt: T2, effort: 'high', effortAt: T2 });
+    }
+    const newest = '2026-10-08T00:00:03.000Z';
+    const fresh = parseCodex(rollout(dated, untimed, stale, turn(newest, { model: 'gpt-new' })), context('codex'));
+    expect(fresh).toMatchObject({ model: 'gpt-new', modelAt: newest, effortAt: newest });
+    expect(fresh.effort).toBeUndefined();
+  });
+
+  it('never infers effort from prompt, analysis or reasoning bodies', () => {
+    const result = parseCodex(rollout(
+      turn(T1, { model: 'gpt-example', reasoning: 'private-reasoning high', instructions: 'effort=max' }),
+      { timestamp: T1, type: 'response_item', payload: { type: 'reasoning', summary: [{ text: 'private-summary reasoning_effort=high' }] } },
+      { timestamp: T2, type: 'response_item', payload: { type: 'message', role: 'assistant', channel: 'analysis', content: [{ type: 'output_text', text: 'private-analysis effort high' }] } },
+    ), context('codex'));
+    valid(result);
+    expect(result.effort).toBeUndefined();
+    expect(JSON.stringify(result)).not.toMatch(/private-reasoning|private-summary|private-analysis|effort=max/);
   });
 });

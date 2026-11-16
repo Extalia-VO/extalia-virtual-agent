@@ -1,19 +1,21 @@
-import { decodePortableSession, generateFullName, isContextUsage, safeLabel, safeText, type MemberGender, type PortableSession } from '@extalia/core';
-import { claudeAnchor, isInjectedContext, type TranscriptStep } from '@extalia/importers';
-import { detectImageMimeType, normalizeAgentIdentity, type AttachmentPreview, type HookPrivacyOptions, type SessionContextUsage, type SessionSummary } from '@extalia/platform';
+import { isCodexSuggestionOnlyMessages, isCodexSuggestionPrompt } from './codexSuggestionSessions.js';
+import { EFFORTS, decodePortableSession, generateFullName, isContextUsage, redact, safeLabel, safeText, type Effort, type MemberGender, type PortableSession } from '@extalia/core';
+import { claudeAnchor, isInjectedContext, type CodexUserInputEvidence, type TranscriptStep } from '@extalia/importers';
+import { normalizeAgentIdentity, type AttachmentPreview, type HookPrivacyOptions, type SessionContextUsage, type SessionSummary } from '@extalia/platform';
 import { createEvent, type EventBody, type ExtaliaEvent } from '@extalia/protocol';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs';
-import { open, readFile, rm, stat, type FileHandle } from 'node:fs/promises';
-import { homedir } from 'node:os';
+import { realpathSync } from 'node:fs';
+import { open, rm, stat, type FileHandle } from 'node:fs/promises';
+import { homedir, tmpdir } from 'node:os';
 import path from 'node:path';
 import { HermesDashboardClient, parseHermesDashboardUrl } from './hermesDashboard.js';
-import { HOOK_APP_LABELS, HOOK_SOURCE_IDS, hookProtocolEvents, hookSource, isHookApp, type HookApp, type NormalizedHook } from './hooks/normalize.js';
+import { HOOK_APP_LABELS, HOOK_SOURCE_IDS, clearAntigravityBackgroundTasks, hookProtocolEvents, hookSource, isHookApp, type HookApp, type NormalizedHook } from './hooks/normalize.js';
 import { readJson, writeJsonAtomic } from './jsonStore.js';
 import type { NativeImportService, NativeObservationRef, ObservedRead } from './nativeImport.js';
 import { sessionContext } from './sessionContext.js';
 import { checkSessionId, newSessionId } from './sessions.js';
-import { latestTurn, transcriptEvents } from './transcriptEvents.js';
+import { describeToolCall, latestTurn, toolStateBody, transcriptEvents } from './transcriptEvents.js';
+import { ObservedImageStore } from './observedToolImages.js';
 
 /** Sessions the user picked by hand. */
 const MAX_OBSERVATIONS = 10;
@@ -27,6 +29,12 @@ const DASHBOARD_LOCATION_ID = 'loc-hermes-dashboard';
 /** Folders whose sessions are not observed automatically unless the user removes them: claude-mem's helper sessions. */
 export const DEFAULT_IGNORE_FOLDERS: readonly string[] = ['~/.claude-mem'];
 const MAX_IGNORE_FOLDERS = 50;
+/** Matches the Office's recent-source window; polling/replaying history never extends it. */
+export const OBSERVED_ACTIVITY_LIVE_MS = 2 * 60_000;
+const TASK_HEARTBEAT_INTERVAL_MS = 30_000;
+const MAX_ACTIVITY_ACTORS = 256;
+interface LiveActorActivity { at: number; running: boolean; waiting?: boolean; asyncInput?: boolean; terminal?: boolean }
+
 
 /** Validated ignored folders: absolute or `~`-relative, without trailing separators, deduplicated. Throws for invalid input. */
 export function normalizeIgnoreFolders(value: unknown): string[] {
@@ -43,9 +51,48 @@ export function normalizeIgnoreFolders(value: unknown): string[] {
   }
   return folders;
 }
+interface ObservationWorkspaceLink {
+  workspaceId: string; sourceFingerprint: string; projectCanonicalPath: string; root: string;
+}
+/** Association metadata is not authority to read a path. The host validates real containment. */
+function validWorkspaceLink(value: unknown): value is ObservationWorkspaceLink {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const link = value as Record<string, unknown>;
+  const absolute = (value: unknown): value is string => typeof value === 'string' && value.length <= 4096
+    && !/\p{Cc}/u.test(value) && path.isAbsolute(value) && path.normalize(value) === value;
+  return Object.keys(link).length === 4 && Object.keys(link).every(key => ['workspaceId', 'sourceFingerprint', 'projectCanonicalPath', 'root'].includes(key))
+    && typeof link.workspaceId === 'string' && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(link.workspaceId)
+    && typeof link.sourceFingerprint === 'string' && /^[a-f0-9]{64}$/.test(link.sourceFingerprint)
+    && absolute(link.projectCanonicalPath) && absolute(link.root);
+}
+interface ObservedOutputWatermark {
+  revision: string; readRevision: string; hasOutput: boolean;
+  transcriptSignature?: string; hookTurn?: string; hookSignature?: string; pendingHookHashes?: string[]; pendingTranscriptHashes?: string[];
+}
+const outputHash = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
+function validOutputWatermark(value: unknown): value is ObservedOutputWatermark {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const raw = value as Record<string, unknown>;
+  return Object.keys(raw).every(key => ['revision', 'readRevision', 'hasOutput', 'transcriptSignature', 'hookTurn', 'hookSignature', 'pendingHookHashes', 'pendingTranscriptHashes'].includes(key))
+    && outputHash(raw.revision) && outputHash(raw.readRevision) && typeof raw.hasOutput === 'boolean'
+    && ['transcriptSignature', 'hookTurn', 'hookSignature'].every(key => raw[key] === undefined || outputHash(raw[key]))
+    && ['pendingHookHashes', 'pendingTranscriptHashes'].every(key => raw[key] === undefined || Array.isArray(raw[key]) && raw[key].length <= 64 && raw[key].every(outputHash));
+}
 interface ObservationRecord {
+  /** A real primary user prompt reported by hooks; preserve this when ephemeral hook text is gone. */
+  userConversation?: true;
+  /** Last bounded source or helper-only hook classification; no message text. */
+  suggestionOnly?: boolean;
+  /** Last bounded transcript read positively identified only metadata/injected input. */
+  internalEmpty?: boolean;
+  /** Explicit user title choice, including renames made before a source title exists. */
+  titleRenamed?: true;
+  /** New hook registration has supplied only lifecycle/configuration metadata so far. */
+  lifecycleOnly?: true;
   id: string; title: string; reference: NativeObservationRef; watching: boolean;
   createdAt: string; lastActiveAt: string; projectPath?: string;
+  /** Explicit workspace association, tied to the source identity at the user's review. */
+  workspaceLink?: ObservationWorkspaceLink;
   /** Added by automatic discovery; subject to the LRU limit. */
   auto?: boolean;
   /** Registered or fed by an agent app's hooks. A hook-only record has an empty `reference.path`. */
@@ -55,22 +102,37 @@ interface ObservationRecord {
   /** The lead's newest model: the latest of the transcript's and the hooks' reports (`modelAt`, ISO time of that report). */
   model?: string;
   modelAt?: string;
+  /** Valid explicit effort for the current model; unknown reports retain only their timestamp. */
+  effort?: Effort;
+  effortAt?: string;
   /** Claude Code: the first message uuid of the transcript; a continued conversation's new file copies it (see `continuation`). */
   anchor?: string;
   /** The lead's context in use, read from the transcript's usage reports (v0.0.48). */
   context?: SessionContextUsage;
   /** The title the source gave last; while the title still equals it (not renamed), it follows the source. */
   sourceTitle?: string;
+  /** Profile-local hashes only; no assistant content or tool output is added to this index. */
+  output?: ObservedOutputWatermark;
 }
 /** Hooks active for a session in this host run: they are its live channel, transcript events only fill history before `since`. */
 interface HookLive {
   app: HookApp; since: string; lastAt: string; events: ExtaliaEvent[]; subagents?: Set<string>;
+  /** Accepted activity in this host run, including bodies omitted by labels-only privacy. */
+  substantive?: true;
   /** v0.0.38: sub-agents whose transcript label/model were merged into the hook stream. */
   identified?: Set<string>;
+  /** Explicit reports remain scoped to this observed source/session, never inferred from tools or text. */
+  meeting?: { id: string; reporter: string; participants: Set<string>; contributions: Set<string> };
+  meetingIds?: Set<string>;
 }
 interface Live {
-  snapshot?: PortableSession; steps?: TranscriptStep[]; eventIds?: Set<string>; lastEventAt?: string;
-  revision: string; sourceRevision?: string; status: 'watching' | 'paused' | 'unavailable'; lastCheckedAt?: string; error?: string;
+  /** Revision-bound Codex source classification; false also preserves incomplete source windows. */
+  internalSuggestion?: boolean;
+  /** Ephemeral only: populated from new accepted reports, never restored from saved history. */
+  activity?: Map<string, LiveActorActivity>;
+  userInput?: { fingerprint: string; evidence: CodexUserInputEvidence };
+  snapshot?: PortableSession; steps?: TranscriptStep[]; eventIds?: Set<string>; lastEventAt?: string; taskHeartbeatAt?: string;
+  revision: string; eventRevision?: string; sourceRevision?: string; status: 'watching' | 'paused' | 'unavailable'; lastCheckedAt?: string; error?: string;
   hook?: HookLive;
 }
 interface DiscoverySettings {
@@ -87,6 +149,12 @@ interface DiscoverySettings {
   ignoreFolders?: string[];
 }
 export interface ObservationHooks {
+  /** Called only after the observation index is durable; consumers must recheck privacy and scope. */
+  onPersisted?: (sessionId: string) => void;
+  /** Host adapter evidence, never a renderer-selected project path. Undefined leaves transcript evidence unchanged. */
+  projectContext?: (reference: NativeObservationRef) => Promise<{ projectPath: string; revision: string; model?: string } | undefined>;
+  /** Ephemeral suggestions from an existing watched lead; never observation evidence. */
+  onFollowups?: (sessionId: string, prompts: string[]) => void;
   /** Keeps a retired observation in history (the library). Throwing keeps the observation. */
   retire?: (session: PortableSession) => Promise<void>;
   /** True for sources that must not be added automatically (for example sessions Extalia itself runs). */
@@ -95,21 +163,265 @@ export interface ObservationHooks {
   fetch?: typeof fetch;
   /** Home folder that `~` in ignored folders stands for (default: the user's). */
   homeDirectory?: string;
+  /** Task-scoped temporary image root; injected in tests, system temporary directory otherwise. */
+  temporaryImageRoot?: string;
   /** Agent names used elsewhere in the Office (managed sessions, teams), so observed leads get unique names. */
   takenNames?: () => readonly string[] | Promise<readonly string[]>;
 }
 const digest = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const sourceKey = (ref: NativeObservationRef) => `${ref.locationId}:${ref.nativeSessionId}`;
 const sameSession = (a: NativeObservationRef, b: NativeObservationRef) => a.sourceId === b.sourceId && a.nativeSessionId === b.nativeSessionId;
+const isMeeting = (body: EventBody) => body.type === 'meeting.started' || body.type === 'meeting.contribution' || body.type === 'meeting.completed';
+/** Lifecycle envelopes and idle reports alone do not establish a conversation. */
+function substantiveObservationBody(body: EventBody): boolean {
+  switch (body.type) {
+    case 'prompt.submitted': return Boolean((body.text.trim() && !isInjectedContext(body.text)) || body.attachments?.length);
+    case 'model.delta': case 'model.completed': case 'tool.output': case 'command.output': return Boolean(body.text.trim());
+    case 'tool.started': case 'tool.completed':
+    case 'command.started': case 'command.completed': case 'file.read': case 'file.written':
+    case 'approval.requested': case 'approval.resolved': case 'subagent.spawned': case 'subagent.state': return true;
+    case 'turn.failed': case 'agent.error': return true;
+    case 'agent.state': return body.phase === 'error';
+    default: return false;
+  }
+}
+/** Bare state reports are temporary activity, cleared by later idle or terminal reports. */
+function currentObservationState(live: Live | undefined, watching: boolean): boolean {
+  if (!watching || live?.status !== 'watching') return false;
+  const events = live.hook?.events ?? [];
+  for (let index = events.length - 1; index >= 0; index--) {
+    const event = events[index]!, body = event.body;
+    if (body.type === 'session.ended') return false;
+    if ((event.agentId ?? 'primary') !== 'primary') continue;
+    if (body.type === 'session.started' || terminalReport(event)) return false;
+    if (body.type === 'agent.state' || body.type === 'model.thinking') {
+      if (body.type === 'agent.state') {
+        if (body.state === 'waiting') return true;
+        if (body.state !== 'thinking' && body.state !== 'working') return false;
+      }
+      const age = Date.now() - Date.parse(event.at);
+      return age >= 0 && age <= OBSERVED_ACTIVITY_LIVE_MS;
+    }
+  }
+  return false;
+}
+/** Meeting content is optional for presence; labels-only never retains it. */
+function privateMeeting(body: EventBody): EventBody | undefined {
+  if (body.type === 'meeting.contribution') return undefined;
+  if (body.type === 'meeting.started') return { type: body.type, meetingId: body.meetingId, participants: body.participants, ...(body.roomId ? { roomId: body.roomId } : {}) };
+  if (body.type === 'meeting.completed') return { type: body.type, meetingId: body.meetingId, ...(body.outcome ? { outcome: body.outcome } : {}) };
+  return body;
+}
 /** Identifies the same step reported by a hook and by the transcript. */
 function stepKey(event: ExtaliaEvent): string | undefined {
   const body = event.body;
   if ((body.type === 'tool.started' || body.type === 'tool.completed') && body.toolCallId) return JSON.stringify([event.agentId ?? 'primary', body.type, body.toolCallId]);
   if (body.type === 'file.written' && body.toolCallId) return JSON.stringify([event.agentId ?? 'primary', body.type, body.toolCallId, body.path, body.change]);
-  if (body.type === 'prompt.submitted') return `prompt:${body.text.slice(0, 500)}`;
-  if (body.type === 'model.completed') return `reply:${body.text.slice(0, 500)}`;
+  if (body.type === 'prompt.submitted') return JSON.stringify([event.agentId ?? 'primary', 'prompt', body.text.slice(0, 500)]);
+  if (body.type === 'model.completed') return JSON.stringify([event.agentId ?? 'primary', 'reply', body.text.slice(0, 500)]);
   return undefined;
 }
+/** The actor affected by an event can differ from its reporter. */
+const activityActor = (event: ExtaliaEvent) => event.body.type === 'subagent.state' || event.body.type === 'subagent.spawned'
+  ? event.body.subagentId : event.agentId ?? 'primary';
+const terminalReport = (event: ExtaliaEvent) => event.body.type === 'session.ended' || event.body.type === 'turn.completed' || event.body.type === 'turn.failed'
+  || event.body.type === 'agent.stopped' || event.body.type === 'agent.error'
+  || ((event.body.type === 'agent.state' || event.body.type === 'subagent.state') && event.body.state === 'offline');
+const resumesWork = (event: ExtaliaEvent) => event.body.type === 'prompt.submitted' || event.body.type === 'tool.started'
+  || ((event.body.type === 'agent.state' || event.body.type === 'subagent.state') && ['thinking', 'working', 'delegating'].includes(event.body.state));
+
+/** Small metadata projection of newly accepted source events; summaries never reparse transcripts. */
+function advanceLiveActivity(live: Live, events: readonly ExtaliaEvent[], now: number): void {
+  const actors = live.activity ??= new Map();
+  // Retain bounded actor identities and terminal fences after their live badge
+  // expires, so a known long-running worker can report again and unknown
+  // orphans cannot bypass a stopped lead merely by waiting out the live window.
+  for (const event of events) {
+    if (event.source.channel === 'import') continue;
+    const reported = Date.parse(event.at);
+    if (!Number.isFinite(reported) || reported > now + 30_000 || now - reported > OBSERVED_ACTIVITY_LIVE_MS) continue;
+    const at = Math.min(now, reported), body = event.body, actor = activityActor(event);
+    const prior = actors.get(actor);
+    if (prior && at < prior.at) continue;
+    const terminal = terminalReport(event);
+    if (body.type === 'session.started') {
+      if (actor === 'primary') actors.clear();
+      continue;
+    }
+    if (body.type === 'session.ended') {
+      actors.clear(); actors.set('primary', { at, running: false, terminal: true });
+      continue;
+    }
+    if (terminal && actor === 'primary') {
+      actors.set('primary', { at, running: false, terminal: true });
+      continue;
+    }
+    // Known workers can finish after their lead. A stopped lead or an unknown
+    // orphan cannot be revived by a late result or a new worker report.
+    if (actor !== 'primary' && actors.get('primary')?.terminal && (!prior || prior.terminal)) continue;
+    let next: LiveActorActivity | undefined;
+    if (terminal) next = { at, running: false, terminal: true };
+    else if (body.type === 'agent.state' || body.type === 'subagent.state') {
+      const waiting = body.state === 'waiting' || body.phase === 'input' || body.phase === 'approval';
+      next = { at, running: !waiting && ['thinking', 'working', 'delegating'].includes(body.state), ...(waiting ? { waiting: true } : {}), ...(prior?.terminal && body.state === 'idle' ? { terminal: true } : {}) };
+    } else if (body.type === 'prompt.submitted') next = { at, running: true };
+    else if (body.type === 'tool.started') {
+      // Codex's async question returns an acknowledgement before the user answers.
+      const asyncInput = /(?:^|\.)request_user_input_async$/.test(body.tool);
+      const waiting = asyncInput || prior?.at === at && prior.waiting;
+      next = { at, running: !waiting, ...(waiting ? { waiting: true } : {}), ...(asyncInput ? { asyncInput: true } : {}) };
+    }
+    else if (body.type === 'approval.requested') next = { at, running: false, waiting: true };
+    else if (body.type === 'tool.completed' || body.type === 'model.completed' || body.type === 'approval.resolved') {
+      // Completion is continuation evidence only inside an already known live turn.
+      if (prior && !prior.terminal && !prior.asyncInput && (prior.running || prior.waiting)) next = { at, running: true };
+    } else if (body.type === 'subagent.spawned' && !prior) next = { at, running: true };
+    if (!next) continue;
+    if (!actors.has(actor) && actors.size >= MAX_ACTIVITY_ACTORS) {
+      const oldest = [...actors].filter(([id]) => id !== 'primary').sort((a, b) => a[1].at - b[1].at)[0]?.[0];
+      if (oldest) actors.delete(oldest);
+      else continue;
+    }
+    actors.set(actor, next);
+  }
+}
+function reportedRunning(live: Live, watching: boolean): boolean {
+  if (!watching || live.status !== 'watching') return false;
+  const now = Date.now();
+  for (const activity of live.activity?.values() ?? []) if (activity.running && now >= activity.at && now - activity.at <= OBSERVED_ACTIVITY_LIVE_MS) return true;
+  return false;
+}
+
+/** Hooks win ties and older reports; a missed hook must not disable the transcript forever. */
+function transcriptFallback(fresh: readonly ExtaliaEvent[], history: readonly ExtaliaEvent[], hook: HookLive): ExtaliaEvent[] {
+  const watermarks = new Map<string, string>();
+  const terminal = new Map<string, string>();
+  let ended: string | undefined;
+  for (const event of hook.events) {
+    if (isMeeting(event.body)) continue;
+    const actor = activityActor(event);
+    watermarks.set(actor, event.at);
+    if (event.body.type === 'session.ended') ended = event.at;
+    if (event.body.type === 'session.started') { ended = undefined; terminal.delete(actor); }
+    if (terminalReport(event)) terminal.set(actor, event.at);
+    else if (resumesWork(event)) { terminal.delete(actor); if (actor === 'primary') ended = undefined; }
+  }
+  const reported = new Set(hook.events.map(stepKey).filter(Boolean));
+  const hookStartedTools = new Set<string>();
+  for (const event of hook.events) {
+    if (event.body.type === 'tool.started' && event.body.toolCallId) {
+      hookStartedTools.add(JSON.stringify([event.agentId ?? 'primary', 'tool.started', event.body.toolCallId]));
+    }
+  }
+  // A hook can arrive before its matching row is flushed. That row's source time
+  // fences earlier transcript states too, so an old prompt cannot replace its tool state.
+  for (const event of history) {
+    const key = stepKey(event), actor = activityActor(event);
+    if (key && reported.has(key) && event.at > (watermarks.get(actor) ?? hook.since)) watermarks.set(actor, event.at);
+  }
+  const announced = new Set(hook.events.filter(event => event.body.type === 'subagent.spawned').map(event => activityActor(event)));
+  const duplicateStates = new Set<string>();
+  for (let index = 1; index < history.length; index++) {
+    const event = history[index]!, prior = history[index - 1]!;
+    const key = stepKey(event);
+    if (event.body.type === 'tool.started' && key && reported.has(key) && prior.body.type === 'agent.state'
+      && prior.at === event.at && activityActor(prior) === activityActor(event)) duplicateStates.add(prior.id);
+  }
+  return fresh.filter(event => {
+    const actor = activityActor(event), key = stepKey(event);
+    if (event.body.type === 'session.started' || duplicateStates.has(event.id) || (key && reported.has(key))) return false;
+    if (event.body.type === 'subagent.spawned' && announced.has(actor)) return false;
+    if (ended) return false;
+    // Reply text exists only in the transcript (hooks report tools, not prose) and carries no state,
+    // so a reply written before the tools it announced is still published instead of waiting for a reload.
+    if (event.body.type === 'model.completed') return true;
+    const hookStartedTool = event.body.type === 'tool.completed' && event.body.toolCallId
+      && hookStartedTools.has(JSON.stringify([actor, 'tool.started', event.body.toolCallId]));
+    const stoppedAt = terminal.get(actor);
+    if (!hookStartedTool && event.at <= (watermarks.get(actor) ?? hook.since)) return false;
+    // Trailing replies/tool results cannot revive a turn explicitly stopped by a hook.
+    // A genuinely later prompt is independent evidence of a new turn, including on a later poll.
+    return !stoppedAt
+      || (hookStartedTool && event.at <= stoppedAt)
+      || history.some(prior => prior.body.type === 'prompt.submitted' && activityActor(prior) === actor && prior.at > stoppedAt && prior.at <= event.at);
+  });
+}
+
+function activeWorkingBody(activeCallIds: ReadonlySet<string>, events: readonly ExtaliaEvent[], steps?: readonly TranscriptStep[]): EventBody {
+  for (let index = events.length - 1; index >= 0; index--) {
+    const event = events[index]!;
+    if ((event.agentId ?? 'primary') !== 'primary' || event.body.type !== 'tool.started' || !event.body.toolCallId || !activeCallIds.has(event.body.toolCallId)) continue;
+    const prior = events[index - 1];
+    if (prior && (prior.agentId ?? 'primary') === 'primary' && prior.body.type === 'agent.state' && prior.body.state === 'working' && prior.at === event.at) {
+      return prior.body;
+    }
+    return { type: 'agent.state', state: 'working', activity: event.body.kind, ...(event.body.target ? { target: event.body.target } : {}), summary: event.body.label };
+  }
+  if (steps) {
+    for (let index = steps.length - 1; index >= 0; index--) {
+      const step = steps[index]!;
+      if ((step.agentId ?? 'primary') !== 'primary' || step.type !== 'tool.call' || !step.callId || !activeCallIds.has(step.callId)) continue;
+      return toolStateBody(describeToolCall(step));
+    }
+  }
+  return { type: 'agent.state', state: 'working', activity: 'command', summary: 'Running background task' };
+}
+
+function earliestAntigravityStartAt(activeCallIds: ReadonlySet<string>, ...sources: (readonly ExtaliaEvent[])[]): string | undefined {
+  let earliest: string | undefined;
+  for (const list of sources) {
+    for (const event of list) {
+      if ((event.agentId ?? 'primary') !== 'primary' || event.body.type !== 'tool.started' || !event.body.toolCallId || !activeCallIds.has(event.body.toolCallId)) continue;
+      if (!earliest || event.at < earliest) earliest = event.at;
+    }
+  }
+  return earliest;
+}
+
+function isPrematureAntigravityHookEvent(event: ExtaliaEvent, activeCallIds: ReadonlySet<string>, earliestStartAt: string | undefined): boolean {
+  if ((event.agentId ?? 'primary') !== 'primary') return false;
+  if ((event.body.type === 'tool.completed' || event.body.type === 'file.written') && event.body.toolCallId && activeCallIds.has(event.body.toolCallId)) return true;
+  if ((event.body.type === 'turn.completed' || (event.body.type === 'agent.state' && event.body.state === 'idle' && !event.body.phase))
+    && (!earliestStartAt || event.at >= earliestStartAt)) return true;
+  return false;
+}
+
+function reconcileAntigravityHook(hook: HookLive, activeCallIds: ReadonlySet<string>, ...sources: (readonly ExtaliaEvent[])[]): boolean {
+  if (hook.app !== 'antigravity' || !activeCallIds.size) return false;
+  const earliest = earliestAntigravityStartAt(activeCallIds, hook.events, ...sources);
+  const kept = hook.events.filter(event => !isPrematureAntigravityHookEvent(event, activeCallIds, earliest));
+  if (kept.length === hook.events.length) return false;
+  hook.events = kept;
+  return true;
+}
+
+/** Retain the latest evidence of quiet actors while a busy sibling fills the activity window. */
+function retainedHookEvents(events: readonly ExtaliaEvent[], activeMeeting?: string): ExtaliaEvent[] {
+  const tail = events.slice(-480), kept = new Set(tail);
+  const evidence = new Map<string, ExtaliaEvent>();
+  const states = new Map<string, ExtaliaEvent>();
+  for (const event of events) {
+    const actor = activityActor(event), body = event.body;
+    if (body.type === 'session.started') evidence.set('session', event);
+    if (body.type === 'subagent.spawned') evidence.set(`spawn:${actor}`, event);
+    if (body.type === 'file.written') evidence.set(`file:${actor}:${body.path}`, event);
+    if (body.type === 'meeting.started' && body.meetingId === activeMeeting) evidence.set('meeting', event);
+    if (body.type === 'agent.state' || body.type === 'subagent.state') states.set(actor, event);
+    if (body.type === 'agent.state' || body.type === 'subagent.state' || resumesWork(event) || terminalReport(event)
+      || body.type === 'tool.completed' || body.type === 'model.completed') {
+      evidence.set(`activity:${actor}`, event);
+      // Tool state carries approval/planning details that tool.started alone does not.
+      const state = states.get(actor);
+      if (state?.at === event.at) evidence.set(`state:${actor}`, state);
+      else evidence.delete(`state:${actor}`);
+    }
+    if (terminalReport(event)) evidence.set(`terminal:${actor}:${body.type}`, event);
+  }
+  const important = new Set([...evidence.values()]);
+  const lasting = events.filter(event => !kept.has(event) && important.has(event)).slice(-200);
+  return [...lasting, ...tail];
+}
+
 /** The lead's newest model: a report replaces the stored one only when it is at least as new (a tie goes to the later report). */
 function reportModel(record: ObservationRecord, model: string | undefined, at: string | undefined): boolean {
   const time = at ? Date.parse(at) : Number.NaN;
@@ -117,9 +429,27 @@ function reportModel(record: ObservationRecord, model: string | undefined, at: s
   if (record.modelAt !== undefined && time < Date.parse(record.modelAt)) return false;
   const modelAt = new Date(time).toISOString();
   if (record.model === model && record.modelAt === modelAt) return false;
+  if (record.model !== model) {
+    delete record.effort;
+    // A model switch makes older effort reports inapplicable, including after restart.
+    record.effortAt = modelAt;
+  }
   record.model = model; record.modelAt = modelAt;
   return true;
 }
+/** Effort belongs to the current model and cannot revive a value from an older source context. */
+function reportEffort(record: ObservationRecord, effort: unknown, at: string | undefined, model?: string): boolean {
+  const time = at ? Date.parse(at) : Number.NaN;
+  if (!Number.isFinite(time) || (model && record.model !== model)) return false;
+  if ((record.modelAt && time < Date.parse(record.modelAt)) || (record.effortAt && time < Date.parse(record.effortAt))) return false;
+  const effortAt = new Date(time).toISOString();
+  const valid = (EFFORTS as readonly unknown[]).includes(effort) ? effort as Effort : undefined;
+  if (record.effort === valid && record.effortAt === effortAt) return false;
+  if (valid) record.effort = valid; else delete record.effort;
+  record.effortAt = effortAt;
+  return true;
+}
+const CHILD_HOOK_EVENTS: ReadonlySet<string> = new Set(['SubagentStart', 'SubagentStop', 'subagent_start', 'subagent_stop']);
 const LEAD_MODEL_EVENTS: ReadonlySet<string> = new Set(['session.started', 'model.completed', 'turn.completed']);
 /** When the lead's transcript last stated a model (its newest model-bearing event), else its last message. */
 function transcriptModelAt(events: readonly ExtaliaEvent[], snapshot: PortableSession): string | undefined {
@@ -168,6 +498,8 @@ function decodeSettings(raw: unknown): DiscoverySettings {
 /** Only opt-in transcripts are polled. Native files are never modified or executed. */
 export class Observations {
   private records: ObservationRecord[] = [];
+  /** Source and watch transitions invalidate control handles even after an ABA change. */
+  private controlEpochs = new Map<string, number>();
   private live = new Map<string, Live>();
   private settings = emptySettings();
   private settingsStamp?: number;
@@ -192,15 +524,26 @@ export class Observations {
       if (!item || typeof item !== 'object') throw new Error('Invalid observer record.');
       const record = item as ObservationRecord;
       checkSessionId(record.id);
+      if (record.workspaceLink !== undefined && !validWorkspaceLink(record.workspaceLink)) {
+        throw new Error('The observed workspace association is invalid. Existing data was preserved.');
+      }
       if (record.hook !== undefined && !isHookApp(record.hook?.app)) delete record.hook;
       const identity = normalizeAgentIdentity(record.agentName, record.agentGender);
       delete record.agentName; delete record.agentGender;
       if (identity.agentName && identity.agentGender) Object.assign(record, identity);
       if (record.model !== undefined && (typeof record.model !== 'string' || !safeLabel(record.model, 120))) delete record.model;
       if (record.modelAt !== undefined && (typeof record.modelAt !== 'string' || !Number.isFinite(Date.parse(record.modelAt)))) delete record.modelAt;
+      if (record.effortAt !== undefined && (typeof record.effortAt !== 'string' || !Number.isFinite(Date.parse(record.effortAt)))) delete record.effortAt;
+      if (!(EFFORTS as readonly unknown[]).includes(record.effort) || !record.effortAt) delete record.effort;
       if (record.anchor !== undefined && (typeof record.anchor !== 'string' || !record.anchor || record.anchor.length > 200)) delete record.anchor;
       if (record.context !== undefined && !isContextUsage(record.context)) delete record.context;
+      if (record.output !== undefined && !validOutputWatermark(record.output)) delete record.output;
       if (record.sourceTitle !== undefined && typeof record.sourceTitle !== 'string') delete record.sourceTitle;
+      if (record.userConversation !== true) delete record.userConversation;
+      if (record.suggestionOnly !== undefined && typeof record.suggestionOnly !== 'boolean') delete record.suggestionOnly;
+      if (record.internalEmpty !== undefined && typeof record.internalEmpty !== 'boolean') delete record.internalEmpty;
+      if (record.titleRenamed !== true) delete record.titleRenamed;
+      if (record.lifecycleOnly !== true) delete record.lifecycleOnly;
       if (typeof record.title !== 'string' || typeof record.watching !== 'boolean' || !record.reference || (record.auto !== undefined && typeof record.auto !== 'boolean') ||
         !['locationId', 'sourceId', 'nativeSessionId', 'path'].every(key => typeof record.reference[key as keyof NativeObservationRef] === 'string') ||
         !Number.isFinite(Date.parse(record.createdAt)) || !Number.isFinite(Date.parse(record.lastActiveAt)) ||
@@ -213,7 +556,7 @@ export class Observations {
         if (!decoded.ok) throw new Error('An observed transcript is invalid. Existing data was preserved.');
         snapshot = decoded.value;
       }
-      service.live.set(record.id, { ...(snapshot ? { snapshot } : {}), revision: snapshot ? service.revision(snapshot) : 'empty', status: record.watching ? 'watching' : 'paused' });
+      service.live.set(record.id, { internalSuggestion: record.suggestionOnly ?? (snapshot ? isCodexSuggestionOnlyMessages(record.reference.sourceId, snapshot.messages, record.sourceTitle ?? record.title) : undefined), ...(snapshot ? { snapshot } : {}), revision: snapshot ? service.revision(snapshot) : 'empty', status: record.watching ? 'watching' : 'paused' });
     }
     await service.syncSettings();
     // Observations saved before v0.0.37 get a lead name now, oldest first.
@@ -237,7 +580,12 @@ export class Observations {
   }
   /** Saves run one after another, each writing the records as they are when it starts. */
   private save() {
-    const next = this.saving.then(() => writeJsonAtomic(this.index(), this.records, { mode: 0o600 }));
+    const next = this.saving.then(async () => {
+      await writeJsonAtomic(this.index(), this.records, { mode: 0o600 });
+      for (const record of this.records) {
+        try { this.hooks.onPersisted?.(record.id); } catch { /* Optional consumers never own observation persistence. */ }
+      }
+    });
     this.saving = next.catch(() => undefined);
     return next;
   }
@@ -267,6 +615,23 @@ export class Observations {
     if (entries.length > MAX_IGNORED) this.settings.ignored = Object.fromEntries(entries.sort((a, b) => b[1] - a[1]).slice(0, MAX_IGNORED));
   }
   has(id: string) { return this.records.some(record => record.id === id); }
+  /** Host-only authority; neither display summaries nor transcript revisions grant control. */
+  controlTarget(id: string): { sourceId: string; nativeSessionId: string; fingerprint: string; revision: number; watching: boolean } | undefined {
+    const record = this.records.find(item => item.id === id);
+    if (!record) return undefined;
+    return { sourceId: record.reference.sourceId, nativeSessionId: record.reference.nativeSessionId,
+      fingerprint: digest([record.reference, record.projectPath]), revision: this.controlEpochs.get(id) ?? 0, watching: record.watching };
+  }
+  /** Resolve a watched observed session by its hook app or sourceId and native session id (or observation id). */
+  resolveWatchedSessionId(sourceOrApp: string, nativeOrObservationId: string): string | undefined {
+    const sourceId = isHookApp(sourceOrApp) ? HOOK_SOURCE_IDS[sourceOrApp] : sourceOrApp;
+    const matches = this.records.filter(record =>
+      record.watching && record.reference.sourceId === sourceId && (record.reference.nativeSessionId === nativeOrObservationId || record.id === nativeOrObservationId));
+    return matches.length === 1 ? matches[0]!.id : undefined;
+  }
+  private invalidateControl(record: ObservationRecord) {
+    this.controlEpochs.set(record.id, (this.controlEpochs.get(record.id) ?? 0) + 1);
+  }
   /** Authoritative source association for an explicitly paired cooperative tool. */
   replyTarget(id: string): { app: string; nativeSessionId: string; watching: boolean } | undefined {
     const record = this.records.find(item => item.id === id);
@@ -283,6 +648,24 @@ export class Observations {
     if (!record || record.reference.sourceId !== 'codex') return undefined;
     const source = this.source.codexQueueSource(record.reference);
     return source ? { ...source, threadId: record.reference.nativeSessionId, watching: record.watching, ...(record.projectPath ? { cwd: record.projectPath } : {}) } : undefined;
+  }
+  /** A CLI may resume only an explicitly watched, still-valid native source. */
+  cliResumeSource(id: string) {
+    const record = this.records.find(item => item.id === id);
+    return record?.watching ? this.source.cliResumeSource(record.reference) : undefined;
+  }
+  /** Gateway control uses the retained Hermes database/profile, never a dashboard label. */
+  hermesControlTarget(id: string) {
+    const record = this.records.find(item => item.id === id);
+    if (!record?.watching || record.reference.sourceId !== 'hermes') return undefined;
+    const source = this.source.hermesControlSource(record.reference);
+    return source ? { ...source, app: 'hermes', watching: true, revision: String(this.controlEpochs.get(id) ?? 0) } : undefined;
+  }
+  /** Existing observation reads own the content; status polling never reopens a rollout. */
+  codexUserInput(id: string): CodexUserInputEvidence | undefined {
+    if (this.labelsOnly()) return undefined;
+    const target = this.codexQueueTarget(id), value = this.live.get(id)?.userInput;
+    return target?.watching && value?.fingerprint === target.sourceFingerprint ? structuredClone(value.evidence) : undefined;
   }
   /** Native permission callbacks must match one exact registered transcript. */
   codexPermissionTarget(payload: Record<string, unknown>): string | undefined {
@@ -339,10 +722,28 @@ export class Observations {
   /** Update outside-agent privacy ("labels only") and the optional local Hermes dashboard read URL. */
   setPrivacy(options: HookPrivacyOptions): Promise<void> {
     return this.serialize(async () => {
+      const wasPrivate = this.labelsOnly();
       if (options.labelsOnly !== undefined) {
         if (typeof options.labelsOnly !== 'boolean') throw new Error('Invalid labelsOnly option.');
-        if (options.labelsOnly) this.settings.labelsOnly = true;
-        else delete this.settings.labelsOnly;
+        if (options.labelsOnly) {
+          this.settings.labelsOnly = true;
+          this.imageStores.clear();
+          for (const live of this.live.values()) delete live.userInput;
+          for (const live of this.live.values()) if (live.hook) {
+            live.hook.events = live.hook.events.flatMap(event => {
+              const body = privateMeeting(event.body);
+              return body ? [{ ...event, body }] : [];
+            });
+          }
+        }
+        else {
+          delete this.settings.labelsOnly;
+          // Restore discarded question metadata through the next ordinary read, even if the rollout stayed idle.
+          if (wasPrivate) for (const record of this.records) if (record.reference.sourceId === 'codex') {
+            const live = this.live.get(record.id);
+            if (live) delete live.sourceRevision;
+          }
+        }
       }
       if (options.hermesDashboardUrl !== undefined) {
         const raw = options.hermesDashboardUrl?.trim() ?? '';
@@ -360,18 +761,132 @@ export class Observations {
       await this.saveSettings();
       if (options.ignoreFolders !== undefined) await this.sweepIgnored();
     }).then(async () => {
-      if (this.settings.hermesDashboardUrl) await this.refresh();
+      if (options.labelsOnly !== undefined) {
+        for (const live of this.live.values()) live.sourceRevision = undefined;
+        await this.refresh();
+        for (const record of this.records) this.notify(record);
+      } else if (this.settings.hermesDashboardUrl) await this.refresh();
     });
   }
 
+  private outputState(record: ObservationRecord): ObservedOutputWatermark {
+    if (record.output) return record.output;
+    const revision = digest([record.id, 'observed-output-baseline']);
+    return record.output = { revision, readRevision: revision, hasOutput: false };
+  }
+  private transcriptOutput(record: ObservationRecord, previous: PortableSession | undefined, snapshot: PortableSession): boolean {
+    if (this.labelsOnly()) return false;
+    const hadState = record.output !== undefined;
+    const state = this.outputState(record);
+    const hashes = (session: PortableSession | undefined) => (session?.messages ?? []).filter(message => message.role === 'assistant' && message.content.trim()).map(message => digest(message.content));
+    const assistant = snapshot.messages.filter(message => message.role === 'assistant' && message.content.trim());
+    const current = hashes(snapshot), signature = digest(current);
+    if (state.transcriptSignature === signature) return false;
+    const baseline = state.transcriptSignature === undefined;
+    const counts = new Map<string, number>();
+    for (const hash of hashes(previous)) counts.set(hash, (counts.get(hash) ?? 0) + 1);
+    const added = current.filter(hash => {
+      const count = counts.get(hash) ?? 0;
+      if (count) { counts.set(hash, count - 1); return false; }
+      return true;
+    });
+    const pending = [...(state.pendingHookHashes ?? [])];
+    let newOutput = false;
+    for (const [index, hash] of (baseline ? current : added).entries()) {
+      const sourceAt = baseline ? Date.parse(assistant[index]!.createdAt) : Number.NaN;
+      const afterHookWatch = baseline && hadState && record.hook && sourceAt >= Date.parse(record.createdAt) && sourceAt <= Date.now() + 30_000;
+      const matchingHook = pending.indexOf(hash);
+      if (matchingHook >= 0) pending.splice(matchingHook, 1);
+      else if (!baseline || afterHookWatch) { newOutput = true; state.pendingTranscriptHashes = [...(state.pendingTranscriptHashes ?? []), hash].slice(-64); }
+    }
+    // Recover conservatively if a snapshot write reached disk before its index watermark.
+    if (!baseline && !previous && current.length) newOutput = true;
+    if (newOutput) state.revision = digest([state.revision, 'transcript-output', signature]);
+    else if (baseline && current.length && !state.hasOutput) {
+      state.revision = digest([record.id, 'observed-output-baseline', signature]); state.readRevision = state.revision;
+    }
+    state.hasOutput ||= current.length > 0;
+    state.transcriptSignature = signature; state.pendingHookHashes = pending;
+    return true;
+  }
+  private hookOutput(record: ObservationRecord, events: readonly ExtaliaEvent[], baseline: boolean): boolean {
+    if (this.labelsOnly() || !record.watching) return false;
+    const state = this.outputState(record);
+    let changed = false;
+    for (const event of events) {
+      if (event.body.type === 'prompt.submitted') { state.hookTurn = digest([state.hookTurn ?? '', event.id]); changed = true; }
+      if (event.body.type !== 'model.completed' || !event.body.text.trim()) continue;
+      const hash = digest(event.body.text), signature = digest([event.agentId ?? 'primary', state.hookTurn ?? '', hash]);
+      if (state.hookSignature === signature) continue;
+      state.hookSignature = signature;
+      const transcript = state.pendingTranscriptHashes ?? [];
+      const alreadyReported = transcript.indexOf(hash);
+      if (alreadyReported >= 0) { transcript.splice(alreadyReported, 1); state.pendingTranscriptHashes = transcript; changed = true; continue; }
+      state.revision = digest([state.revision, 'hook-output', signature]); state.hasOutput = true;
+      if (baseline) state.readRevision = state.revision;
+      state.pendingHookHashes = [...(state.pendingHookHashes ?? []), hash].slice(-64); changed = true;
+    }
+    return changed;
+  }
+  /** An exact rendered revision may be acknowledged; a stale view never clears a newer reply. */
+  markRead(id: string, expectedOutputRevision: string): Promise<void> {
+    return this.serialize(async () => {
+      checkSessionId(id);
+      if (!outputHash(expectedOutputRevision)) throw new Error('Invalid observed output revision.');
+      const record = this.records.find(item => item.id === id);
+      if (!record) throw new Error('That observed session no longer exists.');
+      const state = record.output;
+      if (this.labelsOnly() || !state?.hasOutput || state.revision !== expectedOutputRevision || state.readRevision === expectedOutputRevision) return;
+      const previous = state.readRevision; state.readRevision = expectedOutputRevision;
+      try { await this.save(); } catch (error) { state.readRevision = previous; throw error; }
+      this.notify(record);
+    });
+  }
+
+  private internalSuggestion(record: ObservationRecord): boolean {
+    if (record.reference.sourceId !== 'codex' || record.userConversation) return false;
+    const live = this.live.get(record.id);
+    const prompts = (live?.hook?.events ?? []).flatMap(event => event.body.type === 'prompt.submitted'
+      && (event.agentId === undefined || event.agentId === 'primary')
+      ? [{ role: 'user', content: event.body.text }] : []);
+    // A real user continuation always wins over an earlier helper classification.
+    if (prompts.some(prompt => !isInjectedContext(prompt.content) && !isCodexSuggestionPrompt(prompt.content))) return false;
+    if (live?.internalSuggestion !== undefined) return live.internalSuggestion;
+    if (record.suggestionOnly !== undefined) return record.suggestionOnly;
+    return isCodexSuggestionOnlyMessages(record.reference.sourceId,
+      [...(live?.snapshot?.messages ?? []), ...prompts], record.sourceTitle ?? record.title);
+  }
+  /** Keep metadata-only automatic hook placeholders recoverable, but out of visible capacity. */
+  private hiddenObservation(record: ObservationRecord): boolean {
+    if (this.internalSuggestion(record)) return true;
+    if (!record.auto || record.titleRenamed || record.userConversation || record.output?.hasOutput) return false;
+    if (!record.lifecycleOnly && !record.internalEmpty && (record.model || record.context)) return false;
+    const live = this.live.get(record.id);
+    const app = (Object.keys(HOOK_SOURCE_IDS) as HookApp[]).find(app => HOOK_SOURCE_IDS[app] === record.reference.sourceId);
+    const placeholder = app && record.title === `${HOOK_APP_LABELS[app]} · ${record.reference.nativeSessionId.slice(0, 24)}`;
+    if (!placeholder && !record.internalEmpty) return false;
+    if (record.internalEmpty && record.sourceTitle !== undefined && record.title !== record.sourceTitle) return false;
+    if (!record.internalEmpty && live?.snapshot?.messages.some(message => (message.role === 'user' || message.role === 'assistant')
+      && message.content.trim() && !isInjectedContext(message.content))) return false;
+    if (live?.steps?.some(step => step.type === 'tool.call' || step.type === 'tool.result' || step.type === 'subagent.spawn'
+      || step.type === 'status' || (step.type === 'prompt' || step.type === 'reply')
+        && (Boolean(step.text.trim() && !isInjectedContext(step.text)) || step.type === 'prompt' && Boolean(step.attachments?.length)))) return false;
+    return !live?.hook?.substantive && !live?.hook?.events.some(event => substantiveObservationBody(event.body))
+      && !currentObservationState(live, record.watching);
+  }
   summaries(): SessionSummary[] {
-    return this.records.map(record => {
+    return this.records.filter(record => !this.hiddenObservation(record)).map(record => {
       const live = this.live.get(record.id)!;
       const channel = live.hook ? 'hook' as const : record.reference.locationId === DASHBOARD_LOCATION_ID ? 'dashboard' as const : 'transcript' as const;
       const model = record.model;
-      return { id: record.id, workspaceId: '', connectionId: '', title: record.title, createdAt: record.createdAt, lastActiveAt: record.lastActiveAt, control: 'observed', running: false,
-        ...normalizeAgentIdentity(record.agentName, record.agentGender), ...(model ? { model } : {}),
+      return { id: record.id, workspaceId: '', connectionId: '', title: record.title, createdAt: record.createdAt, lastActiveAt: record.lastActiveAt, control: 'observed', running: reportedRunning(live, record.watching),
+        ...normalizeAgentIdentity(record.agentName, record.agentGender), ...(model ? { model } : {}), ...(record.modelAt ? { modelAt: record.modelAt } : {}),
+        ...((EFFORTS as readonly unknown[]).includes(record.effort) ? { effort: record.effort } : {}), ...(record.effortAt ? { effortAt: record.effortAt } : {}),
         observation: { sourceId: record.reference.sourceId, nativeSessionId: safeLabel(record.reference.nativeSessionId, 200), watching: record.watching, status: live.status, channel,
+          ...(!this.labelsOnly() && record.output?.hasOutput ? { outputRevision: record.output.revision, unreadOutput: record.output.readRevision !== record.output.revision } : {}),
+          ...(record.workspaceLink ? { workspaceLink: { workspaceId: record.workspaceLink.workspaceId,
+            sourceMatches: record.workspaceLink.sourceFingerprint === this.controlTarget(record.id)?.fingerprint,
+            projectCanonicalPath: record.workspaceLink.projectCanonicalPath, root: record.workspaceLink.root } } : {}),
           ...(record.projectPath ? { projectPath: record.projectPath } : {}), ...(live.lastCheckedAt ? { lastCheckedAt: live.lastCheckedAt } : {}), ...(live.error ? { error: live.error } : {}),
           ...(live.lastEventAt ? { lastEventAt: live.lastEventAt } : {}), ...(record.auto ? { auto: true } : {}), ...(live.hook || record.hook ? { hook: true } : {}) },
         ...(record.context ? { context: record.context } : {}) };
@@ -389,32 +904,35 @@ export class Observations {
       labelsOnly: this.labelsOnly(), nowMs: Date.now(), keepAttachment: data => this.keepAttachment(record.id, data),
     });
   }
-  /** Private copies of images that observed prompts embed: `<data>/observed-files/<sessionId>/<sha256>`. */
+  /** Private copies are session-bound, validated and quota-limited; paths never cross the UI bridge. */
   private attachmentFolder(id: string) { return path.join(this.directory, 'observed-files', checkSessionId(id)); }
-  private keptAttachments = new Set<string>();
-  /** Keep an embedded image (PNG, JPEG, WebP or GIF only) and return its SHA-256; anything else is not kept. */
-  private keepAttachment(id: string, data: string): string | undefined {
-    try {
-      const bytes = Buffer.from(data, 'base64');
-      if (!bytes.length || !detectImageMimeType(bytes)) return undefined;
-      const ref = createHash('sha256').update(bytes).digest('hex');
-      const file = path.join(this.attachmentFolder(id), ref);
-      if (this.keptAttachments.has(file)) return ref;
-      if (!existsSync(file)) {
-        mkdirSync(this.attachmentFolder(id), { recursive: true, mode: 0o700 });
-        writeFileSync(file, bytes, { mode: 0o600 });
-      }
-      this.keptAttachments.add(file);
-      return ref;
-    } catch { return undefined; }
+  private readonly imageStores = new Map<string, ObservedImageStore>();
+  private imageStore(id: string): ObservedImageStore {
+    checkSessionId(id);
+    let store = this.imageStores.get(id);
+    if (!store) {
+      store = new ObservedImageStore(this.directory, id);
+      // Active observations retain their steps/refs; old store metadata can be reloaded safely.
+      if (this.imageStores.size >= MAX_OBSERVATIONS + MAX_AUTO_OBSERVATIONS) this.imageStores.delete(this.imageStores.keys().next().value!);
+      this.imageStores.set(id, store);
+    }
+    return store;
   }
-  /** An image an observed prompt embedded, by the reference its event carries. */
+  private keepAttachment(id: string, data: string): string | undefined {
+    if (this.labelsOnly()) return undefined;
+    return this.imageStore(id).keep(data);
+  }
+  private stagedAttachmentsRoot(id: string): string {
+    return path.join(this.directory, 'attachments', checkSessionId(id), 'files');
+  }
+  keepPromptAttachment(id: string, data: string): string | undefined {
+    return this.keepAttachment(id, data);
+  }
   async attachment(id: string, ref: string): Promise<AttachmentPreview | undefined> {
-    if (!/^[0-9a-f]{64}$/.test(ref) || !this.records.some(item => item.id === id)) return undefined;
-    let bytes: Buffer;
-    try { bytes = await readFile(path.join(this.attachmentFolder(id), ref)); } catch { return undefined; }
-    const mimeType = detectImageMimeType(bytes);
-    return mimeType ? { mimeType, data: bytes.toString('base64') } : undefined;
+    if (this.closed || this.labelsOnly() || !/^[0-9a-f]{64}$/.test(ref) || ref.length !== 64 || !this.records.some(item => item.id === id)) return undefined;
+    const record = this.records.find(item => item.id === id);
+    const preview = await this.imageStore(id).preview(ref);
+    return !this.closed && !this.labelsOnly() && record && this.records.includes(record) ? preview : undefined;
   }
   events(id: string): ExtaliaEvent[] {
     const record = this.records.find(item => item.id === id);
@@ -425,9 +943,31 @@ export class Observations {
     if (!hook?.events.length) return history;
     // Hooks are the live channel; the transcript supplies history steps that hooks never reported (e.g. final assistant reply, earlier history).
     const reported = new Set(hook.events.map(stepKey).filter(Boolean));
-    const unhooked = history.filter(event => !reported.has(stepKey(event)));
+    const reportedFiles = new Set(hook.events.flatMap(event =>
+      event.body.type === 'file.written' ? [JSON.stringify([event.agentId ?? 'primary', event.body.path, event.body.change])] : []));
+    const fallback = new Set(transcriptFallback(history, history, hook));
+    // Earlier history remains readable; activity at/after hook authority must obey the
+    // same rules as the live stream, including terminal reports and missed-hook recovery.
+    // Conversational prompt, reply and unreported file-change history from the transcript is preserved across subsequent hook turns.
+    const isMessage = (event: ExtaliaEvent) => event.body.type === 'prompt.submitted' || event.body.type === 'model.completed' || event.body.type === 'tool.output'
+      || (event.body.type === 'file.written' && !reportedFiles.has(JSON.stringify([event.agentId ?? 'primary', event.body.path, event.body.change])));
+    const unhooked = history.filter(event => !reported.has(stepKey(event)) && (isMessage(event) || event.at < hook.since || fallback.has(event)));
     const started = unhooked.some(event => event.body.type === 'session.started');
-    const filteredHooks = hook.events.filter(event => !(started && event.body.type === 'session.started'));
+    let hookEnded = false;
+    const imageResults = new Map(history.flatMap(event => event.body.type === 'tool.completed' && event.body.toolCallId && event.body.ok && event.body.attachments?.length
+      ? [[stepKey(event), event.body] as const] : []));
+    const filteredHooks = hook.events.filter(event => {
+      if (event.body.type === 'session.ended') hookEnded = true;
+      // The transcript replaces the initial introduction only. A hook start after
+      // an end is a real resume and must reset the hydrated session's lifecycle.
+      return event.body.type !== 'session.started' || !started || hookEnded;
+    }).map(event => {
+      const source = imageResults.get(stepKey(event));
+      if (this.labelsOnly() || event.body.type !== 'tool.completed' || !event.body.ok || !source
+        || event.body.tool.replace(/^functions\./, '') !== source.tool.replace(/^functions\./, '')) return event;
+      // The transcript fills omitted media on the same hook row; it must not add a duplicate tool call.
+      return { ...event, body: { ...event.body, attachments: source.attachments } };
+    });
     return [...unhooked, ...filteredHooks].sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
   }
   private history(record: ObservationRecord, live: Live | undefined): ExtaliaEvent[] {
@@ -448,7 +988,7 @@ export class Observations {
   private notify(record: ObservationRecord) {
     const live = this.live.get(record.id)!;
     this.emit(createEvent({ sessionId: record.id, source: { runtime: record.reference.sourceId, channel: 'transcript', adapter: 'native-transcript' },
-      body: { type: 'session.updated', revision: digest([live.revision, live.lastEventAt, live.eventIds?.size, live.status, record.watching, record.title]), messageCount: live.snapshot?.messages.length ?? 0 } }));
+      body: { type: 'session.updated', revision: digest([live.revision, live.eventRevision, live.lastEventAt, live.eventIds?.size, live.status, record.watching, record.title, this.labelsOnly(), record.workspaceLink, record.output?.revision, record.output?.readRevision]), messageCount: live.snapshot?.messages.length ?? 0 } }));
   }
   private publish(events: readonly ExtaliaEvent[]) {
     for (const event of events) { try { this.emit(event); } catch { /* a disconnected listener must not stop polling */ } }
@@ -459,25 +999,60 @@ export class Observations {
    * The first read after a host start only sets the baseline, so history is not replayed live.
    */
   private async update(record: ObservationRecord, read: ObservedRead, sourceRevision?: string, introduce = false) {
-    const snapshot = read.session;
+    let snapshot = read.session;
+    const project = await this.hooks.projectContext?.(record.reference);
+    if (project) {
+      if (!path.isAbsolute(project.projectPath) || project.projectPath.includes('\0') || !project.revision) throw new Error('Invalid native project evidence.');
+      const resolved = realpathSync(project.projectPath);
+      if (!(await stat(resolved)).isDirectory()) throw new Error('The native project folder is unavailable.');
+      const decoded = decodePortableSession({ ...snapshot, workspace: { slug: `native-${digest(resolved).slice(0, 24)}`, name: safeLabel(path.basename(resolved), 120) || 'Project', projectLocation: resolved } });
+      if (!decoded.ok) throw new Error('Invalid native project snapshot.');
+      snapshot = decoded.value;
+    }
     if (snapshot.messages.length > 5000 || Buffer.byteLength(JSON.stringify(snapshot)) > MAX_SNAPSHOT_BYTES) throw new Error('Live observation is limited to 5000 messages / 5 MB. Import this history instead.');
     const current = this.live.get(record.id)!;
+    const classificationChanged = read.internalSuggestion !== undefined && record.suggestionOnly !== read.internalSuggestion
+      || record.internalEmpty !== read.internalEmpty;
+    if (read.internalSuggestion !== undefined) record.suggestionOnly = read.internalSuggestion;
+    if (read.internalEmpty === undefined) delete record.internalEmpty;
+    else record.internalEmpty = read.internalEmpty;
     const revision = this.revision(snapshot), lastCheckedAt = new Date().toISOString();
     let identityChanged = false;
     if (revision !== current.revision) {
       await writeJsonAtomic(this.file(record.id), snapshot, { mode: 0o600 });
       record.lastActiveAt = snapshot.lastMessageAt;
-      record.projectPath = snapshot.workspace?.projectLocation;
+      const projectPath = snapshot.workspace?.projectLocation;
+      if (record.projectPath !== projectPath) this.invalidateControl(record);
+      record.projectPath = projectPath;
     }
     // Until the user renames it, the title follows the source (a custom title set later, the first typed prompt).
     // Older records follow only when their title is injected context or a hook placeholder.
     const sourceTitle = safeLabel(snapshot.title, 200);
-    const follows = record.sourceTitle !== undefined ? record.title === record.sourceTitle
-      : record.title === sourceTitle || isInjectedContext(record.title) || Object.values(HOOK_APP_LABELS).some(label => record.title.startsWith(`${label} · `));
+    const follows = !record.titleRenamed && (record.sourceTitle !== undefined ? record.title === record.sourceTitle
+      : record.title === sourceTitle || isInjectedContext(record.title)
+        || Object.values(HOOK_APP_LABELS).some(label => record.title === `${label} · ${record.reference.nativeSessionId.slice(0, 24)}`));
     if (sourceTitle && follows && (record.title !== sourceTitle || record.sourceTitle !== sourceTitle)) { record.title = sourceTitle; record.sourceTitle = sourceTitle; identityChanged = true; }
+    const steps = this.labelsOnly() ? read.steps.map(step => {
+      if (step.type === 'prompt' || step.type === 'tool.result') { const { attachments: _attachments, ...metadata } = step; return metadata; }
+      return step;
+    }) : await this.imageStore(record.id).materialize(read.steps, {
+      sourceId: record.reference.sourceId, projectRoot: snapshot.workspace?.projectLocation,
+      temporaryRoot: this.hooks.temporaryImageRoot ?? tmpdir(),
+      stagedAttachmentsRoot: this.stagedAttachmentsRoot(record.id),
+      revision: sourceRevision,
+    });
     // The lead's model is the newest report of the transcript (its latest lead model event) and of the hooks (see `reportModel`).
-    const events = this.derive(record, { steps: read.steps });
-    if (reportModel(record, read.model, transcriptModelAt(events, snapshot))) identityChanged = true;
+    const events = this.derive(record, { steps });
+    const eventRevision = digest(events.map(event => event.id));
+    const nativeSelection = project?.model ? safeLabel(project.model, 120) : undefined;
+    if (nativeSelection) {
+      // A live adapter selection is current evidence, rather than a transcript clock watermark.
+      if (record.model !== nativeSelection) {
+        const selectedAt = new Date().toISOString();
+        record.model = nativeSelection; record.modelAt = selectedAt; delete record.effort; record.effortAt = selectedAt; identityChanged = true;
+      }
+    } else if (reportModel(record, read.model, read.modelAt ?? transcriptModelAt(events, snapshot))) identityChanged = true;
+    if (read.effortAt && reportEffort(record, read.effort, read.effortAt, read.model)) identityChanged = true;
     // v0.0.48: the context follows the transcript's latest usage report; an unchanged reading keeps the stored record.
     if (read.context) {
       const contextUsage = sessionContext({ usedTokens: read.context.usedTokens, ...(read.context.windowTokens ? { windowTokens: read.context.windowTokens } : {}),
@@ -487,14 +1062,84 @@ export class Observations {
     const fresh = introduce ? [events[0]!, ...latestTurn(events).filter(event => event !== events[0])]
       : current.eventIds ? events.filter(event => !current.eventIds!.has(event.id)) : [];
     const latest = this.live.get(record.id)?.hook ?? current.hook;
-    // While hooks report this session live, transcript events would repeat the same steps; only history is kept.
     const transcriptAt = events.at(-1)?.at;
-    const lastEventAt = latest && (!transcriptAt || latest.lastAt > transcriptAt) ? latest.lastAt : transcriptAt;
-    const changed = identityChanged || revision !== current.revision || current.status !== 'watching' || fresh.length > 0 || lastEventAt !== current.lastEventAt;
-    this.live.set(record.id, { snapshot, steps: read.steps, eventIds: new Set(events.map(event => event.id)), ...(lastEventAt ? { lastEventAt } : {}),
+    const activeBgCalls = new Set(read.activeTaskCallIds ?? []);
+    if (latest?.app === 'antigravity' && activeBgCalls.size === 0 && (!latest.lastAt || (transcriptAt && transcriptAt >= latest.lastAt))) {
+      clearAntigravityBackgroundTasks(record.reference.nativeSessionId);
+    }
+    const reconciledHook = activeBgCalls.size > 0 && latest ? reconcileAntigravityHook(latest, activeBgCalls, events) : false;
+    if (reconciledHook && latest) {
+      const latestRemaining = latest.events.at(-1)?.at;
+      if (latestRemaining) latest.lastAt = latestRemaining;
+    }
+    // Deduplicate hook reports, but publish newer transcript evidence when a later hook was missed.
+    const publishable = latest ? transcriptFallback(fresh, events, latest) : fresh;
+    let syntheticEmitted = false;
+    const primaryActivity = current.activity?.get('primary');
+    if (record.watching && current.eventIds && activeBgCalls.size > 0 && latest?.app === 'antigravity'
+      && (reconciledHook || (primaryActivity && (!primaryActivity.running || primaryActivity.terminal)))
+      && !publishable.some(event => (event.agentId ?? 'primary') === 'primary' && event.body.type === 'agent.state' && event.body.state === 'working')) {
+      publishable.push(createEvent({
+        id: `observed-${digest([record.id, 'bg-reconcile', read.activeTaskAt ?? lastCheckedAt, [...activeBgCalls]])}`,
+        at: lastCheckedAt,
+        sessionId: record.id,
+        agentId: 'primary',
+        source: { runtime: record.reference.sourceId, channel: 'transcript', adapter: 'native-transcript' },
+        body: activeWorkingBody(activeBgCalls, [...events, ...latest.events], steps),
+      }));
+      syntheticEmitted = true;
+    }
+    let taskHeartbeatAt = activeBgCalls.size > 0 ? current.taskHeartbeatAt : undefined;
+    if (activeBgCalls.size > 0 && read.activeTaskAt && current.eventIds && record.watching) {
+      const taskMs = Date.parse(read.activeTaskAt);
+      const nowMs = Date.now();
+      if (Number.isFinite(taskMs) && nowMs >= taskMs - 30_000 && nowMs - taskMs <= OBSERVED_ACTIVITY_LIVE_MS) {
+        const primaryAt = Math.max(
+          Date.parse(events.filter(event => (event.agentId ?? 'primary') === 'primary').at(-1)?.at ?? '') || 0,
+          Date.parse(taskHeartbeatAt ?? '') || 0,
+          primaryActivity?.running ? primaryActivity.at : 0,
+        );
+        if (taskMs - primaryAt >= TASK_HEARTBEAT_INTERVAL_MS && !syntheticEmitted && !publishable.some(event => (event.agentId ?? 'primary') === 'primary')) {
+          publishable.push(createEvent({
+            id: `observed-${digest([record.id, 'task-heartbeat', read.activeTaskAt, [...activeBgCalls]])}`,
+            at: read.activeTaskAt,
+            sessionId: record.id,
+            agentId: 'primary',
+            source: { runtime: record.reference.sourceId, channel: 'transcript', adapter: 'native-transcript' },
+            body: activeWorkingBody(activeBgCalls, [...events, ...(latest?.events ?? [])], steps),
+          }));
+          taskHeartbeatAt = read.activeTaskAt;
+          syntheticEmitted = true;
+        }
+      }
+    }
+    const lastEventAt = [transcriptAt, latest?.lastAt, taskHeartbeatAt].filter((value): value is string => Boolean(value)).sort().at(-1);
+    const target = !this.labelsOnly() && this.codexQueueTarget(record.id);
+    const priorInput = target && current.userInput?.fingerprint === target.sourceFingerprint ? current.userInput.evidence : undefined;
+    const requests = new Map((priorInput?.requests ?? []).map(item => [item.callId, item]));
+    const replies = new Map((priorInput?.replies ?? []).map(item => [JSON.stringify([item.questionItemId, item.question]), item]));
+    if (target && read.userInput) {
+      for (const item of read.userInput.requests) {
+        const previous = requests.get(item.callId);
+        if (!previous && requests.size >= 128) requests.delete(requests.keys().next().value!);
+        requests.set(item.callId, previous?.conflicted || item.conflicted || previous && digest(previous.questions) !== digest(item.questions)
+          ? { ...item, conflicted: true, canAnswer: false } : previous?.canAnswer ? { ...item, canAnswer: true } : item);
+      }
+      for (const item of read.userInput.replies) {
+        const key = JSON.stringify([item.questionItemId, item.question]);
+        if (!replies.has(key) && replies.size >= 1280) replies.delete(replies.keys().next().value!);
+        replies.set(key, item);
+      }
+    }
+    const userInput = target ? { fingerprint: target.sourceFingerprint, evidence: { requests: [...requests.values()], replies: [...replies.values()] } } : undefined;
+    const outputChanged = this.transcriptOutput(record, current.snapshot, snapshot);
+    const changed = classificationChanged || read.internalSuggestion !== current.internalSuggestion || outputChanged || identityChanged || reconciledHook || syntheticEmitted || revision !== current.revision || eventRevision !== current.eventRevision || current.status !== 'watching' || fresh.length > 0 || lastEventAt !== current.lastEventAt || digest(userInput ?? null) !== digest(current.userInput ?? null);
+    const activity = current.activity;
+    this.live.set(record.id, { ...(read.internalSuggestion === undefined ? {} : { internalSuggestion: read.internalSuggestion }), ...(activity ? { activity } : {}), ...(userInput ? { userInput } : {}), snapshot, steps, eventRevision, eventIds: new Set(events.map(event => event.id)), ...(lastEventAt ? { lastEventAt } : {}), ...(taskHeartbeatAt ? { taskHeartbeatAt } : {}),
       revision, ...(sourceRevision ? { sourceRevision } : {}), status: 'watching', lastCheckedAt, ...(latest ? { hook: latest } : {}) });
+    if (record.watching && current.eventIds) advanceLiveActivity(this.live.get(record.id)!, publishable, Date.now());
     const identities = latest ? this.identities(record, latest, events) : [];
-    if (changed) { await this.save(); if (!latest) this.publish(fresh); this.notify(record); }
+    if (changed) { await this.save(); this.publish(publishable); this.notify(record); }
     if (identities.length && record.watching) this.publish(identities);
   }
   /** Claude Code's anchor of a validated transcript reference (other sources never continue a conversation this way). */
@@ -545,6 +1190,7 @@ export class Observations {
   /** The record takes over the native session that continues its conversation; the earlier one stays ignored until it changes. */
   private async adopt(record: ObservationRecord, reference: NativeObservationRef, read: ObservedRead, revision: string) {
     const previous = record.reference;
+    this.invalidateControl(record);
     record.reference = reference;
     this.ignore(sourceKey(previous), Date.now());
     await this.saveSettings();
@@ -589,12 +1235,12 @@ export class Observations {
     return this.serialize(async () => {
       if (!Array.isArray(candidateIds) || !candidateIds.length || candidateIds.length > MAX_OBSERVATIONS) throw new Error(`Select 1–${MAX_OBSERVATIONS} sessions to observe.`);
       const selected = [...new Set(candidateIds)].map(id => this.source.observation(scanId, id));
-      const manual = this.records.filter(record => !record.auto);
+      const manual = this.records.filter(record => !record.auto && !this.hiddenObservation(record));
       if (manual.length + selected.filter(item => !manual.some(record => sameSession(record.reference, item.reference))).length > MAX_OBSERVATIONS) throw new Error(`Observe at most ${MAX_OBSERVATIONS} sessions. Delete an old observation first.`);
       for (const item of selected) {
         if (item.session.messages.length > 5000 || Buffer.byteLength(JSON.stringify(item.session)) > MAX_SNAPSHOT_BYTES) throw new Error('This history is too large for live observation. Import it instead.');
       }
-      for (const { reference, session, steps, model, context } of selected) {
+      for (const { reference, session, steps, model, context, activeTaskAt, activeTaskCallIds } of selected) {
         let record = this.records.find(item => sameSession(item.reference, reference));
         const created = !record;
         if (!record) {
@@ -607,7 +1253,7 @@ export class Observations {
         record.reference = reference;
         // Picking a session by hand keeps it out of the automatic LRU.
         record.watching = true; delete record.auto;
-        await this.update(record, { session, steps, ...(model ? { model } : {}), ...(context ? { context } : {}) }, undefined, created);
+        await this.update(record, { session, steps, ...(model ? { model } : {}), ...(context ? { context } : {}), ...(activeTaskAt ? { activeTaskAt } : {}), ...(activeTaskCallIds ? { activeTaskCallIds } : {}) }, undefined, created);
       }
       await this.save();
     });
@@ -619,16 +1265,35 @@ export class Observations {
       const found = this.source.discover(enabled, Date.now() - DISCOVERY_WINDOW_MS, MAX_AUTO_OBSERVATIONS).sort((a, b) => b.updatedAt - a.updatedAt);
       for (const item of found) {
         const key = sourceKey(item.reference);
-        const known = () => this.records.some(record => sourceKey(record.reference) === key || sameSession(record.reference, item.reference));
-        if (known() || (this.settings.ignored[key] ?? -Infinity) >= item.updatedAt || this.ignoredPath(item.projectPath)) continue;
+        const known = () => this.records.find(record => sourceKey(record.reference) === key || sameSession(record.reference, item.reference));
+        const canAttach = (record: ObservationRecord) => record.auto === true && record.watching
+          && record.hook && HOOK_SOURCE_IDS[record.hook.app] === record.reference.sourceId
+          && !record.reference.path && sameSession(record.reference, item.reference);
+        const existing = known();
+        if ((existing && !canAttach(existing)) || (this.settings.ignored[key] ?? -Infinity) >= item.updatedAt || this.ignoredPath(item.projectPath)) continue;
         if (await this.hooks.skip?.(item.reference)) continue;
         // Hooks may have registered the session meanwhile.
-        if (known()) continue;
+        const registered = known();
+        if (registered && !canAttach(registered)) continue;
         let revision: string, read: ObservedRead;
         // A transcript that has no conversation yet is tried again on the next poll.
         try { revision = this.source.observationRevision(item.reference); read = this.source.readObservation(item.reference); } catch { continue; }
         if (read.session.messages.length > 5000 || Buffer.byteLength(JSON.stringify(read.session)) > MAX_SNAPSHOT_BYTES) { this.ignore(key, Number.MAX_SAFE_INTEGER); await this.saveSettings(); continue; }
+        if (read.internalEmpty || (read.internalSuggestion ?? isCodexSuggestionOnlyMessages(item.reference.sourceId, read.session.messages, read.session.title))) continue;
         if (this.ignoredPath(read.session.workspace?.projectLocation)) continue;
+        // An opted-in native location can fill a hook placeholder when its transcript appears later.
+        if (registered) {
+          const previous = structuredClone(registered), previousLive = structuredClone(this.live.get(registered.id));
+          this.invalidateControl(registered); registered.reference = item.reference;
+          try { await this.update(registered, read, revision); }
+          catch (error) {
+            // Failed hydration must leave the pathless record eligible for a later discovery retry.
+            this.records = this.records.map(record => record === registered ? previous : record);
+            if (previousLive) this.live.set(registered.id, previousLive);
+            throw error;
+          }
+          continue;
+        }
         // A continued conversation is the same character: its earlier file takes over or is dropped, no new record.
         const continued = await this.continuation(item.reference, read.session, await this.anchorFor(item.reference));
         if (continued) {
@@ -678,7 +1343,7 @@ export class Observations {
   /** Retire the least recently active automatic observations beyond the LRU limit. */
   private async trim() {
     const activity = (record: ObservationRecord) => Math.max(Date.parse(record.lastActiveAt), Date.parse(this.live.get(record.id)?.lastEventAt ?? '') || 0);
-    const overflow = this.records.filter(record => record.auto).sort((a, b) => activity(b) - activity(a)).slice(MAX_AUTO_OBSERVATIONS);
+    const overflow = this.records.filter(record => record.auto).sort((a, b) => Number(this.hiddenObservation(a)) - Number(this.hiddenObservation(b)) || activity(b) - activity(a)).slice(MAX_AUTO_OBSERVATIONS);
     for (const record of overflow) await this.retire(record);
   }
   /** `archive` keeps the conversation in History; ignored-folder noise is dropped instead. */
@@ -693,6 +1358,7 @@ export class Observations {
     const live = this.live.get(record.id)!;
     this.live.delete(record.id);
     await this.saveSettings(); await this.save(); await rm(this.file(record.id), { force: true });
+    this.imageStores.delete(record.id);
     await rm(this.attachmentFolder(record.id), { recursive: true, force: true });
     // Tells views to reload the session list; the native session itself is unaffected.
     this.emit(createEvent({ sessionId: record.id, source: { runtime: record.reference.sourceId, channel: 'transcript', adapter: 'native-transcript' },
@@ -722,16 +1388,18 @@ export class Observations {
             if (this.records.some(item => item !== record && sameSession(item.reference, root))) {
               this.records = this.records.filter(item => item !== record); this.live.delete(record.id);
               await this.save(); await rm(this.file(record.id), { force: true });
+              this.imageStores.delete(record.id);
               await rm(this.attachmentFolder(record.id), { recursive: true, force: true });
               continue;
             }
-            record.reference = root; await this.save();
+            this.invalidateControl(record); record.reference = root; await this.save();
           }
         }
         try {
           const revision = this.source.observationRevision(record.reference);
           const live = this.live.get(record.id)!;
-          if (live.sourceRevision === revision && live.snapshot && live.steps) {
+          if (live.sourceRevision === revision && live.snapshot && live.steps
+            && (this.labelsOnly() || !this.imageStore(record.id).hasPending)) {
             const recovered = live.status !== 'watching';
             this.live.set(record.id, { ...live, status: 'watching', error: undefined, lastCheckedAt: new Date().toISOString() });
             if (recovered) this.notify(record);
@@ -780,12 +1448,37 @@ export class Observations {
       if (added) await this.saveSettings();
     }).then(async () => { await this.refresh(); });
   }
+  /** Trusted host mutation: physical containment, workspace existence and continuity are checked by the caller. */
+  setWorkspaceLink(id: string, expectedSourceFingerprint: string, link: { workspaceId: string; projectCanonicalPath: string; root: string } | null): Promise<void> {
+    return this.serialize(async () => {
+      const record = this.records.find(item => item.id === id);
+      if (!record || typeof expectedSourceFingerprint !== 'string' || !/^[a-f0-9]{64}$/.test(expectedSourceFingerprint)
+        || this.controlTarget(id)?.fingerprint !== expectedSourceFingerprint) throw new Error('The observed source changed. Review its workspace association again.');
+      if (link !== null && (!link || typeof link !== 'object' || Array.isArray(link)
+        || Object.keys(link).length !== 3 || Object.keys(link).some(key => !['workspaceId', 'projectCanonicalPath', 'root'].includes(key)))) throw new Error('Invalid observed workspace association.');
+      const next = link === null ? undefined : { ...link, sourceFingerprint: expectedSourceFingerprint };
+      if (next !== undefined && !validWorkspaceLink(next)) throw new Error('Invalid observed workspace association.');
+      const previous = record.workspaceLink;
+      if (next) record.workspaceLink = next; else delete record.workspaceLink;
+      try { await this.save(); }
+      catch (error) {
+        // Restore only this failed mutation, never a later source/record replacement.
+        if (this.records.includes(record) && record.workspaceLink === next) {
+          if (previous) record.workspaceLink = previous; else delete record.workspaceLink;
+        }
+        throw error;
+      }
+      this.invalidateControl(record); this.notify(record);
+    });
+  }
   setWatching(id: string, watching: boolean): Promise<void> {
     return this.serialize(async () => {
       const record = this.records.find(item => item.id === id);
       if (!record || typeof watching !== 'boolean') throw new Error('Invalid observation.');
+      if (record.watching !== watching) this.invalidateControl(record);
       record.watching = watching;
       const live = this.live.get(id)!;
+      if (!watching) delete live.activity;
       this.live.set(id, { ...live, status: watching ? 'watching' : 'paused', error: undefined });
       await this.save(); this.notify(record);
     }).then(async () => { if (watching) await this.refresh(); });
@@ -795,6 +1488,7 @@ export class Observations {
       const record = this.records.find(item => item.id === id);
       if (!record) throw new Error('That observed session no longer exists.');
       const clean = safeLabel(title, 200); if (!clean) throw new Error('Enter a title.');
+      if (record.title !== clean) record.titleRenamed = true;
       record.title = clean;
       await this.save(); this.notify(record);
     });
@@ -806,6 +1500,7 @@ export class Observations {
       if (record) { this.ignore(sourceKey(record.reference), Date.now()); await this.saveSettings(); }
       this.records = this.records.filter(item => item.id !== id); this.live.delete(id);
       await this.save(); await rm(this.file(id), { force: true });
+      this.imageStores.delete(id);
       await rm(this.attachmentFolder(id), { recursive: true, force: true });
     });
   }
@@ -828,6 +1523,21 @@ export class Observations {
         return;
       }
       // No normalized report means no session/activity evidence to register.
+      if (hook.followupPrompts !== undefined) {
+        // Resolve the reported native source without creating/linking observations.
+        const direct = this.source.hookReference(HOOK_SOURCE_IDS[hook.app], hook.sessionId, hook.transcriptPath, hook.profile)
+          ?? { locationId: `hook-${hook.app}`, sourceId: HOOK_SOURCE_IDS[hook.app], nativeSessionId: hook.sessionId, path: '' };
+        const { subagentId, ...reference } = this.source.rootReference(direct);
+        const record = this.records.find(item => sameSession(item.reference, reference));
+        if (!subagentId && reference.nativeSessionId === hook.sessionId && record?.watching && !this.labelsOnly()) {
+          const prompts = hook.followupPrompts;
+          if (Array.isArray(prompts) && prompts.length <= 3 && prompts.every(prompt => typeof prompt === 'string' && prompt.trim() && prompt.length <= 240 && !/[\p{Cc}\p{Zl}\p{Zp}]/u.test(prompt)) && new Set(prompts).size === prompts.length) {
+            const redacted = prompts.map(prompt => redact(prompt.trim()));
+            if (redacted.every(prompt => prompt.length <= 240) && new Set(redacted).size === redacted.length) this.hooks.onFollowups?.(record.id, redacted);
+          }
+        }
+        return;
+      }
       if (hook.steps.length === 0) return;
       const sourceId = HOOK_SOURCE_IDS[hook.app];
       const skipKey = `${sourceId}:${hook.sessionId}`;
@@ -850,9 +1560,12 @@ export class Observations {
       let record = this.records.find(item => sameSession(item.reference, reference));
       // A session the hooks have not reported before may continue a known conversation (Claude Code; see `continuation`).
       if (!record && !subagentId) record = await this.linkHook(reference);
+      const firstDiscovery = !record;
+      // Meeting reports alone cannot establish a new session or agent identity.
+      if (!record && hook.steps.every(step => isMeeting(step.body))) return;
       // Sessions in ignored folders are not observed automatically (a session picked by hand still is).
       if (this.ignoredPath(hook.cwd) && (!record || record.auto)) return;
-      const titleHint = this.labelsOnly() ? undefined : hook.titleHint;
+      const titleHint = this.labelsOnly() || hook.titleHint && isInjectedContext(hook.titleHint) ? undefined : hook.titleHint;
       if (!record) {
         record = {
           id: newSessionId(),
@@ -864,18 +1577,35 @@ export class Observations {
           ...(hook.cwd ? { projectPath: hook.cwd } : {}),
           auto: true,
           hook: { app: hook.app },
+          lifecycleOnly: true,
         };
         await this.name(record);
         this.records.push(record);
         this.live.set(record.id, { revision: 'empty', status: 'watching' });
       } else {
-        if (!record.reference.path && reference.path) record.reference = reference;
+        if (!record.reference.path && reference.path) { this.invalidateControl(record); record.reference = reference; }
         record.hook = { app: hook.app };
         record.lastActiveAt = at;
-        if (hook.cwd) record.projectPath = hook.cwd;
-        if (titleHint && !subagentId && record.title.startsWith(`${HOOK_APP_LABELS[hook.app]} · `)) record.title = titleHint;
+        if (hook.cwd && record.projectPath !== hook.cwd) { this.invalidateControl(record); record.projectPath = hook.cwd; }
+        if (titleHint && !subagentId && !record.titleRenamed && record.title === `${HOOK_APP_LABELS[hook.app]} · ${reference.nativeSessionId.slice(0, 24)}`) record.title = titleHint;
       }
-      if (hook.model && !subagentId) reportModel(record, safeLabel(hook.model, 120), at);
+      if (sourceId === 'codex' && !subagentId && !record.userConversation) {
+        const prompts = hook.steps.flatMap(step => step.body.type === 'prompt.submitted' && step.agentId === 'primary'
+          ? [{ role: 'user', content: step.body.text }] : []);
+        if (prompts.length && isCodexSuggestionOnlyMessages(sourceId, [...(this.live.get(record.id)?.snapshot?.messages ?? []), ...prompts])) record.suggestionOnly = true;
+      }
+      if (!subagentId && hook.steps.some(step => step.body.type === 'prompt.submitted'
+        && (step.agentId === 'primary' || !step.agentId) && substantiveObservationBody(step.body)
+        && (!isInjectedContext(step.body.text) || Boolean(step.body.attachments?.length))
+        && (sourceId !== 'codex' || !isCodexSuggestionPrompt(step.body.text) || Boolean(step.body.attachments?.length)))) {
+        if (titleHint && !record.titleRenamed && this.internalSuggestion(record)) record.title = titleHint;
+        record.userConversation = true;
+        record.suggestionOnly = false;
+      }
+      if (!subagentId && !CHILD_HOOK_EVENTS.has(hook.event) && (!hook.agentId || hook.agentId === 'primary')) {
+        if (hook.model) reportModel(record, safeLabel(hook.model, 120), at);
+        if (hook.effortReported || hook.effort !== undefined) reportEffort(record, hook.effort, at, hook.model);
+      }
       const live = this.live.get(record.id)!;
       const ownSteps = subagentId
         ? hook.steps.filter(step => step.body.type !== 'session.started' && step.body.type !== 'session.ended')
@@ -885,12 +1615,25 @@ export class Observations {
         ? ownSteps
             .filter(step => step.body.type !== 'prompt.submitted' && step.body.type !== 'model.completed')
             .map(step => (step.body.type === 'tool.completed' && 'output' in step.body ? { ...step, body: (({ output: _out, ...rest }) => rest)(step.body) } : step))
+            .flatMap(step => { const body = privateMeeting(step.body); return body ? [{ ...step, body }] : []; })
         : ownSteps;
-      const events = hookProtocolEvents({ app: hook.app, steps: filteredSteps }, {
+      let events = hookProtocolEvents({ app: hook.app, steps: filteredSteps }, {
         sessionId: record.id,
         at,
         id: index => `hook-${record.id}-${++this.hookCounter}-${index}`,
       });
+      if (!this.labelsOnly()) {
+        const stagedRoot = this.stagedAttachmentsRoot(record.id);
+        for (const event of events) {
+          if (event.body.type !== 'prompt.submitted' || event.body.attachments?.some(file => file.ref)) continue;
+          const staged = await this.imageStore(record.id).materializePromptAttachments(event.body.text, stagedRoot);
+          if (staged.length) {
+            event.body.attachments = staged.map(file => ({
+              name: file.name, kind: file.kind, size: file.size, ...(file.ref ? { ref: file.ref } : {}),
+            }));
+          }
+        }
+      }
       if (!live.hook) {
         live.hook = { app: hook.app, since: at, lastAt: at, events: [] };
         if (!hook.starts && !events.some(e => e.body.type === 'session.started')) {
@@ -910,6 +1653,74 @@ export class Observations {
           }));
         }
       }
+      const substantive = ownSteps.some(step => substantiveObservationBody(step.body));
+      if (substantive) delete record.lifecycleOnly;
+      if (substantive
+        || this.labelsOnly() && (hook.event === 'UserPromptSubmit' || hook.event === 'BeforeAgent')) live.hook.substantive = true;
+      if (hook.app === 'antigravity' && (hook.event === 'PostToolUse' || hook.event === 'Stop') && record.reference.path
+        && !events.some(event => event.body.type === 'turn.failed')
+        && events.some(event => event.body.type === 'tool.completed' || event.body.type === 'turn.completed')) {
+        let read: ObservedRead | undefined;
+        try { read = this.source.readObservation(record.reference); } catch { read = undefined; }
+        if (read?.activeTaskCallIds?.length) {
+          const activeBgCalls = new Set(read.activeTaskCallIds);
+          const earliest = earliestAntigravityStartAt(activeBgCalls, live.hook.events, events);
+          const kept = events.filter(event => !isPrematureAntigravityHookEvent(event, activeBgCalls, earliest));
+          const prunedHook = reconcileAntigravityHook(live.hook, activeBgCalls, events);
+          if (kept.length < events.length || prunedHook) {
+            events = [...kept, createEvent({
+              id: `hook-${record.id}-${++this.hookCounter}-bg`,
+              at,
+              sessionId: record.id,
+              agentId: 'primary',
+              source: hookSource(hook.app),
+              body: activeWorkingBody(activeBgCalls, [...live.hook.events, ...events], read.steps),
+            })];
+          }
+        }
+      }
+      if (live.hook.meeting || events.some(event => isMeeting(event.body))) {
+        // Only non-meeting evidence can identify a participant. A meeting envelope
+        // must never trigger the missed-start announcement recovery below.
+        const known = new Set<string>(['primary', ...(live.hook.subagents ?? [])]);
+        const evidence = [...this.history(record, live), ...live.hook.events, ...events.filter(event => !isMeeting(event.body))];
+        for (const event of evidence) {
+          if (isMeeting(event.body)) continue;
+          if (event.agentId) known.add(event.agentId);
+          if (event.body.type === 'subagent.spawned' || event.body.type === 'subagent.state') known.add(event.body.subagentId);
+        }
+        const meetingIds = (live.hook.meetingIds ??= new Set());
+        const accepted: ExtaliaEvent[] = [];
+        for (const event of events) {
+          const body = event.body;
+          const actor = event.agentId ?? 'primary';
+          if (body.type === 'meeting.started') {
+            const capacity = body.roomId === 'meeting-a' ? 10 : 14;
+            if (live.hook.meeting || meetingIds.has(body.meetingId) || meetingIds.size >= 500 || !known.has(actor) || !body.participants.length || body.participants.length > capacity || new Set(body.participants).size !== body.participants.length || body.participants.some(id => !known.has(id))) continue;
+            meetingIds.add(body.meetingId);
+            live.hook.meeting = { id: body.meetingId, reporter: actor, participants: new Set(body.participants), contributions: new Set() };
+          } else if (body.type === 'meeting.contribution') {
+            const meeting = live.hook.meeting;
+            const key = `${actor}:${body.round}`;
+            if (!meeting || meeting.id !== body.meetingId || !known.has(actor) || !meeting.participants.has(actor) || meeting.contributions.has(key)) continue;
+            meeting.contributions.add(key);
+          } else if (body.type === 'meeting.completed') {
+            const meeting = live.hook.meeting;
+            if (!meeting || meeting.id !== body.meetingId || actor !== meeting.reporter) continue;
+            delete live.hook.meeting;
+          }
+          accepted.push(event);
+          // The lead's termination closes its session's meeting; a child only
+          // closes a meeting it reported itself.
+          const terminalActor = body.type === 'subagent.state' ? body.subagentId : actor;
+          const terminal = body.type === 'session.ended' ? 'cancelled' : body.type === 'turn.failed' || body.type === 'agent.error' ? 'failed' : body.type === 'agent.stopped' || ((body.type === 'agent.state' || body.type === 'subagent.state') && body.state === 'offline') ? 'cancelled' : undefined;
+          if (terminal && live.hook.meeting && (body.type === 'session.ended' || terminalActor === 'primary' || terminalActor === live.hook.meeting.reporter)) {
+            accepted.push(createEvent({ id: `hook-${record.id}-${++this.hookCounter}-meeting-end`, at, sessionId: record.id, agentId: live.hook.meeting.reporter, source: hookSource(hook.app), body: { type: 'meeting.completed', meetingId: live.hook.meeting.id, outcome: terminal } }));
+            delete live.hook.meeting;
+          }
+        }
+        events = accepted;
+      }
       // v0.0.38: every sub-agent is announced once under its lead, before its own events, also when its start hook
       // was missed (a background Claude Code agent started before this host, or a Codex sub-agent thread).
       const announced = (live.hook.subagents ??= new Set());
@@ -925,13 +1736,10 @@ export class Observations {
         }));
         index++;
       }
+      const outputChanged = this.hookOutput(record, events, firstDiscovery);
       live.hook.events.push(...events);
       if (live.hook.events.length > 500) {
-        // The session start and sub-agent announcements (who nests under whom, models) outlive the activity window.
-        const tail = live.hook.events.slice(-480);
-        const kept = new Set(tail);
-        const lasting = live.hook.events.filter(e => !kept.has(e) && (e.body.type === 'session.started' || e.body.type === 'subagent.spawned')).slice(-200);
-        live.hook.events = [...lasting, ...tail];
+        live.hook.events = retainedHookEvents(live.hook.events, live.hook.meeting?.id);
       }
       live.hook.lastAt = at;
       live.lastEventAt = at;
@@ -940,10 +1748,12 @@ export class Observations {
         // history was unavailable first. Tests/unknown hooks and user pauses do
         // not establish recovery; no transcript content is invented here.
         if (filteredSteps.length > 0) { live.status = 'watching'; live.error = undefined; }
+        advanceLiveActivity(live, events, Date.now());
         this.publish(events);
         this.notify(record);
       }
       await this.trim();
+      if (outputChanged) await this.save();
       if (!this.hookSaveTimer) {
         this.hookSaveTimer = setTimeout(() => {
           this.hookSaveTimer = undefined;

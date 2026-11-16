@@ -5,7 +5,7 @@ import * as yaml from 'js-yaml';
 import { constants as fsConstants } from 'node:fs';
 import { open, stat } from 'node:fs/promises';
 import path from 'node:path';
-import { hermesEnvironment, hermesRoot } from './hermes.js';
+import { hermesEnvironment, hermesProfile, hermesRoot } from './hermes.js';
 
 type Env = Readonly<Record<string, string | undefined>>;
 type Mapping = Record<string, unknown>;
@@ -114,6 +114,7 @@ async function exists(file: string): Promise<boolean> {
  */
 export async function hermesDelegationLimits(env: Env, homeDirectory: string, profile: string, leadModel?: string): Promise<HermesDelegationLimits> {
   if (!HERMES_PROFILE_PATTERN.test(profile)) throw new Error('Unknown Hermes profile.');
+  profile = hermesProfile(env, homeDirectory, profile);
   const root = hermesRoot(env, homeDirectory);
   const directory = profile === 'default' ? root : path.join(root, 'profiles', profile);
   if (profile !== 'default') {

@@ -1,14 +1,11 @@
 # Skill Security Center (preview)
 
 The Skill Security Center is a section of the **Grimoire** page where you import
-skills, review them, and decide which ones reach agents. It is part of the preview Rust
-native core, so it appears only when that core is on. See
-[Native core (preview)](native-core.md) to turn it on.
-
-With the TypeScript core, project review can be recorded or removed as described
-in [Project skills](project-skills.md), but external skills remain unavailable to
-agents. The Skill Security Center does not appear; old consent is not a scanner
-waiver.
+skills, review them, and decide which ones reach agents. It uses the lazy Rust
+profile daemon independently of the backend chosen for new missions. A new
+installation does not need an experimental mission flag to import skills.
+If the daemon is missing or unavailable, the Center explains the failure and
+external skills remain unavailable; built-in skills remain usable.
 
 The native core also has a [read-only dependency check](../adr/0039-read-only-skill-dependency-preflight.md)
 in Grimoire. It cannot activate a skill. Packages declaring dependencies,
@@ -48,21 +45,34 @@ Daemon-registered built-in objects retain their startup hash checks.
 
 ### Learn from a Native Chat prompt
 
-Select **Learn as skill** for one message, then ask naturally, for example:
-“Learn this procedure as a reusable skill.” Alternatively type
-`/learn-skill` followed by source text or a link. The command also works in the
-Office prompt dock. Plain document reading does not save a skill automatically.
+Ask explicitly in a Native Chat message to save a reusable skill, for example:
+“Learn this procedure as a reusable skill” or “Pelajari tautan ini sebagai
+skill.” You can also type `/learn-skill` followed by source text or a link; the
+legacy command works in the Office prompt dock too. Ordinary requests to read or
+summarize a page do not authorize saving a skill. A link alone is not permission
+to fetch or propose a skill.
 
 This requires Extalia skills enabled on the connection and the Rust skill
 registry. It is unavailable for plan/read-only, observed and Hermes sessions.
-Existing edit approval policy still applies. The model may propose one candidate
-per opted-in turn; an answer without a successful proposal receipt is not a save.
+Existing workspace write approval and saved profile learning policy still apply;
+an explicit request does not bypass either. The model may propose one candidate
+per learning turn; an answer without a successful proposal receipt is not a save.
 
-The generated candidate appears in this profile's Skills library, with origin
+When the prompt includes a public URL, the supervised `skill_source_read` tool
+can retrieve bounded page text for that learning request. It makes at most three
+requests and rejects credentials, private addresses, query parameters, unusual
+ports and unsafe redirects. The returned text is untrusted source material: it
+does not grant permission to follow its instructions, install dependencies or
+execute code. If the source cannot be safely read, no candidate may claim to be
+based on unseen page content. A successful fetch establishes only what text was
+retrieved; it is not a security scan or certification of the source.
+
+The generated candidate appears in the shared user Skills library, with origin
 **Generated**, its exact revision and actual inspection state. It is an
-instructions-only draft with unverified source attribution; its package is what
-the registry inspects. This does not certify the original URL or all referenced
-files. The proposal tool does not fetch URLs, install packages or execute code.
+instructions-only draft with source provenance; profiles do not create separate
+skill libraries. The registry inspects the candidate package. A retrieved page
+does not certify the original URL or other referenced files. Nothing is approved
+or activated automatically.
 
 When the scanner is unavailable, the candidate remains **Quarantined** and cannot
 be used as a skill. Successful scan evidence and separate user approval/activation
@@ -161,13 +171,47 @@ Only you can approve. An agent cannot.
 - **Revoke…** withdraws a revision for good. The confirmation asks you to
   confirm it. A revoked revision can never be approved or activated again.
 
-## Why imported skills stay quarantined
+## Real scanner inspection and approval
 
-Extalia never runs an unverified scanner. Until a verified scanner is
-configured, a scan cannot pass, so imported skills stay quarantined. The Center
-shows the banner **Imported skills stay quarantined until a verified scanner is
-configured.** You can still import and inspect skills. Approval and activation
-wait for the scanner.
+Supported macOS packages bundle NVIDIA SkillSpector 2.13.4, its pinned Python
+runtime and hash-locked dependencies. Users do not install Python or download a
+scanner on first use. The current scanner launch requires macOS 14 or newer and
+verified local sandbox support; other platforms remain unavailable until their
+confinement is implemented and validated.
+
+Importing a folder or successfully proposing a requested skill starts an actual
+local scan. LLM analysis, source URL fetching and execution of skill code are
+disabled. The scanner cannot access provider credentials or the network. A denied
+dependency lookup or other missing coverage remains incomplete; it is not a clean
+scan. Large or complex packages may hit explicit resource limits.
+
+The Center shows progress and each inspection's coverage, highest severity,
+scanner version/pin and policy. **Details** can show the verified instruction
+text literally for review; opening it never runs or activates the skill. If a
+complete bounded preview is unavailable, review the source package instead.
+Raw scanner findings and source snippets are not persisted as a retrievable report;
+the current inspection record contains bounded verdict metadata and a summary hash.
+
+Complete clean/low inspection can make a non-executable, Markdown-only package
+with no tool permissions or unresolved relationships **Awaiting approval**. A
+medium finding needs a separate accepted user review first. Packages requiring
+code/tool or compatibility evaluation keep that requirement; no evaluation success
+is invented. High/critical findings are blocked. None of these results activates
+a skill: use **Approve**, check its exact package/permission digests, then
+**Activate**. Approval expiry, changed bytes, scanner/policy changes and revocation
+are still enforced.
+
+For a stored quarantined candidate, **Scan again** explicitly requests a new
+inspection when the scanner is ready. This also works for an older generated
+candidate whose source was never a user folder. Refreshing the library, opening
+Details or reading a book never rescans a package. An uncertain completion asks
+you to refresh before retrying; it does not promise that nothing was recorded.
+
+If the daemon, verified bundle or required isolation is absent, the scanner
+reports unavailable. Imported/generated packages stay **Quarantined**, and neither
+approval nor activation can bypass the missing evidence. See
+[ADR 0068](../adr/0068-pinned-skillspector-inspection.md) and the
+[build and fixture evidence](../../tooling/skillspector/README.md).
 
 ## Where to go next
 

@@ -14,7 +14,7 @@ import { permissionsLabel } from './permissions';
 import { AgentAppLogo } from '../ui/OriginMark';
 import { RuntimePicker } from './RuntimePicker';
 import {
-  SETUP_STEPS, canAdvance, canFinish, dataDirectoryOf, detectExistingSetup, nextStep, previousStep, stepIndex, validateDisplayName,
+  SETUP_STEPS, canAdvance, canFinish, dataDirectoryOf, detectExistingSetup, nextStep, previousStep, validateDisplayName,
   DISPLAY_NAME_MAX, type SetupStepId,
 } from './steps';
 import { availableHermes, useRuntimeStatus } from './useRuntimes';
@@ -82,9 +82,12 @@ export function SetupWizard({ t, platform, agents, state, onState, preferences, 
   const poster = usePoster(posterUrl);
   // Hermes Agent brings its own models: choosing it skips the model connection.
   const hermes = workspace.runtimeId === 'hermes';
+  const observeOnly = workspace.mode === 'observe';
   const hermesInstalled = Boolean(availableHermes(runtimes));
   const hermesBlocked = hermes && runtimesReady && !hermesInstalled;
-  const index = stepIndex(step);
+  const shownSteps = SETUP_STEPS.filter(item => !observeOnly || item !== 'connection');
+  const index = shownSteps.indexOf(step);
+  const shownLabels = SETUP_STEPS.flatMap((item, position) => shownSteps.includes(item) ? [t.setup.steps[position]!] : []);
   const dataDirectory = dataDirectoryOf(state);
 
   useEffect(() => {
@@ -137,7 +140,7 @@ export function SetupWizard({ t, platform, agents, state, onState, preferences, 
         return;
       }
     }
-    go('connection');
+    go(observeOnly ? 'workspace' : 'connection');
   });
 
   const saveConnection = () => run(async () => {
@@ -174,11 +177,11 @@ export function SetupWizard({ t, platform, agents, state, onState, preferences, 
     go('agentApps');
   });
 
-  const ready = canFinish(state, workspace.id, workspaceDeferred ? {
+  const ready = observeOnly ? workspaceDeferred || Boolean(workspace.id && state.workspaces.some(item => item.id === workspace.id && item.mode === 'observe')) : canFinish(state, workspace.id, workspaceDeferred ? {
     runtimeId: hermes ? 'hermes' : 'extalia-native', connectionId: workspace.connectionId, hermesAvailable: hermesInstalled,
   } : undefined);
-  const finish = () => run(async () => { if (ready) onState(await agents.completeSetup()); });
-  const observe = () => run(async () => { onState(await agents.completeSetup('observe')); });
+  const finish = () => run(async () => { if (ready) onState(await agents.completeSetup(observeOnly ? 'observe' : 'managed')); });
+  const observe = () => { setWorkspaceDeferred(false); setWorkspace(current => ({ ...current, mode: 'observe', connectionId: '', runtimeId: 'extalia-native' })); go('profile'); };
 
   const connectionValid = connectionTestReady && isValid(validateConnection(connection));
   const workspaceValid = isValid(validateWorkspace(workspace));
@@ -195,7 +198,7 @@ export function SetupWizard({ t, platform, agents, state, onState, preferences, 
         <strong>{t.setup.existingTitle}</strong>
         <p className="muted small">{t.setup.existingLead}</p>
         <p className="small setup-existing-items">
-          {existing.connection && <span className="chip">{existing.connection.name} · {existing.connection.model}</span>}
+          {!observeOnly && existing.connection && <span className="chip">{existing.connection.name} · {existing.connection.model}</span>}
           {existing.workspace && <span className="chip">{existing.workspace.name}</span>}
         </p>
       </div>
@@ -225,9 +228,9 @@ export function SetupWizard({ t, platform, agents, state, onState, preferences, 
       <main className="setup-main">
         <section className="card setup-card" aria-labelledby="setup-title">
           <div className="setup-progress">
-            <p className="muted small" id="setup-step-of">{t.setup.stepOf(index + 1, SETUP_STEPS.length)} · {t.setup.steps[index]}</p>
+            <p className="muted small" id="setup-step-of">{t.setup.stepOf(index + 1, shownSteps.length)} · {shownLabels[index]}</p>
             <ol className="setup-steps" aria-label={t.setup.progress}>
-              {t.setup.steps.map((label, position) => (
+              {shownLabels.map((label, position) => (
                 <li key={label} aria-current={position === index ? 'step' : undefined} className={position < index ? 'done' : ''}>
                   <span className="step-index" aria-hidden="true">{position < index ? <Icon name="check" /> : position + 1}</span>
                   <span className="step-label">{label}</span>
@@ -319,8 +322,8 @@ export function SetupWizard({ t, platform, agents, state, onState, preferences, 
           {step === 'workspace' && (
             <>
               {title(t.setup.workspaceTitle)}
-              <p className="lead">{t.setup.workspaceLead}</p>
-              <p className="muted small">{t.setup.workspaceOptional}</p>
+              <p className="lead">{observeOnly ? t.setup.observeWorkspaceLead : t.setup.workspaceLead}</p>
+              <p className="muted small">{observeOnly ? t.setup.observeWorkspaceOptional : t.setup.workspaceOptional}</p>
               {existingNote}
               <WorkspaceForm t={t} agents={agents} picker={picker} draft={workspace} onChange={setWorkspace} runtimes={runtimes} runtimesReady={runtimesReady} showAllErrors={attempted} />
             </>
@@ -346,15 +349,15 @@ export function SetupWizard({ t, platform, agents, state, onState, preferences, 
           {step === 'done' && (
             <>
               {title(t.setup.doneTitle)}
-              <p className="lead">{workspaceDeferred ? t.setup.doneLeadDeferred : t.setup.doneLead}</p>
+              <p className="lead">{observeOnly ? t.setup.observeDoneLead : workspaceDeferred ? t.setup.doneLeadDeferred : t.setup.doneLead}</p>
               <dl className="facts">
                 <div><dt>{t.setup.summaryProfile}</dt><dd>{displayName.trim() || <span className="muted">{t.setup.anonymous}</span>}</dd></div>
                 <div><dt>{t.setup.summaryAppearance}</dt><dd>{t.settings.themes[preferences.theme].replace(/\s*\(.*\)$/, '')} · {t.settings.materials[preferences.material]}</dd></div>
-                <div><dt>{t.setup.summaryConnection}</dt><dd>{connectionLabel}</dd></div>
-                <div><dt>{t.setup.summaryWorkspace}</dt><dd>{workspaceDeferred ? t.setup.deferredWorkspaceSummary : workspace.name}</dd></div>
+                {!observeOnly && <div><dt>{t.setup.summaryConnection}</dt><dd>{connectionLabel}</dd></div>}
+                <div><dt>{t.setup.summaryWorkspace}</dt><dd>{workspaceDeferred ? observeOnly ? t.setup.observeDeferredWorkspace : t.setup.deferredWorkspaceSummary : workspace.name}</dd></div>
                 {!workspaceDeferred && <>
                   <div><dt>{t.setup.summaryFolder}</dt><dd><code>{workspace.folder?.path ?? workspace.folderInput}</code></dd></div>
-                  <div><dt>{t.setup.summaryPermissions}</dt><dd>{permissionsLabel(t, workspace.runtimeId, workspace.permissions)}</dd></div>
+                  {!observeOnly && <div><dt>{t.setup.summaryPermissions}</dt><dd>{permissionsLabel(t, workspace.runtimeId, workspace.permissions)}</dd></div>}
                 </>}
                 <div><dt>{t.setup.summaryDataFolder}</dt><dd><code>{dataDirectory}</code></dd></div>
               </dl>
@@ -366,11 +369,11 @@ export function SetupWizard({ t, platform, agents, state, onState, preferences, 
           {step === 'workspace' && existing.workspace && <p className="note small">{t.setup.skipExistingWorkspace}</p>}
 
           <div className="actions setup-actions">
-            {step !== 'welcome' && <button type="button" disabled={busy} onClick={() => go(previousStep(step))}><Icon name="chevron" className="flip" />{t.common.back}</button>}
+            {step !== 'welcome' && <button type="button" disabled={busy} onClick={() => go(observeOnly && step === 'workspace' ? 'profile' : previousStep(step))}><Icon name="chevron" className="flip" />{t.common.back}</button>}
             {step === 'welcome' && <button type="button" className="setup-observe" disabled={busy} onClick={observe} aria-describedby="setup-observe-hint">{t.setup.observeOnly}</button>}
-            {step === 'workspace' && <button type="button" disabled={busy || (hermes ? !hermesInstalled : !savedConnection)} onClick={() => { setWorkspaceDeferred(true); go('agentApps'); }}>{t.setup.skipWorkspace}</button>}
+            {step === 'workspace' && <button type="button" disabled={busy || (!observeOnly && (hermes ? !hermesInstalled : !savedConnection))} onClick={() => { setWorkspaceDeferred(true); go('agentApps'); }}>{t.setup.skipWorkspace}</button>}
             <span className="spacer" />
-            {step === 'welcome' && <button type="button" className="primary" disabled={!advance} onClick={() => go(nextStep(step))}>{t.setup.begin}<Icon name="chevron" /></button>}
+            {step === 'welcome' && <button type="button" className="primary" disabled={!advance} onClick={() => { setWorkspaceDeferred(false); setWorkspace(current => ({ ...current, mode: 'managed' })); go(nextStep(step)); }}>{t.setup.begin}<Icon name="chevron" /></button>}
             {step === 'profile' && <button type="button" className="primary" disabled={!advance} onClick={saveProfileStep}>{busy ? t.common.saving : t.common.next}<Icon name="chevron" /></button>}
             {step === 'connection' && <button type="button" className="primary" disabled={!advance} onClick={hermes ? () => go('workspace') : saveConnection}>{busy ? t.common.saving : t.common.next}<Icon name="chevron" /></button>}
             {step === 'workspace' && <button type="button" className="primary" disabled={!advance} onClick={saveWorkspace}>{busy ? t.common.saving : t.common.next}<Icon name="chevron" /></button>}

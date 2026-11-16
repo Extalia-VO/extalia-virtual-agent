@@ -5,7 +5,7 @@ import { getOfficeSeats, allocateOfficeAgents } from '../src/office/scene/interi
 import { OFFICE_RESOURCES } from '../src/office/scene/interior/resourceRegistry';
 import { ROOM_RELOCATIONS } from '../src/office/scene/interior/roomRelocation';
 import { roomsOnFloor, roomById } from '../src/office/scene/interior/worldRegistry';
-import { screenForLocation, missionControlScreen } from '../src/office/scene/interior/screenData';
+import { screenForLocation, missionControlScreen, meetingScreen } from '../src/office/scene/interior/screenData';
 
 const agent = (id: string, status: OfficeAgent['status'] = 'working'): OfficeAgent => ({
   id, agentId: 'primary', sessionId: id, displayName: id, control: 'managed', status, running: status === 'working',
@@ -71,5 +71,26 @@ describe('furnished office geometry and real session projection', () => {
     expect(JSON.stringify(occupied)).not.toContain('User supplied summary');
     expect(occupied.status).toBe('observing');
     expect(occupied.sessionBacked).toBe(true);
+  });
+});
+
+
+describe('live meeting screens', () => {
+  it('shows only allocated meeting participants, localized topic and round, then returns to standby', () => {
+    const participants = ['primary', 'member'];
+    const agents: OfficeAgent[] = participants.map(id => ({ ...agent(`s:${id}`), sessionId: 's', agentId: id, displayName: id,
+      meeting: { meetingId: 'sync', participants, topic: 'Design review', round: 2 } }));
+    const outsider = { ...agent('other:primary'), sessionId: 'other' };
+    const allocations = allocateOfficeAgents([...agents, outsider]);
+    for (const language of ['en', 'id'] as const) {
+      const screen = meetingScreen({ agents: [...agents, outsider], allocations, language }, 'meeting-a');
+      expect(screen.title).toBe(MESSAGES[language].office.meeting);
+      expect(screen.subtitle).toBe(`Design review · ${MESSAGES[language].office.meetingRound(2)}`);
+      expect(screen.meeting).toEqual({ sessionId: 's', meetingId: 'sync' });
+      expect(screen.rows?.map(row => row.label)).toEqual(['member', 'primary']);
+      expect(JSON.stringify(screen)).not.toContain('other');
+      expect(meetingScreen({ agents, allocations, language }, 'meeting-b').sessionBacked).toBeUndefined();
+      expect(meetingScreen({ agents: [], allocations: [], language }, 'meeting-a').sessionBacked).toBeUndefined();
+    }
   });
 });

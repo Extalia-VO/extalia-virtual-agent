@@ -1,7 +1,8 @@
+import { createAgentHost } from '../src/service.js';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createAgentHost, type AgentHostRuntime } from '../src/service.js';
+import { type AgentHostRuntime } from '../src/service.js';
 import { useTempDirs } from './helpers.js';
 
 // ADR 0028: the workspace's integration test gate, stored with the workspace in `config/extalia.json`.

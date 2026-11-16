@@ -14,27 +14,36 @@ export function HospitalityProps({ motion, goals, reducedMotion }: {
   const controller = useRef<Group>(null), plate = useRef<Group>(null), bite = useRef<Group>(null);
   const serviceCup = useRef<Group>(null);
   useFrame(() => {
-    const hands = goals.current?.shown;
-    if (serviceCup.current) {
-      const serving = !reducedMotion && (motion?.clip === 'bar-prep' || motion?.clip === 'bar-shake' || motion?.clip === 'bar-serve');
-      serviceCup.current.visible = serving;
-      serviceCup.current.position.set(.12, motion?.clip === 'bar-shake' ? 1.25 : 1.1, .4);
+    const cup = serviceCup.current;
+    if (cup) {
+      for (let node: { visible: boolean; parent: typeof node } | null = cup.parent; node; node = node.parent) {
+        if (!node.visible) return;
+      }
     }
+    const serving = !reducedMotion && (motion?.clip === 'bar-prep' || motion?.clip === 'bar-shake' || motion?.clip === 'bar-serve');
     const seated = !reducedMotion && (motion?.sit ?? 0) > .8 && (motion?.walk ?? 0) < .05;
     const gaming = seated && motion?.clip === 'console-play';
     const eating = seated && motion?.clip === 'eat';
+    if (!serving && !gaming && !eating && !cup?.visible && !controller.current?.visible && !plate.current?.visible && !bite.current?.visible) {
+      return;
+    }
+    const hands = goals.current?.shown;
+    if (cup) {
+      cup.visible = serving;
+      if (serving) cup.position.set(.12, motion?.clip === 'bar-shake' ? 1.25 : 1.1, .4);
+    }
     if (controller.current) {
       controller.current.visible = gaming;
-      if (hands) controller.current.position.set((hands.target[0][0] + hands.target[1][0]) / 2,
+      if (gaming && hands) controller.current.position.set((hands.target[0][0] + hands.target[1][0]) / 2,
         (hands.target[0][1] + hands.target[1][1]) / 2, (hands.target[0][2] + hands.target[1][2]) / 2 + .025);
     }
     if (plate.current) {
       plate.current.visible = eating;
-      if (hands) plate.current.position.set(hands.target[0][0] + .06, hands.target[0][1] + .015, hands.target[0][2] + .02);
+      if (eating && hands) plate.current.position.set(hands.target[0][0] + .06, hands.target[0][1] + .015, hands.target[0][2] + .02);
     }
     if (bite.current) {
       bite.current.visible = eating;
-      if (hands) bite.current.position.set(hands.target[1][0] - .02, hands.target[1][1] + .03, hands.target[1][2] + .025);
+      if (eating && hands) bite.current.position.set(hands.target[1][0] - .02, hands.target[1][1] + .03, hands.target[1][2] + .025);
     }
   });
   return <>

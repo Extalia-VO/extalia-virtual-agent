@@ -58,3 +58,50 @@ feature does not claim control of that Desktop session. Unix-socket support for
 other clients or later Desktop versions must be verified independently.
 
 Reference: [official Codex app-server protocol](https://learn.chatgpt.com/docs/app-server).
+
+## Amendment: structured asynchronous input (2026-11-11)
+
+The native-callback restrictions above continue to apply to blocking
+`item/tool/requestUserInput` requests. Structured `request_user_input_async`
+questions are a separate source capability: Codex emits async agent-message
+metadata carrying the originating call ID and returns an accepted acknowledgment;
+the eventual answer is a new user message in the same thread.
+
+Extalia now retains that metadata through the existing importer/observer path,
+projects source-bound cards and sends explicit correlated replies through the
+already reviewed public queue path in ADR 0062. Durable digest-only queued/unknown
+receipts prevent automatic re-submission; a CLI receipt never proves consumption.
+An exact question reply observed in the source removes its outstanding card.
+Idless legacy mirrors do not gain an answer route by inference.
+
+Native callbacks and async cards share global in-app attention and targeted
+Desktop/browser notifications. System notification payloads contain a generic
+localized message and validated opaque navigation IDs, without question or answer
+text. No source engine, external configuration or persistent permission grant is
+created by this amendment.
+
+Reference: [Codex PR #42178](https://github.com/openai/codex/pull/42178).
+
+## Amendment: prioritize explicit async answers (2026-11-12)
+
+A verified original-server attachment now takes precedence over the ordinary
+queue for a user-selected async answer. With an active turn, send the exact
+correlated reply envelope through `turn/steer` using its expected turn ID; when
+the verified original thread is idle, its existing `turn/start` route can accept
+the reply. This does not create another engine or resolve a blocking callback.
+Native blocking questions continue to use their received request callback.
+
+The advertised delivery route is bound into the pending revision together with
+its source/connection/turn identity. Changes require a fresh review. Queue is a
+fallback only when a direct route is unavailable before submission. Once a
+native send is admitted, uncertainty never triggers queue fallback or replay.
+Digest-only write-ahead receipts retain submitted/queued/unknown outcomes across
+restart without persisting question or answer text.
+
+A native send receipt confirms submission, not model reading or callback
+resolution. A queue receipt remains explicitly unconfirmed as read. The UI shows
+the selected route before submission and clean question/answer pairs in the
+transcript. The wire envelope retains source question IDs: converting it to an
+uncorrelated ordinary message would lose the ability to match the exact question.
+This change does not discover private Desktop IPC or add a supported endpoint
+where the source client provides none.

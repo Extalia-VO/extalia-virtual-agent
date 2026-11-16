@@ -1,7 +1,7 @@
 import type {
   AgentAppConnection, AgentAppConnectPlan, AgentAppConnectResult, AgentAppId, AgentAppRecoveryReport, AgentAppTestResult, AgentHostApi, HookIngestStatus,
 } from '@extalia/platform';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { errorMessage } from '../host/remote';
 import type { Messages } from '../i18n';
 import { formatAgo, timeAgo } from '../office/overlay/activityBoard';
@@ -92,7 +92,15 @@ async function writeClipboardText(text: string): Promise<void> {
   try { document.execCommand('copy'); } finally { area.remove(); }
 }
 
-export function ConnectAgentAppsCard({
+export function ConnectAgentAppsCard(props: Parameters<typeof ConnectAgentAppsForm>[0]) {
+  const [source, setSource] = useState({ agents: props.agents, key: 0 });
+  const changed = source.agents !== props.agents;
+  const key = source.key + (changed ? 1 : 0);
+  if (changed) setSource({ agents: props.agents, key });
+  return <ConnectAgentAppsForm key={key} {...props} />;
+}
+
+function ConnectAgentAppsForm({
   t,
   agents,
   initialConnections,
@@ -113,6 +121,8 @@ export function ConnectAgentAppsCard({
   const [ingest, setIngest] = useState<HookIngestStatus | null>(initialIngest ?? null);
   const [dashboardUrl, setDashboardUrl] = useState<string>(initialIngest?.hermesDashboardUrl ?? '');
   const [dashboardSaved, setDashboardSaved] = useState(false);
+  const [dashboardError, setDashboardError] = useState<string>();
+  const dashboardId = useId();
   const [plan, setPlan] = useState<AgentAppConnectPlan | null>(initialPlan ?? null);
   const [trustCodex, setTrustCodex] = useState(false);
   const [applied, setApplied] = useState<Record<string, AgentAppConnectResult | undefined>>({});
@@ -126,11 +136,10 @@ export function ConnectAgentAppsCard({
   const [error, setError] = useState<string>();
 
   const dashboardDirty = useRef(false);
-  const busy = useRef(false);
-  const lifecycle = useRef<{ active: boolean; refresh?: ReturnType<typeof createConnectAppRefresh> }>({ active: true });
+  const lifecycle = useRef<{ agents: AgentHostApi; active: boolean; busy: boolean; refresh?: ReturnType<typeof createConnectAppRefresh> }>({ agents, active: true, busy: false });
 
   useEffect(() => {
-    const scope: typeof lifecycle.current = { active: true };
+    const scope: typeof lifecycle.current = { agents, active: true, busy: false };
     const refresh = createConnectAppRefresh({
       agents,
       connections: setConnections,
@@ -173,23 +182,25 @@ export function ConnectAgentAppsCard({
     await lifecycle.current.refresh?.refresh();
   };
 
-  const perform = async (key: string, changesStatus: boolean, action: (active: () => boolean) => Promise<void>) => {
+  const perform = async (key: string, changesStatus: boolean, action: (active: () => boolean) => Promise<void>, onFailure?: (failure: unknown) => void) => {
     const scope = lifecycle.current;
-    if (busy.current || !scope.active) return;
-    busy.current = true;
+    const active = () => scope.active && lifecycle.current === scope && scope.agents === agents;
+    if (scope.busy || !active()) return;
+    scope.busy = true;
     setBusyKey(key);
     setError(undefined);
     if (changesStatus) scope.refresh?.pause();
     try {
-      await action(() => scope.active);
+      await action(active);
     } catch (failure) {
-      if (scope.active) setError(errorMessage(failure));
+      if (active()) {
+        if (onFailure) onFailure(failure);
+        else setError(errorMessage(failure));
+      }
     } finally {
-      if (scope.active && changesStatus) await scope.refresh?.resume();
-      // An old host's reply is ignored, but its completed operation must release
-      // the shared action guard after a capability rebind. Unmounted UI stays untouched.
-      busy.current = false;
-      if (lifecycle.current.active) setBusyKey(null);
+      if (active() && changesStatus) await scope.refresh?.resume();
+      scope.busy = false;
+      if (active()) setBusyKey(null);
     }
   };
 
@@ -208,7 +219,7 @@ export function ConnectAgentAppsCard({
   };
 
   const toggleLabelsOnly = async (enabled: boolean) => {
-    if (!agents.setHookPrivacy) return;
+    if (!agents.setHookPrivacy || !ingest || Boolean(ingest.labelsOnly) === enabled) return;
     await perform('privacy:labels', true, async active => {
       const nextIngest = await agents.setHookPrivacy({ labelsOnly: enabled });
       if (active()) setIngest(nextIngest);
@@ -216,16 +227,23 @@ export function ConnectAgentAppsCard({
   };
 
   const saveDashboardUrl = async () => {
-    if (!agents.setHookPrivacy) return;
+    if (!agents.setHookPrivacy || !ingest || lifecycle.current.busy || !lifecycle.current.active || lifecycle.current.agents !== agents) return;
+    const value = dashboardUrl.trim();
+    if (value === (ingest.hermesDashboardUrl ?? '').trim()) return;
+    // This is only generic form validation. The host owns the local dashboard policy.
+    if (value) {
+      try { new URL(value); }
+      catch { setDashboardError(t.agentApps.dashboardUrlInvalid); setDashboardSaved(false); return; }
+    }
     await perform('privacy:dashboard', true, async active => {
-      setDashboardSaved(false);
-      const nextIngest = await agents.setHookPrivacy({ hermesDashboardUrl: dashboardUrl.trim() || null });
+      setDashboardSaved(false); setDashboardError(undefined);
+      const nextIngest = await agents.setHookPrivacy({ hermesDashboardUrl: value || null });
       if (!active()) return;
       setIngest(nextIngest);
       dashboardDirty.current = false;
       setDashboardUrl(nextIngest.hermesDashboardUrl ?? '');
       setDashboardSaved(true);
-    });
+    }, failure => setDashboardError(errorMessage(failure)));
   };
 
   const previewPlan = async (app: AgentAppId) => {
@@ -474,27 +492,33 @@ export function ConnectAgentAppsCard({
             <input
               type="checkbox"
               checked={Boolean(ingest?.labelsOnly)}
-              disabled={busyKey !== null}
+              disabled={busyKey !== null || !ingest}
               onChange={event => { void toggleLabelsOnly(event.target.checked); }}
             />
             <span>{t.agentApps.labelsOnlyLabel}</span>
           </label>
-          <div className="field-row small">
-            <label>
+          <form className="field-row small" noValidate onSubmit={event => { event.preventDefault(); void saveDashboardUrl(); }}>
+            <label htmlFor={dashboardId}>
               <span className="muted small">{t.agentApps.dashboardUrlLabel}</span>
               <input
+                id={dashboardId}
                 type="url"
+                autoCapitalize="off" autoCorrect="off" spellCheck={false} autoComplete="off"
+                aria-invalid={dashboardError ? true : undefined}
+                aria-describedby={`${dashboardId}-hint${dashboardError ? ` ${dashboardId}-error` : ''}`}
                 value={dashboardUrl}
                 placeholder={t.agentApps.dashboardUrlPlaceholder}
-                disabled={busyKey !== null}
-                onChange={event => { dashboardDirty.current = true; setDashboardUrl(event.target.value); setDashboardSaved(false); }}
+                disabled={busyKey !== null || !ingest}
+                onChange={event => { dashboardDirty.current = true; setDashboardUrl(event.target.value); setDashboardSaved(false); setDashboardError(undefined); }}
               />
             </label>
-            <button type="button" className="button small" disabled={busyKey !== null} onClick={() => { void saveDashboardUrl(); }}>
-              {t.common.save}
+            <button type="submit" className="button small" disabled={busyKey !== null || !ingest || dashboardUrl.trim() === (ingest.hermesDashboardUrl ?? '').trim()}>
+              {busyKey === 'privacy:dashboard' ? t.common.saving : t.common.save}
             </button>
+            <span className="muted small" id={`${dashboardId}-hint`}>{t.agentApps.dashboardUrlHint}</span>
+            {dashboardError && <p className="form-error" role="alert" id={`${dashboardId}-error`}>{dashboardError}</p>}
             {dashboardSaved && <span className="badge ok" role="status">{t.agentApps.dashboardUrlSaved}</span>}
-          </div>
+          </form>
         </div>
       )}
 

@@ -8,7 +8,8 @@ import type { OfficeAgent } from '../presence';
  * no detail is invented. Activity wording is the same safe phrase the bubbles
  * use, so a raw path or command never reaches the name tag.
  */
-export function characterIntent(agent: Pick<OfficeAgent, 'status' | 'activity' | 'target'> & Partial<Pick<OfficeAgent, 'stalled'>>, t: Messages): string {
+export function characterIntent(agent: Pick<OfficeAgent, 'status' | 'activity' | 'target'> & Partial<Pick<OfficeAgent, 'stalled' | 'meeting'>>, t: Messages): string {
+  if (agent.meeting) return agent.meeting.topic ? t.office.meetingTopic(agent.meeting.topic) : t.office.meeting;
   // v0.0.43: silent mid-work: say so rather than repeat what it was last doing.
   if (agent.stalled && agent.status !== 'offline') return t.chat.detail.noResponse;
   switch (agent.status) {

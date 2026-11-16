@@ -8,7 +8,8 @@ import type { SkillRoutingInput, SkillRoutingReport } from './daemonSkillRouting
  * Rules beyond the field types:
  * - A daemon serves exactly one profile; the wire carries no profile id (ADR 0024).
  * - `skill.import` reads a package directory below the profile's import inbox
- *   (`<data>/profiles/<profile>/skill-imports/`); `path` is relative to it. The origin is
+ *   (`<data>/skills/imports/` for the default library; legacy nondefault CLI namespaces
+ *   retain their profile inbox); `path` is relative to it. The origin is
  *   one of the four import origins: `builtin` cannot be requested. Built-in skills are
  *   registered only inside the daemon and are listed with origin `builtin`.
  * - `skill.review` and `skill.approve` are decisions of the local user: `principal` must be
@@ -113,6 +114,8 @@ export interface SkillRevisionSummary {
   packageId: string;
   revisionId: string;
   origin: SkillOrigin;
+  /** Valid pinned marketplace source recorded for this exact revision; not approval. Older peers omit it. */
+  marketplaceSource?: boolean;
   version: string;
   treeSha256: string;
   skillMdSha256: string;
@@ -125,6 +128,8 @@ export interface SkillRevisionSummary {
   permissions: SkillPermissionEntry[];
   /** The package's activation pointer names this revision (always true for `builtin`). */
   active: boolean;
+  /** Approval bound to the actual active pointer; older peers omit it. Built-ins have no user approval. */
+  activationApprovalId?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -193,13 +198,28 @@ export type SkillPreflightReport = {
   | { status: 'consistent'; issues: []; truncated: false; plan: SkillPreflightPackage[] }
 );
 
+/** Verified bytes for review only. Never admitted to the active skill catalog. */
+export interface SkillCandidateReadResult {
+  revisionId: string; packageId: string; path: string; size: number; sha256: string; content: string;
+  skillMdSha256: string; untrusted: true; reviewReceipt: string;
+  provenance: { profileId: string; workspaceId: string; sessionId: string; promptSha256: string };
+  referencePaths: string[];
+}
+
 export interface DaemonSkillOperations {
   'skill.routingPreview': { params: SkillRoutingInput; result: SkillRoutingReport };
   'skill.preflight': { params: SkillPreflightInput; result: SkillPreflightReport };
   /** Stage a package from the import inbox into quarantine and run the installed inspector. */
   'skill.import': {
-    params: { origin: SkillImportOrigin; path: string; sourceRef?: string };
+    params: { origin: SkillImportOrigin; path: string; sourceRef?: string; /** Optional immutable preview pin, checked before registry insertion. */ expectedTreeSha256?: string;
+      /** All four or none; immutable refinement compares the current package head under the insertion transaction. */
+      expectedBaseRevisionId?: string; expectedBaseSkillSha256?: string; learningProfileId?: string; learningWorkspaceId?: string };
     result: { packageId: string; revisionId: string; treeSha256: string; version: string; state: SkillRevisionState; stateReason?: string; created: boolean };
+  };
+  /** Explicit user request to scan an existing quarantined revision; never a details read. */
+  'skill.rescan': {
+    params: { revisionId: string };
+    result: { revisionId: string; packageId: string; state: SkillRevisionState; stateReason?: string };
   };
   /** Revisions (and built-in skills) ordered by package id, then revision id. */
   'skill.list': {
@@ -212,6 +232,13 @@ export interface DaemonSkillOperations {
     result: {
       revision: SkillRevisionSummary; manifest: string; files: SkillFileEntry[]; inspections: SkillInspectionRecord[];
       approvals: SkillApprovalRecord[]; history: SkillStateEvent[]; consent: SkillConsentInput[];
+      /** User-only literal preview; not an active skill read or model instruction. Never truncated. */
+      instructions?: string;
+      instructionsUnavailable?: boolean;
+      /** Append-only import provenance for this exact tree, not inherited package metadata. Older peers omit it. */
+      sources?: { origin: SkillImportOrigin; sourceRef: string; recordedAt: string }[];
+      sourcesTotal?: number;
+      sourcesOmitted?: number;
     };
   };
   /**
@@ -243,11 +270,16 @@ export interface DaemonSkillOperations {
     params: { revisionId: string; path: string };
     result: { revisionId: string; packageId: string; path: string; size: number; sha256: string; content: string };
   };
+  /** Exactly scoped generated Markdown, including inactive or quarantined candidates; no execution permission. */
+  'skill.reviewRead': {
+    params: { revisionId: string; path: string; profileId: string; workspaceId: string };
+    result: SkillCandidateReadResult;
+  };
   /** The installed inspector and policy version; read-only, never runs the scanner. */
   'skill.scanner': { params: Record<string, never>; result: SkillScannerReport };
 }
 export type DaemonSkillOp = keyof DaemonSkillOperations;
 export const DAEMON_SKILL_OPS = [
-  'skill.import', 'skill.list', 'skill.inspect', 'skill.review', 'skill.approve', 'skill.activate', 'skill.deactivate', 'skill.rollback',
-  'skill.revoke', 'skill.read', 'skill.scanner', 'skill.preflight', 'skill.routingPreview',
+  'skill.import', 'skill.rescan', 'skill.list', 'skill.inspect', 'skill.review', 'skill.approve', 'skill.activate', 'skill.deactivate', 'skill.rollback',
+  'skill.revoke', 'skill.read', 'skill.reviewRead', 'skill.scanner', 'skill.preflight', 'skill.routingPreview',
 ] as const satisfies readonly DaemonSkillOp[];

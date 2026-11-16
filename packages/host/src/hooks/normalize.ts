@@ -1,4 +1,4 @@
-import { safeLabel, safeText, stopReasonOf, type StopReason } from '@extalia/core';
+import { EFFORTS, literalProjectPath, safeLabel, safeText, stopReasonOf, type Effort, type StopReason } from '@extalia/core';
 import { commandHead, explicitToolFailure, extractWrittenFiles, outputText, statedSuccess, stepOutput, toolHints } from '@extalia/importers';
 import { AGENT_APP_IDS, type AgentAppId } from '@extalia/platform';
 import { createEvent, type AgentPhase, type EventBody, type EventSource, type ExtaliaEvent } from '@extalia/protocol';
@@ -32,7 +32,7 @@ export const hookSource = (app: HookApp): EventSource => ({ runtime: app, channe
 export interface HookStep { body: EventBody; agentId: string }
 
 export interface NormalizeHookOptions {
-  /** When true, drop prompt text, assistant reply text and tool output, keeping only activity labels. */
+  /** Drop prompt/reply/tool output and meeting content, keeping activity and meeting presence only. */
   labelsOnly?: boolean;
 }
 
@@ -49,6 +49,12 @@ export interface NormalizedHook {
   cwd?: string;
   transcriptPath?: string;
   model?: string;
+  /** The actor that supplied metadata; child reports never replace the lead's settings. */
+  agentId?: string;
+  /** Explicit top-level source effort only, independent of prompt/reasoning bodies. */
+  effort?: Effort;
+  /** Includes invalid/unknown explicit settings, which clear an older effort. */
+  effortReported?: boolean;
   /** Hermes profile name. */
   profile?: string;
   /** v0.0.38: Claude Code `agent_type` of the sub-agent a hook fired in, for announcing it when its start was missed. */
@@ -56,6 +62,8 @@ export interface NormalizedHook {
   /** First line of the prompt, redacted, for the title of a new session. */
   titleHint?: string;
   steps: HookStep[];
+  /** Ephemeral lead suggestions; never projected as protocol events or saved. */
+  followupPrompts?: string[];
 }
 
 const PROMPT_LIMIT = 20_000;
@@ -68,10 +76,19 @@ const obj = (value: unknown): Row => value && typeof value === 'object' && !Arra
 const str = (value: unknown): string => typeof value === 'string' ? value : '';
 const first = (...values: unknown[]): string => { for (const value of values) if (typeof value === 'string' && value.trim()) return value; return ''; };
 
+/** Only explicit transport fields are settings; free text and nested tool data are never inspected. */
+function reportedSettings(payload: Row): Pick<NormalizedHook, 'effort' | 'effortReported' | 'agentId'> {
+  const key = ['effort', 'reasoning_effort', 'effortLevel'].find(field => Object.hasOwn(payload, field));
+  const agentId = id(payload.agent_id, AGENT_ID);
+  const effort = key === undefined ? undefined : payload[key];
+  return { ...(agentId ? { agentId } : {}), ...(key !== undefined ? { effortReported: true } : {}),
+    ...((EFFORTS as readonly unknown[]).includes(effort) ? { effort: effort as Effort } : {}) };
+}
+
 /** An absolute, single-line path of bounded length; anything else is dropped. */
 function pathField(value: unknown): string | undefined {
-  const text = str(value).trim();
-  if (!text || text.length > 2000 || /[\0\r\n]/.test(text)) return undefined;
+  const text = literalProjectPath(value);
+  if (!text) return undefined;
   return /^(?:\/|[A-Za-z]:[\\/]|\\\\)/.test(text) ? text : undefined;
 }
 
@@ -80,13 +97,31 @@ const id = (value: unknown, pattern: RegExp): string | undefined => {
   return pattern.test(text) ? text : undefined;
 };
 
-/** Extract MCP reporting tool name (`report_intent` or `report_handoff`), including prefixed MCP names. */
-function mcpReportToolName(rawName: unknown): 'report_intent' | 'report_handoff' | undefined {
+/** Exact reporting tool suffixes, including namespaced MCP names; ordinary tool names never imply a meeting. */
+function mcpReportToolName(rawName: unknown): 'report_intent' | 'report_handoff' | 'report_meeting' | 'report_followups' | undefined {
   const name = str(rawName).trim();
   if (!name) return undefined;
   if (name === 'report_intent' || /(?:^|__|\/|:)report_intent$/.test(name)) return 'report_intent';
   if (name === 'report_handoff' || /(?:^|__|\/|:)report_handoff$/.test(name)) return 'report_handoff';
+  if (name === 'report_followups' || /(?:^|__|\/|:)report_followups$/.test(name)) return 'report_followups';
+  if (name === 'report_meeting' || /(?:^|__|\/|:)report_meeting$/.test(name)) return 'report_meeting';
   return undefined;
+}
+
+/** Explicit hook reports may carry report fields beside their transport envelope. */
+function reportEventInput(tool: string, input: unknown, envelope: Row): unknown {
+  if (tool !== 'report_meeting' && tool !== 'report_followups' || input !== envelope) return input;
+  const transport = new Set(['hook_event_name', 'hookEventName', 'event', 'sessionId', 'conversationId', 'cwd', 'transcript_path', 'transcriptPath', 'model', 'modelName', 'profile', 'workspacePaths']);
+  return Object.fromEntries(Object.entries(envelope).filter(([key]) => !transport.has(key)));
+}
+
+/** A report cannot nominate another session or make a child act as its lead. */
+function sourceMcpReport(tool: string, input: unknown, payload: Row, sessionId: string, options: NormalizeHookOptions) {
+  if (tool === 'report_followups') {
+    const fields = obj(input);
+    if (payload.agent_id !== undefined && payload.agent_id !== 'primary' || fields.session_id !== undefined && fields.session_id !== sessionId) return undefined;
+  }
+  return normalizeMcpReport(tool, input, options);
 }
 
 /** Visible output of a tool response: stdout/stderr, `output`/`content`/`llmContent`, or the clipped JSON. */
@@ -149,6 +184,8 @@ function notificationKind(type: string, message: string): 'approval' | 'idle' | 
 /** The first line of a prompt, for titles. */
 const titleOf = (prompt: string) => safeLabel(prompt.trim().split(/\r?\n/)[0] ?? '', 60) || undefined;
 
+const claudeStylePendingTools = new Map<string, { name: string; input: unknown; cwd?: string }>();
+
 /** Event-name families shared by Claude Code, Codex and Gemini CLI. */
 const START = new Set(['SessionStart']);
 const PROMPT = new Set(['UserPromptSubmit', 'BeforeAgent']);
@@ -174,13 +211,14 @@ function claudeStyle(app: HookApp, raw: unknown, options: NormalizeHookOptions =
   const inner = id(payload.agent_id, AGENT_ID);
   const agentId = inner ?? 'primary';
   const steps: HookStep[] = [];
+  let followupPrompts: string[] | undefined;
   const add = (body: EventBody, agent = agentId) => steps.push({ body, agentId: agent });
   let titleHint: string | undefined;
 
   const mcpEventTool = mcpReportToolName(event);
   if (mcpEventTool) {
-    const report = normalizeMcpReport(mcpEventTool, payload.tool_input ?? payload);
-    if (report) steps.push(...report.steps);
+    const report = sourceMcpReport(mcpEventTool, reportEventInput(mcpEventTool, payload.tool_input ?? payload, payload), payload, sessionId, options);
+    if (report) { steps.push(...report.steps); followupPrompts = report.followupPrompts; }
   } else if (START.has(event)) {
     add({ type: 'session.started', control: 'observed', ...(model ? { model } : {}), ...(cwd ? { cwd } : {}) }, 'primary');
     // After an automatic compaction the turn goes on; startup, resume and clear wait for a prompt.
@@ -199,23 +237,42 @@ function claudeStyle(app: HookApp, raw: unknown, options: NormalizeHookOptions =
   } else if (PRE_TOOL.has(event)) {
     const mcpTool = mcpReportToolName(payload.tool_name);
     if (mcpTool) {
-      const report = normalizeMcpReport(mcpTool, payload.tool_input);
-      if (report) steps.push(...report.steps);
+      const report = sourceMcpReport(mcpTool, payload.tool_input, payload, sessionId, options);
+      if (report) { steps.push(...report.steps); followupPrompts = report.followupPrompts; }
     } else {
-      const tool = toolOf(payload.tool_name, payload.tool_input, payload.tool_use_id ?? payload.tool_call_id);
+      const rawCallId = id(payload.tool_use_id ?? payload.tool_call_id, AGENT_ID);
+      if (payload.tool_name !== undefined || payload.tool_input !== undefined) {
+        claudeStylePendingTools.set(`${app}:${sessionId}:${rawCallId ?? 'last'}`, {
+          name: str(payload.tool_name),
+          input: payload.tool_input,
+          ...(cwd ? { cwd } : {}),
+        });
+        while (claudeStylePendingTools.size > 400) {
+          const oldest = claudeStylePendingTools.keys().next().value;
+          if (oldest !== undefined) claudeStylePendingTools.delete(oldest); else break;
+        }
+      }
+      const tool = toolOf(payload.tool_name, payload.tool_input, rawCallId);
       add(working(tool));
       add(started(tool));
     }
   } else if (POST_TOOL.has(event)) {
-    const mcpTool = mcpReportToolName(payload.tool_name);
+    const rawCallId = id(payload.tool_use_id ?? payload.tool_call_id, AGENT_ID);
+    const pendingKey = `${app}:${sessionId}:${rawCallId ?? 'last'}`;
+    const cached = claudeStylePendingTools.get(pendingKey);
+    claudeStylePendingTools.delete(pendingKey);
+    const effectiveToolName = first(payload.tool_name, cached?.name);
+    const effectiveToolInput = payload.tool_input ?? cached?.input;
+    const effectiveCwd = cwd ?? cached?.cwd;
+    const mcpTool = mcpReportToolName(effectiveToolName);
     if (!mcpTool) {
-      const tool = toolOf(payload.tool_name, payload.tool_input, payload.tool_use_id ?? payload.tool_call_id);
+      const tool = toolOf(effectiveToolName, effectiveToolInput, rawCallId);
       const response = payload.tool_response ?? payload.tool_output;
       const failed = event === 'PostToolUseFailure' || Boolean(obj(response).error) || obj(response).interrupted === true || explicitToolFailure(hookOutput(response));
       const ok = failed ? false : statedSuccess(response) ?? true;
       const out = options.labelsOnly ? undefined : hookOutput(event === 'PostToolUseFailure' ? first(payload.error, response) || response : response);
       add(completed(tool, ok, out));
-      if (ok && tool.kind === 'edit') for (const file of extractWrittenFiles(str(payload.tool_name), payload.tool_input, response, cwd)) add({ type: 'file.written', path: file.path, change: file.change, ...(tool.toolCallId ? { toolCallId: tool.toolCallId } : {}) });
+      if (ok && tool.kind === 'edit') for (const file of extractWrittenFiles(effectiveToolName, effectiveToolInput, response, effectiveCwd)) add({ type: 'file.written', path: file.path, change: file.change, ...(tool.toolCallId ? { toolCallId: tool.toolCallId } : {}) });
       // Claude Code: the user pressed Esc while the tool ran.
       if (event === 'PostToolUseFailure' && payload.is_interrupt === true) add(stopped('interrupted', undefined, 'interrupted'));
     }
@@ -254,7 +311,7 @@ function claudeStyle(app: HookApp, raw: unknown, options: NormalizeHookOptions =
   }
   const agentType = inner ? safeLabel(first(payload.agent_type, payload.subagent_type), 80) : '';
   return {
-    app, sessionId, event: event || 'unknown', starts: START.has(event), ends: END.has(event), steps, ...(agentType ? { agentType } : {}),
+    app, sessionId, ...reportedSettings(payload), event: event || 'unknown', starts: START.has(event), ends: END.has(event), steps, ...(followupPrompts ? { followupPrompts } : {}), ...(agentType ? { agentType } : {}),
     ...(cwd ? { cwd } : {}), ...(transcriptPath ? { transcriptPath } : {}), ...(model ? { model } : {}), ...(titleHint ? { titleHint } : {}),
   };
 }
@@ -265,7 +322,21 @@ export const normalizeCodexHook = (payload: unknown, options?: NormalizeHookOpti
 /** Gemini CLI: SessionStart/End, BeforeAgent/AfterAgent, BeforeTool/AfterTool, Notification. */
 export const normalizeGeminiHook = (payload: unknown, options?: NormalizeHookOptions) => claudeStyle('gemini', payload, options);
 
-const antigravityPendingTools = new Map<string, { name: string; input: unknown }>();
+const antigravityPendingTools = new Map<string, Array<{ callId: string; name: string; input: unknown; cwd?: string }>>();
+const antigravityBackgroundTasks = new Map<string, Map<string, Tool>>();
+
+function shortBackgroundTaskKey(taskId: string): string {
+  const parts = taskId.trim().split('/').filter(Boolean);
+  return parts.at(-1) ?? taskId.trim();
+}
+
+export function clearAntigravityBackgroundTasks(sessionId: string): void {
+  antigravityBackgroundTasks.delete(sessionId);
+}
+
+export function hasAntigravityBackgroundTasks(sessionId: string): boolean {
+  return (antigravityBackgroundTasks.get(sessionId)?.size ?? 0) > 0;
+}
 
 /**
  * Antigravity command hooks (`~/.gemini/config/hooks.json`):
@@ -289,16 +360,17 @@ export function normalizeAntigravityHook(raw: unknown, options: NormalizeHookOpt
     ? safeLabel(rawModel, 120) || undefined
     : undefined;
   const steps: HookStep[] = [];
+  let followupPrompts: string[] | undefined;
   const add = (body: EventBody) => steps.push({ body, agentId: 'primary' });
   const stepIdx = typeof payload.stepIdx === 'number' && Number.isInteger(payload.stepIdx) && payload.stepIdx >= 0 ? payload.stepIdx : undefined;
   const callId = stepIdx !== undefined ? `step-${stepIdx}` : id(payload.tool_use_id ?? payload.tool_call_id, AGENT_ID);
 
   const mcpEventTool = mcpReportToolName(event);
   if (mcpEventTool) {
-    const report = normalizeMcpReport(mcpEventTool, payload.tool_input ?? obj(payload.toolCall).args ?? payload);
-    if (report) steps.push(...report.steps);
+    const report = sourceMcpReport(mcpEventTool, reportEventInput(mcpEventTool, payload.tool_input ?? obj(payload.toolCall).args ?? payload, payload), payload, sessionId, options);
+    if (report) { steps.push(...report.steps); followupPrompts = report.followupPrompts; }
     return {
-      app: 'antigravity', sessionId, event: event || 'unknown', starts: false, ends: false, steps,
+      app: 'antigravity', sessionId, ...reportedSettings(payload), event: event || 'unknown', starts: false, ends: false, steps, ...(followupPrompts ? { followupPrompts } : {}),
       ...(cwd ? { cwd } : {}), ...(transcriptPath ? { transcriptPath } : {}), ...(model ? { model } : {}),
     };
   }
@@ -314,37 +386,72 @@ export function normalizeAntigravityHook(raw: unknown, options: NormalizeHookOpt
       const rawInput = toolCall.args ?? payload.tool_input;
       const mcpTool = mcpReportToolName(rawName);
       if (mcpTool) {
-        const report = normalizeMcpReport(mcpTool, rawInput);
-        if (report) steps.push(...report.steps);
+        const report = sourceMcpReport(mcpTool, rawInput, payload, sessionId, options);
+        if (report) { steps.push(...report.steps); followupPrompts = report.followupPrompts; }
       } else {
+        let effectiveCallId = callId;
         if (callId) {
-          antigravityPendingTools.set(`${sessionId}:${callId}`, { name: rawName, input: rawInput });
+          const key = `${sessionId}:${callId}`;
+          const queue = antigravityPendingTools.get(key) ?? [];
+          effectiveCallId = queue.length > 0 ? `${callId}-${queue.length + 1}` : callId;
+          queue.push({ callId: effectiveCallId, name: rawName, input: rawInput, ...(cwd ? { cwd } : {}) });
+          antigravityPendingTools.set(key, queue);
           while (antigravityPendingTools.size > 400) {
             const oldest = antigravityPendingTools.keys().next().value;
             if (oldest !== undefined) antigravityPendingTools.delete(oldest); else break;
           }
         }
-        const tool = toolOf(rawName, rawInput, callId);
+        const tool = toolOf(rawName, rawInput, effectiveCallId);
         add(working(tool));
         add(started(tool));
       }
       break;
     }
     case 'PostToolUse': {
-      const cached = callId ? antigravityPendingTools.get(`${sessionId}:${callId}`) : undefined;
-      if (callId) antigravityPendingTools.delete(`${sessionId}:${callId}`);
+      const key = callId ? `${sessionId}:${callId}` : undefined;
+      const queue = key ? antigravityPendingTools.get(key) : undefined;
+      const cached = queue?.shift();
+      if (key && (!queue || queue.length === 0)) antigravityPendingTools.delete(key);
       const toolCall = obj(payload.toolCall);
       const rawName = (first(toolCall.name, payload.tool_name, cached?.name) || 'tool').replace(/^default_api:/, '');
       const rawInput = toolCall.args ?? payload.tool_input ?? cached?.input;
+      const effectiveCwd = cwd ?? cached?.cwd;
+      const effectiveCallId = cached?.callId ?? callId;
       if (!mcpReportToolName(rawName)) {
-        const tool = toolOf(rawName, rawInput, callId);
+        const tool = toolOf(rawName, rawInput, effectiveCallId);
         const errText = str(payload.error).trim();
         const response = payload.tool_response ?? payload.tool_output ?? payload.toolOutput;
+        const rawResponseText = str(outputText(response)) || hookOutput(response) || str(response);
+        const statusText = str(payload.status ?? toolCall.status).trim().toUpperCase();
+        const bgTaskMatch = /Tool is running as a background task with task id:\s*([^\s"'`<>]+)/i.exec(rawResponseText);
+        if (!errText && (bgTaskMatch || statusText === 'RUNNING') && rawName !== 'schedule' && rawName !== 'invoke_subagent') {
+          const taskKey = bgTaskMatch?.[1] ? shortBackgroundTaskKey(bgTaskMatch[1]) : (effectiveCallId || rawName);
+          const tasks = antigravityBackgroundTasks.get(sessionId) ?? new Map<string, Tool>();
+          tasks.set(taskKey, tool);
+          antigravityBackgroundTasks.set(sessionId, tasks);
+          while (antigravityBackgroundTasks.size > 200) {
+            const oldest = antigravityBackgroundTasks.keys().next().value;
+            if (oldest !== undefined) antigravityBackgroundTasks.delete(oldest); else break;
+          }
+          add(working(tool));
+          break;
+        }
         const ok = errText || explicitToolFailure(hookOutput(response)) ? false : statedSuccess(response) ?? true;
         const out = options.labelsOnly ? undefined : hookOutput(errText || response);
         add(completed(tool, ok, out));
+        if (ok && rawName === 'manage_task') {
+          const cancelMatch = /Task\s+["']?([^\s"'`<>]+)["']?\s+cancell?ed\b/i.exec(rawResponseText);
+          const canceledKey = cancelMatch?.[1] ? shortBackgroundTaskKey(cancelMatch[1]) : undefined;
+          const tasks = canceledKey ? antigravityBackgroundTasks.get(sessionId) : undefined;
+          const canceledTool = canceledKey && tasks ? tasks.get(canceledKey) : undefined;
+          if (canceledKey && tasks && canceledTool) {
+            tasks.delete(canceledKey);
+            if (tasks.size === 0) antigravityBackgroundTasks.delete(sessionId);
+            add(completed(canceledTool, false, options.labelsOnly ? undefined : safeLabel(`Canceled background task (${canceledKey}).`, 400)));
+          }
+        }
         if (ok && tool.kind === 'edit') {
-          for (const file of extractWrittenFiles(rawName, rawInput, response, cwd)) {
+          for (const file of extractWrittenFiles(rawName, rawInput, response, effectiveCwd)) {
             add({ type: 'file.written', path: file.path, change: file.change, ...(tool.toolCallId ? { toolCallId: tool.toolCallId } : {}) });
           }
         }
@@ -355,11 +462,18 @@ export function normalizeAntigravityHook(raw: unknown, options: NormalizeHookOpt
       const errText = str(payload.error).trim();
       const reasonText = str(payload.terminationReason).trim().toLowerCase();
       if (errText || reasonText === 'error') {
+        antigravityBackgroundTasks.delete(sessionId);
         const error = safeLabel(errText || 'The turn failed.', 300) || 'The turn failed.';
         for (const body of failedTurn(error, stopReasonOf(errText || error))) add(body);
       } else {
-        add({ type: 'turn.completed', ...(model ? { model } : {}) });
-        add({ type: 'agent.state', state: 'idle' });
+        const bgTasks = antigravityBackgroundTasks.get(sessionId);
+        if (bgTasks && bgTasks.size > 0) {
+          const activeTool = [...bgTasks.values()].at(-1)!;
+          add(working(activeTool));
+        } else {
+          add({ type: 'turn.completed', ...(model ? { model } : {}) });
+          add({ type: 'agent.state', state: 'idle' });
+        }
       }
       break;
     }
@@ -368,7 +482,7 @@ export function normalizeAntigravityHook(raw: unknown, options: NormalizeHookOpt
   }
 
   return {
-    app: 'antigravity', sessionId, event: event || 'unknown', starts: event === 'PreInvocation', ends: false, steps,
+    app: 'antigravity', sessionId, ...reportedSettings(payload), event: event || 'unknown', starts: event === 'PreInvocation', ends: false, steps, ...(followupPrompts ? { followupPrompts } : {}),
     ...(cwd ? { cwd } : {}), ...(transcriptPath ? { transcriptPath } : {}), ...(model ? { model } : {}),
   };
 }
@@ -392,13 +506,14 @@ export function normalizeHermesHook(raw: unknown, options: NormalizeHookOptions 
   const profile = safeLabel(payload.profile, 80) || undefined;
   const titleHint = titleOf(first(extra.user_message, payload.user_message));
   const steps: HookStep[] = [];
+  let followupPrompts: string[] | undefined;
   const add = (body: EventBody) => steps.push({ body, agentId: 'primary' });
   const tool = () => toolOf(payload.tool_name, payload.tool_input, extra.tool_call_id ?? extra.call_id);
   const mcpEventTool = mcpReportToolName(event);
   if (mcpEventTool) {
-    const report = normalizeMcpReport(mcpEventTool, payload.tool_input ?? extra);
-    if (report) steps.push(...report.steps);
-    return { app: 'hermes', sessionId, event: event || 'unknown', starts: false, ends: false, steps, ...(cwd ? { cwd } : {}), ...(model ? { model } : {}), ...(profile ? { profile } : {}) };
+    const report = sourceMcpReport(mcpEventTool, reportEventInput(mcpEventTool, payload.tool_input ?? (payload.extra !== undefined ? extra : payload), payload), payload, sessionId, options);
+    if (report) { steps.push(...report.steps); followupPrompts = report.followupPrompts; }
+    return { app: 'hermes', sessionId, ...reportedSettings(payload), event: event || 'unknown', starts: false, ends: false, steps, ...(followupPrompts ? { followupPrompts } : {}), ...(cwd ? { cwd } : {}), ...(model ? { model } : {}), ...(profile ? { profile } : {}) };
   }
   switch (event) {
     case 'on_session_start':
@@ -416,8 +531,8 @@ export function normalizeHermesHook(raw: unknown, options: NormalizeHookOptions 
     case 'pre_tool_call': {
       const mcpTool = mcpReportToolName(payload.tool_name);
       if (mcpTool) {
-        const report = normalizeMcpReport(mcpTool, payload.tool_input);
-        if (report) steps.push(...report.steps);
+        const report = sourceMcpReport(mcpTool, payload.tool_input, payload, sessionId, options);
+        if (report) { steps.push(...report.steps); followupPrompts = report.followupPrompts; }
       } else {
         const call = tool();
         add(working(call));
@@ -468,7 +583,7 @@ export function normalizeHermesHook(raw: unknown, options: NormalizeHookOptions 
     default: break;
   }
   return {
-    app: 'hermes', sessionId, event: event || 'unknown', starts: event === 'on_session_start', ends: false, steps,
+    app: 'hermes', sessionId, ...reportedSettings(payload), event: event || 'unknown', starts: event === 'on_session_start', ends: false, steps, ...(followupPrompts ? { followupPrompts } : {}),
     ...(cwd ? { cwd } : {}), ...(model ? { model } : {}), ...(profile ? { profile } : {}), ...(titleHint ? { titleHint } : {}),
   };
 }

@@ -12,12 +12,13 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { DISTRICT_BUILDINGS } from "./CampusSkyline";
 
-export interface DistrictModelBatch {
+export interface DistrictModelChunk {
   facade: BufferGeometry;
   solid: BufferGeometry;
-  crown: BufferGeometry;
-  foliage: BufferGeometry;
+  crown: BufferGeometry | null;
+  foliage: BufferGeometry | null;
 }
+export type DistrictModelBatch = readonly DistrictModelChunk[];
 
 const urls = import.meta.glob<string>("/public-assets/landscape/district-buildings.glb", {
   eager: true,
@@ -50,25 +51,22 @@ function normalizeColorAttribute(geometry: BufferGeometry, fallbackR = 1, fallba
   geometry.setAttribute("color", new Float32BufferAttribute(rgb, 3));
 }
 
-/** Bake all 12 Blender-authored surrounding district buildings into 4 world-space role geometries. */
+/** Batch by role within each building so Three can cull offscreen buildings. */
 export function bakeDistrictModelBatch(scene: Object3D): DistrictModelBatch | null {
   scene.updateWorldMatrix(true, true);
-  const facadeShapes: BufferGeometry[] = [];
-  const solidShapes: BufferGeometry[] = [];
-  const crownShapes: BufferGeometry[] = [];
-  const foliageShapes: BufferGeometry[] = [];
+  const chunks: DistrictModelChunk[] = [];
   const offset = new Matrix4();
-  const releaseShapes = () => {
-    [...facadeShapes, ...solidShapes, ...crownShapes, ...foliageShapes].forEach((geometry) => geometry.dispose());
+  const fail = () => {
+    for (const chunk of chunks) for (const geometry of Object.values(chunk)) geometry?.dispose();
+    return null;
   };
 
   for (let index = 0; index < DISTRICT_BUILDINGS.length; index++) {
     const spec = DISTRICT_BUILDINGS[index]!;
     const root = scene.getObjectByName(`district-${index}`);
-    if (!root) {
-      releaseShapes();
-      return null;
-    }
+    if (!root) return fail();
+    const facadeShapes: BufferGeometry[] = [], solidShapes: BufferGeometry[] = [];
+    const crownShapes: BufferGeometry[] = [], foliageShapes: BufferGeometry[] = [];
     const seed = 101 + index * 3.7;
     offset.makeTranslation(spec.x, 0, spec.z);
 
@@ -100,32 +98,25 @@ export function bakeDistrictModelBatch(scene: Object3D): DistrictModelBatch | nu
         solidShapes.push(shape);
       }
     });
+    const merge = (shapes: BufferGeometry[]) => {
+      const geometry = shapes.length ? mergeGeometries(shapes, false) : null;
+      shapes.forEach(shape => shape.dispose());
+      if (geometry) {
+        geometry.computeBoundingBox();
+        geometry.computeBoundingSphere();
+      }
+      return geometry;
+    };
+    const facade = merge(facadeShapes), solid = merge(solidShapes);
+    const crown = merge(crownShapes), foliage = merge(foliageShapes);
+    if (!facade || !solid || (crownShapes.length && !crown) || (foliageShapes.length && !foliage)) {
+      facade?.dispose(); solid?.dispose(); crown?.dispose(); foliage?.dispose();
+      return fail();
+    }
+    chunks.push({ facade, solid, crown, foliage });
   }
-
-  if (!facadeShapes.length || !solidShapes.length || !crownShapes.length) {
-    releaseShapes();
-    return null;
-  }
-
-  const facade = mergeGeometries(facadeShapes, false);
-  const solid = mergeGeometries(solidShapes, false);
-  const crown = mergeGeometries(crownShapes, false);
-  const foliage = foliageShapes.length ? mergeGeometries(foliageShapes, false) : null;
-  releaseShapes();
-
-  if (!facade || !solid || !crown || !foliage) {
-    facade?.dispose();
-    solid?.dispose();
-    crown?.dispose();
-    foliage?.dispose();
-    return null;
-  }
-
-  for (const geometry of [facade, solid, crown, foliage]) {
-    geometry.computeBoundingBox();
-    geometry.computeBoundingSphere();
-  }
-  return { facade, solid, crown, foliage };
+  if (!chunks.some(chunk => chunk.crown) || !chunks.some(chunk => chunk.foliage)) return fail();
+  return chunks;
 }
 
 function disposeImportedScene(scene: Object3D): void {

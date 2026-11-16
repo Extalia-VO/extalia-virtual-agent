@@ -125,7 +125,7 @@ const SAMPLE_SKIPPED: KnowledgeSkippedFile[] = [
 ];
 
 const EDGE_LABELS: [RegExp, KnowledgeEdgeType][] = [
-  [/^\s*related:/i, 'related_to'], [/^\s*learned from:/i, 'learned_from'], [/^\s*depends on:/i, 'depends_on'], [/^\s*supersedes:/i, 'supersedes'], [/^\s*used by:/i, 'used_by'],
+  [/^\s*related:/i, 'related_to'], [/^\s*learned from:/i, 'learned_from'], [/^\s*depends on:/i, 'depends_on'], [/^\s*supersedes:/i, 'supersedes'], [/^\s*updates:/i, 'updates'], [/^\s*contradicts:/i, 'contradicts'], [/^\s*used by:/i, 'used_by'],
 ];
 
 interface Indexed { node: KnowledgeNode & { sourceModifiedAt: string }; body: string; key: string; stem: string; aliasKeys: string[] }

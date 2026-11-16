@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
-import { constants } from 'node:fs';
-import { access, chmod, lstat, mkdir, readFile, realpath, stat } from 'node:fs/promises';
+import { chmod, lstat, mkdir, readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { isNotFound, writeFileAtomic } from '../jsonStore.js';
+import { findExecutable, isExecutableFile } from '../executableDiscovery.js';
 
 export type Env = Readonly<Record<string, string | undefined>>;
 
@@ -53,22 +53,11 @@ export async function writeConfigFile(file: string, content: string | Uint8Array
   if (process.platform !== 'win32') await chmod(file, mode);
 }
 
-export async function isExecutable(file: string): Promise<boolean> {
-  try { await access(file, process.platform === 'win32' ? constants.F_OK : constants.X_OK); return (await stat(file)).isFile(); }
-  catch { return false; }
-}
+export const isExecutable = isExecutableFile;
 
 /** First executable named `name` on PATH. */
-export async function findOnPath(name: string, env: Env, platform: string): Promise<string | undefined> {
-  const separator = platform === 'win32' ? ';' : ':';
-  const extensions = platform === 'win32' ? (env.PATHEXT ?? '.EXE;.CMD;.BAT').split(';') : [''];
-  for (const directory of (env.PATH ?? '').split(separator).filter(Boolean)) {
-    for (const extension of extensions) {
-      const candidate = path.join(directory, name + extension);
-      if (await isExecutable(candidate)) return candidate;
-    }
-  }
-  return undefined;
+export async function findOnPath(name: string, env: Env, platform: string, homeDirectory?: string): Promise<string | undefined> {
+  return findExecutable(name, { env, platform, homeDirectory });
 }
 
 /** `~/`-style display of a path, for readable output. */

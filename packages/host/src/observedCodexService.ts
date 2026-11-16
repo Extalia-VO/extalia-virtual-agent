@@ -1,12 +1,14 @@
-import type { ObservedCodexAnswerInput, ObservedCodexMessageInput, ObservedCodexStatus, ObservedCodexApprovalAnswerInput } from '@extalia/platform';
+import type { ObservedCodexAnswerInput, ObservedCodexMessageInput, ObservedCodexSettingsInput, ObservedCodexStatus, ObservedCodexApprovalAnswerInput, PromptSuggestionsStatus } from '@extalia/platform';
 import { CodexObservedControl, type CodexObservedRpcFactory } from './codexObservedControl.js';
-import { findOnPath, isExecutable } from './connect/util.js';
+import { environmentValue, findExecutable } from './executableDiscovery.js';
 
 interface SourceBinding { threadId: string; cwd?: string; watching: boolean }
 interface Options {
   target(id: string): SourceBinding | undefined;
   env: Readonly<Record<string, string | undefined>>;
+  homeDirectory?: string;
   rpcFactory?: CodexObservedRpcFactory;
+  onActivity?: (sessionId: string) => void;
 }
 
 /** Ephemeral, user-only connection registry. It never installs hooks or starts an agent engine. */
@@ -17,6 +19,7 @@ export class ObservedCodexService {
   private readonly blocked = new Set<string>();
   private readonly cleanup = new Map<string, Promise<void>>();
   private readonly cleanupFailures = new Set<string>();
+  private suggestionsPrivate = false;
 
   constructor(private readonly options: Options) {}
 
@@ -59,6 +62,23 @@ export class ObservedCodexService {
     if (this.cleanupFailures.has(id)) return this.unavailable(id, 'Codex proxy cleanup could not be confirmed. Control is disabled.');
     return entry?.control.status() ?? { sessionId: id, state: 'disconnected', canSend: false, canAnswer: false, requests: [] };
   }
+  async suggestions(id: string): Promise<PromptSuggestionsStatus> {
+    const unavailable: PromptSuggestionsStatus = { sessionId: id, state: this.suggestionsPrivate ? 'private' : 'unavailable', prompts: [], origin: 'harness', canRequest: false };
+    if (this.closed || this.cleanupFailures.has(id)) return unavailable;
+    return this.valid(id).entry?.control.suggestions() ?? unavailable;
+  }
+  setSuggestionsPrivacy(value: boolean): void {
+    this.suggestionsPrivate = value;
+    for (const { control } of this.controls.values()) control.setSuggestionsPrivacy(value);
+  }
+  async requestSuggestions(id: string, anchor: string): Promise<PromptSuggestionsStatus> {
+    if (this.closed || this.cleanupFailures.has(id)) return this.suggestions(id);
+    const { entry } = this.valid(id);
+    if (!entry) return this.suggestions(id);
+    await entry.control.requestSuggestions(anchor);
+    // The same controller may have changed turn or privacy between continuations.
+    return this.valid(id).entry === entry ? entry.control.suggestions() : this.suggestions(id);
+  }
   private mutate<T>(id: string, action: () => Promise<T>): Promise<T> {
     this.target(id);
     if (this.closed) return Promise.reject(new Error('The Extalia host is closed.'));
@@ -78,14 +98,16 @@ export class ObservedCodexService {
       const previous = this.controls.get(id);
       this.controls.delete(id);
       if (previous) await this.stop(id, previous.control);
-      const override = this.options.env.EXTALIA_CODEX_BIN;
-      const bin = override && await isExecutable(override) ? override : !override ? await findOnPath('codex', this.options.env, process.platform) : undefined;
+      const bin = await findExecutable('codex', { env: this.options.env, platform: process.platform,
+        homeDirectory: this.options.homeDirectory, override: environmentValue(this.options.env, 'EXTALIA_CODEX_BIN', process.platform) });
       if (!bin) return this.unavailable(id, 'Codex CLI with app-server proxy support was not found.');
       if (this.closed || this.blocked.has(id) || this.fingerprint(this.target(id) ?? { threadId: '', watching: false }) !== fingerprint || !this.target(id)?.watching) throw new Error('The observed source changed. Connect again.');
       const control = new CodexObservedControl({
         sessionId: id, threadId: binding.threadId, ...(binding.cwd ? { cwd: binding.cwd } : {}), bin,
         env: { ...this.options.env }, ...(this.options.rpcFactory ? { rpcFactory: this.options.rpcFactory } : {}),
+        onActivity: () => this.options.onActivity?.(id),
       });
+      control.setSuggestionsPrivacy(this.suggestionsPrivate);
       this.controls.set(id, { fingerprint, control });
       try {
         const status = await control.connect(socketPath);
@@ -101,6 +123,9 @@ export class ObservedCodexService {
   }
   send(id: string, input: ObservedCodexMessageInput): Promise<ObservedCodexStatus> {
     return this.mutate(id, () => this.current(id, input?.connectionId).send(input));
+  }
+  updateSettings(id: string, input: ObservedCodexSettingsInput): Promise<ObservedCodexStatus> {
+    return this.mutate(id, () => this.current(id, input?.connectionId).updateSettings(input));
   }
   answer(id: string, input: ObservedCodexAnswerInput): Promise<ObservedCodexStatus> {
     return this.mutate(id, () => this.current(id, input?.connectionId).answer(input));

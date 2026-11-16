@@ -1,0 +1,5 @@
+{
+  "source": "packages/runtime/src/providers/openai.ts",
+  "version": "0.4.242",
+  "sha256": "5792a3b8810d84bdc81964cebd3ac5e4e247a6cf20b8bcca27276af8d163fca0"
+}

@@ -1,0 +1,44 @@
+{
+  "captureTotalMs": 2003.2680919999998,
+  "cases": [
+    {
+      "hit": true,
+      "hits": 1,
+      "name": "old_english_record",
+      "p50Ms": 1.013234,
+      "p95Ms": 1.152113,
+      "resultUtf16Units": 928,
+      "scopeSafe": true
+    },
+    {
+      "hit": true,
+      "hits": 1,
+      "name": "old_indonesian_record",
+      "p50Ms": 1.052704,
+      "p95Ms": 1.133876,
+      "resultUtf16Units": 922,
+      "scopeSafe": true
+    },
+    {
+      "hit": true,
+      "hits": 0,
+      "name": "unrelated_query",
+      "p50Ms": 0.298329,
+      "p95Ms": 0.371079,
+      "resultUtf16Units": 23,
+      "scopeSafe": true
+    }
+  ],
+  "fixtureRecords": 2000,
+  "iterations": 20,
+  "limits": [
+    "Synthetic attributed records only.",
+    "No model or paid provider used.",
+    "No OS cache reset; repeated local query timings.",
+    "This does not measure answer quality or total provider-token savings."
+  ],
+  "recordsPerWorkspace": 1000,
+  "reopenMs": 25.817209000000002,
+  "warmup": 3,
+  "workspaces": 2
+}

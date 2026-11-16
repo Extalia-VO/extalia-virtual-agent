@@ -1,8 +1,9 @@
+import { codexUserInputEvidence, type CodexUserInputEvidence } from './codexUserInput.js';
 import {
-  PORTABLE_SESSION_FORMAT, decodePortableSession, safeLabel, safeText, stopReasonOf,
-  type ImportMode, type MessageRole, type PortableSession,
+  EFFORTS, PORTABLE_SESSION_FORMAT, decodePortableSession, literalProjectPath, safeLabel, safeText, stopReasonOf,
+  type Effort, type ImportMode, type MessageRole, type PortableSession,
 } from '@extalia/core';
-import { MAX_STEP_ATTACHMENTS, StepList, codexEventAttachments, explicitToolFailure, extractWrittenFiles, imageAttachment, outputText, promptAttachments, statedSuccess, stepOutput, stepTime, toolHints, type StepAttachment, type TranscriptContext, type TranscriptStatus, type TranscriptStep } from './steps.js';
+import { MAX_STEP_ATTACHMENTS, StepList, codexEventAttachments, explicitToolFailure, extractWrittenFiles, imageAttachment, outputText, promptAttachments, statedSuccess, stepOutput, stepTime, toolHints, toolResultAttachments, toolImageOutputText, type StepAttachment, type TranscriptContext, type TranscriptStatus, type TranscriptStep } from './steps.js';
 
 /**
  * Parsers for native agent histories. Input is untrusted data: parsers have no
@@ -23,6 +24,8 @@ export interface ParseContext {
   customTitle?: string;
   exportedAt?: string;
   importMode?: ImportMode;
+  /** Host-bound live observation may represent a real empty Hermes session without inventing a message. */
+  allowEmptySession?: boolean;
   /**
    * Base64 contents of a local media file a transcript refers to by path (Antigravity `media[].uri`),
    * or `undefined` when it cannot or may not be read. Without it such images are listed by name only.
@@ -31,6 +34,7 @@ export interface ParseContext {
 }
 
 export interface NativeParseResult {
+  userInput?: CodexUserInputEvidence;
   session?: PortableSession;
   /** The lead agent's context in use and compactions, when the transcript reports usage (v0.0.48). */
   context?: TranscriptContext;
@@ -38,6 +42,16 @@ export interface NativeParseResult {
   steps?: TranscriptStep[];
   /** The lead agent's latest model, when the transcript states one. */
   model?: string;
+  /** Timestamp of the source context that states the latest model, before any reply. */
+  modelAt?: string;
+  /** Explicit source setting only; never inferred from reasoning or prompt text. */
+  effort?: Effort;
+  /** Latest source effort context, including contexts with unknown or invalid effort. */
+  effortAt?: string;
+  /** Antigravity background task ids (`task-N`) still running at the end of the transcript. */
+  runningTaskIds?: string[];
+  /** Tool call ids for Antigravity background tasks still running at the end of the transcript. */
+  runningTaskCallIds?: string[];
   diagnostics: string[];
 }
 
@@ -159,11 +173,11 @@ export function isInjectedContext(text: string): boolean {
   return INJECTED_CONTEXT.test(text);
 }
 
-function finish(context: ParseContext, id: unknown, drafts: Draft[], diagnostics: string[], metadata: { path?: unknown; title?: unknown; customTitle?: unknown; start?: unknown; parser: string; model?: string; context?: TranscriptContext }, steps?: StepList): NativeParseResult {
+function finish(context: ParseContext, id: unknown, drafts: Draft[], diagnostics: string[], metadata: { path?: unknown; title?: unknown; customTitle?: unknown; start?: unknown; parser: string; model?: string; modelAt?: string; effort?: Effort; effortAt?: string; context?: TranscriptContext; empty?: true; runningTaskIds?: string[]; runningTaskCallIds?: string[] }, steps?: StepList): NativeParseResult {
   const nativeId = (str(id) || context.nativeSessionId || '').trim();
   if (!nativeId) return { diagnostics: [...diagnostics, 'The session identity is missing.'] };
   const readable = drafts.filter(message => message.content.trim());
-  if (!readable.length) return { diagnostics: [...diagnostics, 'No supported conversation messages were found.'] };
+  if (!readable.length && !metadata.empty) return { diagnostics: [...diagnostics, 'No supported conversation messages were found.'] };
   if (readable.length > MAX_MESSAGES || readable.reduce((size, row) => size + row.content.length, 0) > MAX_PARSER_INPUT) return { diagnostics: [...diagnostics, 'The conversation exceeds the import size limit.'] };
 
   const validDates = readable.map(message => toEpochMs(message.at)).filter((value): value is number => value !== undefined);
@@ -181,7 +195,11 @@ function finish(context: ParseContext, id: unknown, drafts: Draft[], diagnostics
 
   const profile = context.profile || 'default';
   const sourceSessionId = context.sourceId === 'hermes' && profile !== 'default' ? `profile:${encodeURIComponent(profile)}:${nativeId}` : nativeId;
-  const projectLocation = safeText(context.projectPath || str(metadata.path), 2000).trim();
+  const reportedProject = context.projectPath || str(metadata.path);
+  // A filesystem path is an identity, not a display label. Trimming, redacting
+  // or clipping it can turn a sibling directory into an authorized project.
+  const projectLocation = literalProjectPath(reportedProject);
+  if (reportedProject && !projectLocation) diagnostics.push('The project folder could not be preserved as a literal safe path and was omitted.');
   const firstUser = messages.find(message => message.role === 'user' && !isInjectedContext(message.content) && safeLabel(message.content, 160))?.content;
   const exportedAt = new Date(toEpochMs(context.exportedAt) ?? Date.now()).toISOString();
   const provider = PROVIDERS[context.sourceId];
@@ -198,11 +216,11 @@ function finish(context: ParseContext, id: unknown, drafts: Draft[], diagnostics
     },
     ...(projectLocation ? { workspace: { slug: `w-${stableHash(projectLocation)}`, name: safeLabel(baseName(projectLocation), 120) || 'Project', projectLocation } } : {}),
     messages,
-    startedAt: new Date(Math.min(start, Date.parse(messages[0]!.createdAt))).toISOString(),
-    lastMessageAt: messages.at(-1)!.createdAt,
+    startedAt: new Date(Math.min(start, messages[0] ? Date.parse(messages[0].createdAt) : start)).toISOString(),
+    lastMessageAt: messages.at(-1)?.createdAt ?? new Date(start).toISOString(),
   };
   const decoded = decodePortableSession(session);
-  return decoded.ok ? { session: decoded.value, ...(steps ? { steps: steps.steps } : {}), ...(metadata.model ? { model: metadata.model } : {}), ...(metadata.context ? { context: metadata.context } : {}), diagnostics } : { diagnostics: [...diagnostics, `The conversation failed validation: ${decoded.errors.join(' ')}`] };
+  return decoded.ok ? { session: decoded.value, ...(steps ? { steps: steps.steps } : {}), ...(metadata.model ? { model: metadata.model } : {}), ...(metadata.modelAt ? { modelAt: metadata.modelAt } : {}), ...(metadata.effort ? { effort: metadata.effort } : {}), ...(metadata.effortAt ? { effortAt: metadata.effortAt } : {}), ...(metadata.context ? { context: metadata.context } : {}), ...(metadata.runningTaskIds?.length ? { runningTaskIds: metadata.runningTaskIds } : {}), ...(metadata.runningTaskCallIds?.length ? { runningTaskCallIds: metadata.runningTaskCallIds } : {}), diagnostics } : { diagnostics: [...diagnostics, `The conversation failed validation: ${decoded.errors.join(' ')}`] };
 }
 
 /** Context Codex injects as user-role messages; it is not something the user typed (bug 7). */
@@ -230,6 +248,15 @@ export function codexThreadSpawn(sessionMeta: unknown): CodexThreadSpawn | undef
   const path = safeLabel(str(spawn.agent_path) || str(meta.agent_path), 200);
   const depth = typeof spawn.depth === 'number' && Number.isInteger(spawn.depth) && spawn.depth > 0 ? spawn.depth : undefined;
   return { parentThreadId: safeLabel(parentThreadId, 200), ...(depth ? { depth } : {}), ...(nickname ? { nickname } : {}), ...(role ? { role } : {}), ...(path ? { path } : {}) };
+}
+
+/** One dated native folder record; callers select the latest visible metadata, never conversation or tool text. */
+export function codexTurnWorkingDirectory(value: unknown): { cwd: string; at: string } | undefined {
+  const row = obj(value);
+  if (row.type !== 'turn_context') return undefined;
+  const at = stepTime(row.timestamp), cwd = literalProjectPath(obj(row.payload).cwd);
+  if (!at || !cwd || !/^(?:\/|[A-Za-z]:[\\/]|\\\\[^\\]+\\[^\\]+)/.test(cwd)) return undefined;
+  return { cwd, at };
 }
 
 /** Codex rollout JSONL: response items plus event mirrors that are paired so prompts are not duplicated. */
@@ -274,13 +301,28 @@ export function parseCodex(text: string, context: ParseContext): NativeParseResu
     if (best) matched.add(best.index);
   }
   const drafts: Draft[] = [], steps = new StepList();
-  let model: string | undefined;
+  const viewImages = new Map<string, { tool: string; path: string }>();
+  let model: string | undefined, modelAt: string | undefined, effort: Effort | undefined, effortAt: string | undefined;
+  let workingDirectory: ReturnType<typeof codexTurnWorkingDirectory>;
   // v0.0.48: context in use is the latest request's input (`last_token_usage`); the thread total is not context.
   let usedTokens: number | undefined, windowTokens: number | undefined, compactedRows = 0, compactedEvents = 0;
   for (const [index, row] of rows.entries()) {
     const payload = obj(row.payload), pos = `L${index}`, at = stepTime(row.timestamp);
     const base = { pos, ...(at ? { at } : {}) };
-    if (row.type === 'turn_context' && str(payload.model)) model = safeLabel(payload.model, 120);
+    if (row.type === 'turn_context') {
+      const directory = codexTurnWorkingDirectory(row);
+      if (directory && (!workingDirectory || directory.at >= workingDirectory.at)) workingDirectory = directory;
+      // A new context replaces effort even when the source omits it. Once dated
+      // evidence exists, untimed contexts cannot erase its freshness watermark.
+      // Bodies and reasoning are never consulted.
+      if (!effortAt || (at !== undefined && at >= effortAt)) {
+        const statedModel = safeLabel(str(payload.model), 120);
+        if (statedModel) { model = statedModel; modelAt = at; }
+        const setting = payload.effort ?? payload.reasoning_effort ?? obj(obj(payload.collaboration_mode).settings).reasoning_effort;
+        effort = (EFFORTS as readonly unknown[]).includes(setting) ? setting as Effort : undefined;
+        effortAt = at;
+      }
+    }
     if (row.type === 'event_msg' && payload.type === 'token_count') {
       // Rate-limit-only reports carry no `info`; they keep the last reading.
       const info = obj(payload.info);
@@ -302,18 +344,40 @@ export function parseCodex(text: string, context: ParseContext): NativeParseResu
         const input = payload.type === 'local_shell_call' ? obj(payload.action) : payload.type === 'web_search_call' ? { query: obj(payload.action).query } : payload.arguments ?? payload.input;
         drafts.push({ role: 'tool', content: `Tool call ${safeLabel(tool, 120)}${payload.call_id ? ` (${safeLabel(payload.call_id, 120)})` : ''}\n${jsonData(input)}`, at: row.timestamp });
         const callId = str(payload.call_id) || str(payload.id) || undefined;
-        const candidateFiles = extractWrittenFiles(tool, input, undefined, str(meta.cwd) || context.projectPath);
-        steps.push({ ...base, type: 'tool.call', tool, ...(callId ? { callId } : {}), ...toolHints(tool, input), ...(candidateFiles.length ? { files: candidateFiles } : {}) });
+        let imagePath: string | undefined;
+        if (callId && /^(?:functions\.)?view_image$/.test(tool)) {
+          let argumentsValue = input;
+          if (typeof argumentsValue === 'string') { try { argumentsValue = JSON.parse(argumentsValue); } catch { argumentsValue = undefined; } }
+          const selected = obj(argumentsValue).path;
+          if (typeof selected === 'string' && selected.length > 0 && selected.length <= 4096 && !/[\0\r\n]/.test(selected)) {
+            imagePath = selected; viewImages.set(callId, { tool, path: selected });
+          } else viewImages.delete(callId);
+        } else if (callId) viewImages.delete(callId);
+        const candidateFiles = extractWrittenFiles(tool, input, undefined, workingDirectory?.cwd || str(meta.cwd) || context.projectPath);
+        steps.push({ ...base, type: 'tool.call', tool, ...(callId ? { callId } : {}), ...toolHints(tool, input), ...(candidateFiles.length ? { files: candidateFiles } : {}), ...(imagePath ? { imagePath } : {}) });
         // Built-in calls without a separate output record report their status inline.
         if (payload.type === 'web_search_call' && ['completed', 'failed'].includes(str(payload.status))) steps.push({ ...base, pos: `${pos}.result`, type: 'tool.result', tool, ...(callId ? { callId } : {}), ok: payload.status === 'completed' });
       } else if (payload.type === 'reasoning') {
         // v0.0.38: the model reasons (its text and encrypted content are never kept).
         steps.push({ ...base, type: 'status', status: 'thinking' });
       } else if (['function_call_output', 'custom_tool_call_output'].includes(str(payload.type))) {
-        drafts.push({ role: 'tool', content: `Tool result${payload.call_id ? ` (${safeLabel(payload.call_id, 120)})` : ''}\n${jsonData(payload.output)}`, at: row.timestamp });
-        const visibleOutput = outputText(payload.output), output = stepOutput(visibleOutput), status = statedSuccess(payload.output), failed = status === false || explicitToolFailure(visibleOutput);
+        const attached = toolResultAttachments(payload.output);
+        const visibleOutput = attached.length ? toolImageOutputText(payload.output) : outputText(payload.output);
+        const output = stepOutput(visibleOutput), status = statedSuccess(payload.output);
+        const failureText = toolImageOutputText(payload.output) || visibleOutput;
+        const cancelledView = viewImages.has(str(payload.call_id)) && typeof failureText === 'string'
+          && /^\s*(?:tool(?: execution)? (?:was )?)?(?:aborted|cancelled|canceled|interrupted)\b/i.test(failureText);
+        const failed = payload.is_error === true || payload.isError === true || statedSuccess(payload) === false || status === false || cancelledView || explicitToolFailure(failureText);
+        const callId = str(payload.call_id), matchedView = viewImages.get(callId);
+        const viewed = matchedView && (!payload.name || payload.name === matchedView.tool) ? matchedView : undefined;
+        viewImages.delete(callId);
+        if (!failed && viewed && !attached.length) attached.push({ name: viewed.path.split(/[\\/]/).pop() || 'image', kind: 'image', size: 0 });
+        drafts.push({ role: 'tool', content: `Tool result${callId ? ` (${safeLabel(callId, 120)})` : ''}\n${attached.length ? visibleOutput : jsonData(payload.output)}`, at: row.timestamp });
         const writesConfirmed = !failed && (status === true || /^\s*Success\. (?:Updated|Added|Deleted)/i.test(typeof visibleOutput === 'string' ? visibleOutput : ''));
-        steps.push({ ...base, type: 'tool.result', ...(str(payload.call_id) ? { callId: str(payload.call_id) } : {}), ok: failed ? false : status ?? true, writesConfirmed, ...(output ? { output } : {}) });
+        steps.push({ ...base, type: 'tool.result', ...(callId ? { callId } : {}), ...(viewed ? { tool: viewed.tool } : {}),
+          ok: !failed && (status ?? true), writesConfirmed, ...(output ? { output } : {}),
+          ...(!failed && attached.length ? { attachments: attached.slice(0, MAX_STEP_ATTACHMENTS) } : {}),
+          ...(!failed && viewed && !attached.some(file => file.data || file.size > 0) ? { imagePath: viewed.path } : {}) });
       }
     } else if (row.type === 'event_msg' && ['user_message', 'agent_message'].includes(str(payload.type)) && !matched.has(index)) {
       if (payload.type === 'user_message' && CODEX_INJECTED.test(str(payload.message))) continue;
@@ -331,7 +395,7 @@ export function parseCodex(text: string, context: ParseContext): NativeParseResu
     }
   }
   const contextUsage = usedTokens !== undefined ? { usedTokens, ...(windowTokens ? { windowTokens } : {}), compactions: Math.max(compactedRows, compactedEvents) } : undefined;
-  return finish(context, meta.id, drafts, diagnostics, { path: meta.cwd, start: meta.timestamp, parser: 'codex-rollout', ...(model ? { model } : {}), ...(contextUsage ? { context: contextUsage } : {}) }, steps);
+  return { ...finish(workingDirectory ? { ...context, projectPath: workingDirectory.cwd } : context, meta.id, drafts, diagnostics, { path: meta.cwd, start: meta.timestamp, parser: 'codex-rollout', ...(model ? { model } : {}), ...(modelAt ? { modelAt } : {}), ...(effort ? { effort } : {}), ...(effortAt ? { effortAt } : {}), ...(contextUsage ? { context: contextUsage } : {}) }, steps), userInput: codexUserInputEvidence(rows) };
 }
 
 /** Claude Code UI echoes of local commands (`/model`, `/clear`, …) written as user rows. */
@@ -570,7 +634,8 @@ export function parseHermes(sessionRow: unknown, messages: unknown[], context: P
       steps.push({ ...base, pos: `${pos}:c${k}`, type: 'tool.call', tool: name, ...(str(call.id) ? { callId: str(call.id) } : {}), ...toolHints(name, input), ...(candidateFiles.length ? { files: candidateFiles } : {}) });
     }
   }
-  return finish(context, sessionId, drafts, diagnostics, { path: session.git_repo_root || session.cwd || session.project_path, title: session.title, start: session.started_at ?? session.created_at, parser: 'hermes-sqlite' }, steps);
+  return finish(context, sessionId, drafts, diagnostics, { path: session.git_repo_root || session.cwd || session.project_path, title: session.title, start: session.started_at ?? session.created_at, parser: 'hermes-sqlite',
+    ...(messages.length === 0 && context.sourceId === 'hermes' && context.importMode === 'linked' && context.allowEmptySession === true ? { empty: true } : {}) }, steps);
 }
 
 /** Extract the user's request text from Antigravity `<USER_REQUEST>…</USER_REQUEST>` wrappers. */
@@ -616,6 +681,60 @@ function unquoteArg(value: unknown): string {
   return text;
 }
 
+/** Close an open fenced code block before an Antigravity compact-log `<truncated N bytes>` marker so following Markdown is not swallowed. */
+function repairAntigravityTruncatedMarkdown(text: string): string {
+  if (!text.includes('<truncated ')) return text;
+  const lines = text.split('\n');
+  const out: string[] = [];
+  let openFence: string | undefined;
+  for (const line of lines) {
+    const fence = /^ {0,3}(`{3,}|~{3,})/.exec(line);
+    if (fence) {
+      const marker = fence[1]!;
+      if (!openFence) openFence = marker;
+      else if (marker[0] === openFence[0] && marker.length >= openFence.length && /^ {0,3}(?:`{3,}|~{3,})\s*$/.test(line)) openFence = undefined;
+    }
+    if (openFence && /^<truncated \d+ bytes>$/.test(line.trim())) {
+      out.push(openFence);
+      openFence = undefined;
+    }
+    out.push(line);
+  }
+  return out.join('\n');
+}
+
+interface AntigravityRunningTask { fullId: string; shortId: string; callId: string; tool: string }
+
+function shortAntigravityTaskId(taskId: string): string {
+  const parts = taskId.trim().split('/').filter(Boolean);
+  return parts.at(-1) ?? taskId.trim();
+}
+
+function findAntigravityTask(tasks: Map<string, AntigravityRunningTask>, taskId: string): AntigravityRunningTask | undefined {
+  const trimmed = taskId.trim();
+  const exact = tasks.get(trimmed);
+  if (exact) return exact;
+  const shortId = shortAntigravityTaskId(trimmed);
+  for (const task of tasks.values()) {
+    if (task.shortId === shortId) return task;
+  }
+  return undefined;
+}
+
+function parseAntigravitySystemMessages(rawContent: string): { sender?: string; body: string }[] {
+  if (!/<SYSTEM_MESSAGE>/i.test(rawContent)) return [{ body: rawContent }];
+  const blocks: { sender?: string; body: string }[] = [];
+  const matcher = /<SYSTEM_MESSAGE>([\s\S]*?)<\/SYSTEM_MESSAGE>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = matcher.exec(rawContent)) !== null) {
+    const inner = match[1] ?? '';
+    const sender = /(?:^|\s)sender=([^\s]+)/i.exec(inner)?.[1]?.trim();
+    const contentMatch = /(?:^|\s)content=([\s\S]*?)\s*$/i.exec(inner);
+    blocks.push({ ...(sender ? { sender } : {}), body: unquoteArg(contentMatch ? contentMatch[1] : inner) });
+  }
+  return blocks;
+}
+
 /** Antigravity brain transcript JSONL (`~/.gemini/antigravity/brain/<id>/.system_generated/logs/transcript.jsonl`). */
 export function parseAntigravity(text: string, context: ParseContext): NativeParseResult {
   const diagnostics: string[] = [], rows = records(text, diagnostics);
@@ -625,6 +744,26 @@ export function parseAntigravity(text: string, context: ParseContext): NativePar
   const drafts: Draft[] = [], steps = new StepList();
   let model: string | undefined, projectPath = context.projectPath, startAt: unknown;
   let pendingCalls: { callId: string; tool: string }[] = [];
+  const runningTasks = new Map<string, AntigravityRunningTask>();
+  const settledTasks = new Set<string>();
+
+  const settleTask = (taskId: string, finished: boolean, resultText: string, stepPos: string, rawAt: unknown, fallbackAt?: string) => {
+    const task = findAntigravityTask(runningTasks, taskId);
+    const shortId = task?.shortId ?? shortAntigravityTaskId(taskId);
+    if (!task && (settledTasks.has(taskId.trim()) || settledTasks.has(shortId))) return;
+    if (task) runningTasks.delete(task.fullId);
+    for (const id of [task?.fullId, task?.shortId, taskId.trim(), shortId]) {
+      if (id) settledTasks.add(id);
+    }
+    const callId = task?.callId ?? shortId;
+    const tool = task?.tool ?? 'run_command';
+    const status = statedSuccess(resultText);
+    const failed = !finished || status === false || explicitToolFailure(resultText);
+    const ok = failed ? false : status ?? true;
+    const output = stepOutput(outputText(resultText) || resultText.trim());
+    drafts.push({ role: 'tool', content: `Task result (${safeLabel(callId, 120)})\n${resultText.trim() || (finished ? 'finished' : 'canceled')}`, at: rawAt });
+    steps.push({ pos: stepPos, ...(fallbackAt ? { at: fallbackAt } : {}), type: 'tool.result', callId, tool, ok, writesConfirmed: !failed, ...(output ? { output } : {}) });
+  };
 
   for (const [index, row] of rows.entries()) {
     const stepIdx = typeof row.step_index === 'number' ? row.step_index : index;
@@ -632,9 +771,11 @@ export function parseAntigravity(text: string, context: ParseContext): NativePar
     if (startAt === undefined && (row.created_at ?? row.timestamp)) startAt = row.created_at ?? row.timestamp;
     const base = { pos, ...(at ? { at } : {}) };
     const type = str(row.type);
-    const rawContent = Array.isArray(row.content)
-      ? row.content.map(item => str(item)).filter(Boolean).join('\n')
-      : str(row.content);
+    const rawContent = repairAntigravityTruncatedMarkdown(
+      Array.isArray(row.content)
+        ? row.content.map(item => str(item)).filter(Boolean).join('\n')
+        : str(row.content),
+    );
     const rowModel = safeLabel(str(row.model ?? row.modelName), 120);
     if (rowModel && !/^(?:none|auto)$/i.test(rowModel)) model = rowModel;
 
@@ -643,18 +784,45 @@ export function parseAntigravity(text: string, context: ParseContext): NativePar
       const settingsModel = antigravityModelFromSettings(rawContent);
       if (settingsModel) model = settingsModel;
       const prompt = antigravityUserText(rawContent);
+      const tagModel = /\[Model:\s*([^\]]+)\]/i.exec(prompt)?.[1]?.trim();
+      if (tagModel && !/^(?:none|auto)$/i.test(tagModel)) model = safeLabel(tagModel, 120);
       if (isInjectedContext(prompt)) continue;
       const attached = antigravityMedia(row.media, context.readMedia);
       if (!prompt && !attached.length) continue;
       if (prompt) drafts.push({ role: 'user', content: prompt, at: row.created_at ?? row.timestamp });
       steps.push({ ...base, type: 'prompt', text: prompt, ...files(attached) });
+    } else if (type === 'SYSTEM_MESSAGE') {
+      const blocks = parseAntigravitySystemMessages(rawContent);
+      for (const [mIdx, block] of blocks.entries()) {
+        if (/Extalia Prompt/.test(block.body)) {
+          if (block.body && !isInjectedContext(block.body)) {
+            pendingCalls = [];
+            const tagModel = /\[Model:\s*([^\]]+)\]/i.exec(block.body)?.[1]?.trim();
+            if (tagModel && !/^(?:none|auto)$/i.test(tagModel)) model = safeLabel(tagModel, 120);
+            drafts.push({ role: 'user', content: block.body, at: row.created_at ?? row.timestamp });
+            steps.push({ ...base, ...(blocks.length > 1 ? { pos: `${pos}:m${mIdx}` } : {}), type: 'prompt', text: block.body });
+          }
+          continue;
+        }
+        const taskResult = /\bTask id ["']?([^\s"'`<>]+)["']? (finished|was cancell?ed|failed) with result:\s*([\s\S]*)/i.exec(block.body);
+        if (taskResult) {
+          settleTask(taskResult[1]!, taskResult[2]!.toLowerCase() === 'finished', taskResult[3] ?? '', `${pos}:m${mIdx}`, row.created_at ?? row.timestamp, at);
+        } else if (/All your subagents and background tasks have been stopped/i.test(block.body)) {
+          for (const [sIdx, running] of [...runningTasks.values()].entries()) {
+            settleTask(running.fullId, false, 'Background tasks stopped.', `${pos}:m${mIdx}s${sIdx}`, row.created_at ?? row.timestamp, at);
+          }
+          runningTasks.clear();
+        } else if (block.sender && /(?:^|\/)task-\d+$/i.test(block.sender) && findAntigravityTask(runningTasks, block.sender)) {
+          settleTask(block.sender, true, block.body, `${pos}:m${mIdx}`, row.created_at ?? row.timestamp, at);
+        }
+      }
     } else if (type === 'PLANNER_RESPONSE') {
       pendingCalls = [];
       const calls = list(row.tool_calls).map(obj).filter(call => str(call.name));
       if (str(row.thinking).trim()) steps.push({ ...base, pos: `${pos}:t`, type: 'status', status: 'thinking' });
       if (rawContent.trim()) {
         drafts.push({ role: 'assistant', content: rawContent, at: row.created_at ?? row.timestamp });
-        steps.push({ ...base, type: 'reply', text: rawContent, ...(calls.length ? {} : { final: true }), ...(model ? { model } : {}) });
+        steps.push({ ...base, type: 'reply', text: rawContent, ...(calls.length || runningTasks.size ? {} : { final: true }), ...(model ? { model } : {}) });
       }
       for (const [k, call] of calls.entries()) {
         const rawTool = str(call.name).replace(/^default_api:/, '');
@@ -662,12 +830,12 @@ export function parseAntigravity(text: string, context: ParseContext): NativePar
         if (typeof rawArgs === 'string') {
           try { rawArgs = JSON.parse(rawArgs); } catch { /* keep string */ }
         }
-        const args = obj(rawArgs), callId = str(call.id) || `step-${stepIdx}-${k}`;
+        const args = obj(rawArgs), callId = str(call.id) || (k === 0 ? `step-${stepIdx}` : `step-${stepIdx}-${k + 1}`);
         if (!projectPath) {
           const cwd = unquoteArg(args.Cwd ?? args.cwd ?? args.DirectoryPath ?? args.SearchPath);
           if (/^(?:\/|[A-Za-z]:[\\/])/.test(cwd)) projectPath = cwd;
           else {
-            const fileTarget = unquoteArg(args.AbsolutePath ?? args.TargetFile);
+            const fileTarget = unquoteArg(args.AbsolutePath ?? args.TargetFile ?? args.Path ?? args.file_path ?? args.filePath ?? args.path);
             const dirMatch = /^(\/projects\/[^/]+|\/Users\/[^/]+\/[^/]+)/.exec(fileTarget);
             if (dirMatch) projectPath = dirMatch[1]!;
           }
@@ -686,14 +854,31 @@ export function parseAntigravity(text: string, context: ParseContext): NativePar
       for (const [rIdx, itemText] of items.entries()) {
         const call = pendingCalls.shift();
         if (!call) break;
+        const bgTaskMatch = /Tool is running as a background task with task id:\s*([^\s"'`<>]+)/i.exec(itemText);
+        if ((bgTaskMatch || (row.status === 'RUNNING' && items.length === 1)) && call.tool !== 'schedule' && call.tool !== 'invoke_subagent') {
+          const taskId = bgTaskMatch?.[1] || `pending:${call.callId}`;
+          const shortId = shortAntigravityTaskId(taskId);
+          settledTasks.delete(taskId);
+          settledTasks.delete(shortId);
+          runningTasks.set(taskId, { fullId: taskId, shortId, callId: call.callId, tool: call.tool });
+          drafts.push({ role: 'tool', content: `Tool result (${safeLabel(call.callId, 120)})\n${itemText}`, at: row.created_at ?? row.timestamp });
+          continue;
+        }
         const status = statedSuccess(itemText), failed = row.status === 'ERROR' || status === false || explicitToolFailure(itemText), ok = failed ? false : status ?? true;
         drafts.push({ role: 'tool', content: `Tool result (${safeLabel(call.callId, 120)})\n${itemText}`, at: row.created_at ?? row.timestamp });
         const output = stepOutput(outputText(itemText));
         steps.push({ ...base, pos: `${pos}:r${rIdx}`, type: 'tool.result', callId: call.callId, tool: call.tool, ok, writesConfirmed: !failed, ...(output ? { output } : {}) });
+        if (call.tool === 'manage_task') {
+          const cancelMatch = /Task\s+["']?([^\s"'`<>]+)["']?\s+cancell?ed\b/i.exec(itemText);
+          const canceled = cancelMatch?.[1] ? findAntigravityTask(runningTasks, cancelMatch[1]) : undefined;
+          if (canceled) settleTask(canceled.fullId, false, `Canceled background task (${canceled.shortId}).`, `${pos}:bg${rIdx}`, row.created_at ?? row.timestamp, at);
+        }
       }
     }
   }
   const sessionId = context.nativeSessionId || str(rows[0]?.conversation_id ?? rows[0]?.session_id) || 'antigravity-session';
-  return finish(context, sessionId, drafts, diagnostics, { path: projectPath, start: startAt, parser: 'antigravity-jsonl', ...(model ? { model } : {}) }, steps);
+  const runningTaskIds = [...new Set([...runningTasks.values()].map(task => task.shortId).filter(id => /^task-\d+$/.test(id)))];
+  const runningTaskCallIds = [...new Set([...runningTasks.values()].map(task => task.callId).filter(Boolean))];
+  return finish(context, sessionId, drafts, diagnostics, { path: projectPath, start: startAt, parser: 'antigravity-jsonl', ...(model ? { model } : {}), ...(runningTaskIds.length ? { runningTaskIds } : {}), ...(runningTaskCallIds.length ? { runningTaskCallIds } : {}) }, steps);
 }
 

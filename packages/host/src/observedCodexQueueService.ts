@@ -3,7 +3,7 @@ import { open } from 'node:fs/promises';
 import path from 'node:path';
 import type { ObservedCodexQueueMessageInput, ObservedCodexQueueStatus } from '@extalia/platform';
 import { queueCodexMessage, type CodexQueueOptions, type CodexQueueResult } from './codexQueue.js';
-import { findOnPath, isExecutable } from './connect/util.js';
+import { environmentValue, findExecutable } from './executableDiscovery.js';
 import { isNotFound, writeJsonAtomic } from './jsonStore.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -27,6 +27,7 @@ interface Binding {
 }
 interface Operation { generation: number; abort: AbortController; done: Promise<void>; submitted?: Binding }
 interface Options {
+  homeDirectory?: string;
   dataDirectory: string;
   env: Readonly<Record<string, string | undefined>>;
   target(id: string): ObservedCodexQueueTarget | undefined;
@@ -131,8 +132,8 @@ export class ObservedCodexQueueService {
     return pending;
   }
   private async binary(): Promise<string | undefined> {
-    const override = this.options.env.EXTALIA_CODEX_BIN;
-    return override ? await isExecutable(override) ? override : undefined : findOnPath('codex', this.options.env, process.platform);
+    return findExecutable('codex', { env: this.options.env, platform: process.platform, homeDirectory: this.options.homeDirectory,
+      override: environmentValue(this.options.env, 'EXTALIA_CODEX_BIN', process.platform) });
   }
   private reason(id: string, source: ObservedCodexQueueTarget | undefined, binding: Binding | undefined): string | undefined {
     if (this.closed) return 'The Extalia host is closed.';
@@ -151,13 +152,16 @@ export class ObservedCodexQueueService {
     const operation = this.work.get(id);
     if (operation && (!source?.watching || !same(this.bindings.get(id), binding))) this.seal(id);
     let problem = this.reason(id, source, binding);
-    if (!problem && !await this.binary()) problem = 'Codex CLI with queue support was not found.';
+    const binaryAvailable = source?.watching && binding && !this.closed ? Boolean(await this.binary()) : false;
+    if (!problem && !binaryAvailable) problem = 'Codex CLI with queue support was not found.';
     // Discovery is read-only but can yield while pause, shutdown or source replacement occurs.
     ({ source, binding } = this.target(id));
     if (operation && (!source?.watching || !same(this.bindings.get(id), binding))) this.seal(id);
     problem = this.reason(id, source, binding) ?? problem;
     const busy = this.work.has(id);
     return { sessionId: id, ...(binding ? { threadId: binding.threadId } : {}), enabled: same(this.bindings.get(id), binding),
+      canEnable: binaryAvailable && !!source?.watching && !!binding && !this.closed && !this.persistenceFailed && !this.cleanupFailures.has(id)
+        && !this.blocked.has(id) && !busy && (!this.bindings.has(id) || same(this.bindings.get(id), binding)) && this.delivery.get(id) !== 'unknown',
       canQueue: !problem && !busy, ...(busy ? { busy: true } : {}),
       ...(same(this.bindings.get(id), binding) && this.delivery.has(id) ? { delivery: this.delivery.get(id) } : {}),
       ...(same(this.bindings.get(id), binding) && this.delivery.get(id) === 'queued' && this.messageIds.has(id) ? { messageId: this.messageIds.get(id) } : {}),

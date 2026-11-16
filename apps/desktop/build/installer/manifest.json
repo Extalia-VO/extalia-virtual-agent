@@ -1,7 +1,7 @@
 {
   "schema": "extalia.installer-art.v1",
   "language": "en",
-  "copySha256": "312833f6bfbf200db7924881fde3fcd7746e24f24799796fb81b6b166784c37f",
+  "copySha256": "040f2ddb166006911a3cd50e41612bf0eefb37907ef29e827071d7e933b36b8e",
   "brandSha256": "e5e1d8412088ca464090e4d48c6285bf1ba36e4185c9f886343248a21a8490bb",
   "photosSha256": "f32485d61307eeb35998450e14edcb8b5605d8d964ae56b66a3fc41269202718",
   "sourceSha256": "17c9a6bb39868b3eca9f4b28b676f9da5daa9ff5fd7525e18e005283dc91ba6e",
@@ -10,15 +10,15 @@
       "name": "dmg-background.png",
       "width": 900,
       "height": 620,
-      "sha256": "f3d7ffdd9c793977b9706f0aa635a3f22205e2e8e906df664d987e615bd1eb78",
-      "svgSha256": "3c6d3d7df1109a2d699f736fd2b0817b1d525a7b057414f04801292d571b6c40"
+      "sha256": "4077b598c7e352e560f239f4764e430e547d124e67d60df4efe93689b398a519",
+      "svgSha256": "9e2f3dba124cdc1620e991c58f28795fe7f48a6120d8afa08e08712a78d0a4f3"
     },
     {
       "name": "dmg-background@2x.png",
       "width": 1800,
       "height": 1240,
-      "sha256": "4fdf22e08372c5611178725c8ff2f228be6ed36a8aa58a83e629fc8b039ba7bc",
-      "svgSha256": "c01840a90feae017d042600cf2ca843e9f9d1ee0b55b8b7dfe828d1c64139511"
+      "sha256": "d1f13a44989ced54cd4b0cf4f2487d455b6e1b9fd0b21855f0353f6040d55e00",
+      "svgSha256": "32ec2db340d774a60468becce05bfe5832da511e29b715f9be9a0c1cb08a4ba8"
     },
     {
       "name": "windows-sidebar.bmp",

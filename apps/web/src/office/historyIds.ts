@@ -1,4 +1,5 @@
 import type { SessionSummary } from '@extalia/platform';
+import { nativeStandbySessionIds } from './nativeStandby';
 
 /** At most this many observed sessions load event history for the Office. */
 export const OBSERVED_HISTORY_LIMIT = 24;
@@ -16,5 +17,5 @@ export function officeHistoryIds(sessions: readonly SessionSummary[], selectedSe
     .filter(session => session.control === 'observed' && session.observation?.watching && session.observation.status === 'watching')
     .sort((a, b) => b.lastActiveAt.localeCompare(a.lastActiveAt))
     .slice(0, observedLimit).map(session => session.id);
-  return [...managed, ...observed];
+  return [...new Set([...managed, ...nativeStandbySessionIds(sessions), ...observed])];
 }

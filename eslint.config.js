@@ -4,7 +4,7 @@ import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['**/dist/**', '**/release/**', '**/node_modules/**', '**/.vite/**', 'coverage/**', 'target/**', 'output/**', '**/local-assets/**'] },
+  { ignores: ['**/dist/**', '**/release/**', '**/node_modules/**', '**/.vite/**', 'coverage/**', 'target/**', 'output/**', '**/local-assets/**', 'apps/desktop/build-resources/**'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
@@ -22,5 +22,10 @@ export default tseslint.config(
   {
     files: ['apps/desktop/**/*.{ts,mjs}', 'apps/cli/**/*.{ts,mjs}', 'tooling/**/*.mjs', 'scripts/**/*.mjs', '*.{js,ts}'],
     languageOptions: { globals: globals.node },
+  },
+  {
+    // Preserve the measured, esbuild-generated reference byte-for-byte.
+    files: ['tooling/bench/fixtures/openai-ts-v242.mjs'],
+    rules: { 'no-cond-assign': 'off' },
   },
 );

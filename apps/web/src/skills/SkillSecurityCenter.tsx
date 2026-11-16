@@ -6,9 +6,12 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { errorMessage } from '../host/remote';
 import type { Messages } from '../i18n';
 import { Icon } from '../ui/Icon';
+import { DirectoryPickerButton } from '../setup/DirectoryPickerButton';
 import { SkillPreflightPanel } from './SkillPreflightPanel';
 import { SkillRoutingPanel } from './SkillRoutingPanel';
 import { skillHostKey, skillPreflightContext } from './skillPreflightContext';
+import { registrySkillOrigin } from './skillLibraryModel';
+import { SkillOriginBadge } from './SkillOriginBadge';
 import {
   applySkillCenterAction, approvalFor, groupSkillPackages, revisionActions, shortDigest, skillCenterSupported, stateTone,
   type SkillCenterAction, type SkillPackageGroup, type SkillRevisionAction,
@@ -40,6 +43,7 @@ function SkillSecurityCenterHost({ t, agents, picker, state, onChanged }: Center
   const supported = skillCenterSupported(agents);
   const [report, setReport] = useState<SkillRegistryReport | null>(null);
   const [busy, setBusy] = useState(false);
+  const [scanning, setScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<SkillConfirm>(null);
@@ -58,8 +62,8 @@ function SkillSecurityCenterHost({ t, agents, picker, state, onChanged }: Center
   if (!supported || !report || report.mode !== 'registry') return null;
   const s = t.skillCenter;
   const run = async (action: SkillCenterAction) => {
-    setBusy(true); setError(null); setNotice(null);
-    const outcome = await applySkillCenterAction(agents, action);
+    setBusy(true); setScanning(action.kind === 'import' || action.kind === 'rescan'); setError(null); setNotice(null);
+    const outcome = await applySkillCenterAction(agents, action, s.rescanUnavailable);
     if (outcome.report) setReport(outcome.report);
     setError(outcome.error ?? null);
     if (outcome.result) {
@@ -72,7 +76,7 @@ function SkillSecurityCenterHost({ t, agents, picker, state, onChanged }: Center
       else if (label) setNotice(s.done(name, label));
       onChanged?.();
     }
-    setBusy(false);
+    setBusy(false); setScanning(false);
   };
   const toggleDetails = (revisionId: string) => {
     if (details[revisionId]) { setDetails(({ [revisionId]: _closed, ...rest }) => rest); return; }
@@ -89,7 +93,7 @@ function SkillSecurityCenterHost({ t, agents, picker, state, onChanged }: Center
       onImport={source => void run({ kind: 'import', source })} onCancel={() => setImporter(null)} />
   );
   return (<>
-    <SkillSecurityCenterView t={t} report={report} busy={busy} error={error} notice={notice} confirm={confirm} importer={importer} details={details}
+    <SkillSecurityCenterView t={t} report={report} busy={busy} scanning={scanning} error={error} notice={notice} confirm={confirm} importer={importer} details={details}
       importPanel={importPanel} workspaceNames={workspaceNames} onRetry={() => { setError(null); load(); }} onConfirm={setConfirm} onImporter={next => { setNotice(null); setImporter(next); }}
       onAction={action => void run(action)} onToggleDetails={toggleDetails} />
     <SkillPreflightPanel key={skillPreflightContext(agents, report)} agents={agents} report={report} t={t} />
@@ -99,11 +103,12 @@ function SkillSecurityCenterHost({ t, agents, picker, state, onChanged }: Center
 
 /** Stateless so tests can render it and press its buttons. */
 export function SkillSecurityCenterView({
-  t, report, busy, error, notice, confirm, importer, details, importPanel, workspaceNames, onRetry, onConfirm, onImporter, onAction, onToggleDetails,
+  t, report, busy, scanning = false, error, notice, confirm, importer, details, importPanel, workspaceNames, onRetry, onConfirm, onImporter, onAction, onToggleDetails,
 }: {
   t: Messages;
   report: SkillRegistryReport;
   busy: boolean;
+  scanning?: boolean;
   error: string | null;
   notice: string | null;
   confirm: SkillConfirm;
@@ -147,6 +152,7 @@ export function SkillSecurityCenterView({
         </div>
       )}
       {ready && <SkillScannerBanner t={t} report={report} />}
+      {scanning && <p className="status skill-center-notice" role="status">{s.scanning}</p>}
       {ready && importer && importPanel}
       {notice && <p className="status ok skill-center-notice" role="status"><Icon name="check" />{notice}</p>}
       {error && <p className="form-error" role="alert"><Icon name="alert" />{error}</p>}
@@ -201,7 +207,6 @@ function SkillPackageItem({ t, group, busy, report, confirm, details, workspaceN
     <li key={group.packageId} className="skill-package">
       <div className="skill-package-head">
         <strong>{group.packageId}</strong>
-        <span className="badge">{s.origins[group.origin] ?? group.origin}</span>
         <span className="muted small">{group.active ? s.activeVersion(s.version(group.active.version)) : s.noActive} · {s.revisions(group.revisions.length)}</span>
       </div>
       <ul className="skill-revisions">
@@ -237,6 +242,7 @@ export function SkillRevisionRow({ t, revision, busy, report, confirm, detail, w
   return (
     <li key={revision.revisionId} className="skill-revision">
       <div className="skill-revision-main">
+        <SkillOriginBadge origin={registrySkillOrigin(revision)} t={t} />
         <span className="skill-revision-head">
           <strong className="skill-revision-version">{version}</strong>
           <span className={`badge ${stateTone(revision.state)}`}>{s.states[revision.state] ?? revision.state}</span>
@@ -253,6 +259,7 @@ export function SkillRevisionRow({ t, revision, busy, report, confirm, detail, w
         </span>
       </div>
       <div className="row-actions skill-revision-actions">
+        {report.rescan && report.scanner === 'pinned' && revision.state === 'quarantined' && <button type="button" className="button small" disabled={busy} aria-label={label(s.rescan)} onClick={() => onAction({ kind: 'rescan', revisionId: revision.revisionId })}>{s.rescan}</button>}
         {actions.map(button)}
         <button type="button" className="button small" aria-expanded={Boolean(detail)} aria-label={label(detail ? s.hideDetails : s.details)} onClick={() => onToggleDetails(revision.revisionId)}>
           {detail ? s.hideDetails : s.details}
@@ -343,6 +350,20 @@ export function SkillDetails({ t, detail, workspaceNames }: { t: Messages; detai
   if ('error' in detail) return <p className="form-error small" role="alert"><Icon name="alert" />{detail.error}</p>;
   return (
     <div className="skill-details">
+      {detail.instructions !== undefined && <details><summary>{s.instructions}</summary><pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxHeight: 320, overflow: 'auto' }}>{detail.instructions}</pre><p className="muted small">{s.instructionsHint}</p></details>}
+      {detail.instructionsUnavailable && <p className="muted small">{s.instructionsUnavailable}</p>}
+      {detail.revision.origin !== 'builtin' && <section aria-label={s.recordedSources}>
+        <h4>{s.recordedSources}</h4>
+        {detail.sources?.length ? <>
+          <p className="muted small">{s.sourceCounts(detail.sources.length, detail.sourcesTotal ?? detail.sources.length)}</p>
+          <ul className="skill-detail-list">{detail.sources.map(source => <li key={`${source.origin}:${source.sourceRef}`} className="small">
+            <span>{s.origins[source.origin]} · {when(source.recordedAt)}</span>
+            <code style={{ display: 'block', overflowWrap: 'anywhere' }}>{source.sourceRef}</code>
+          </li>)}</ul>
+          {detail.sourcesOmitted !== undefined && detail.sourcesOmitted > 0 && <p className="note small">{s.sourcesOmitted(detail.sourcesOmitted)}</p>}
+        </> : <p className="muted small">{s.sourcesUnknown}</p>}
+        <p className="muted small">{s.sourceEvidenceHint}</p>
+      </section>}
       {detail.consent.map((consent, index) => (
         // W0 consent is review input only: shown with the project it came from, never as an approval.
         <p key={`${consent.workspaceId ?? ''}:${consent.sha256}:${index}`} className="small note" title={s.consentTitle}>
@@ -362,7 +383,12 @@ export function SkillDetails({ t, detail, workspaceNames }: { t: Messages; detai
           <h4>{s.inspections}</h4>
           <ul className="skill-detail-list">
             {detail.inspections.map(inspection => (
-              <li key={inspection.inspectionId} className="small">{s.inspectionLine(inspection.scannerId, s.reasons[inspection.outcome] ?? inspection.outcome)} <span className="muted">{when(inspection.finishedAt)}</span></li>
+              <li key={inspection.inspectionId} className="small">
+                <strong>{s.inspectionLine(inspection.scannerId, s.reasons[inspection.outcome] ?? inspection.outcome)}</strong> <span className="muted">{when(inspection.finishedAt)}</span>
+                <div>{s.inspectionCoverage}: {s.inspectionCoverages[inspection.coverage]}{inspection.verdict ? ` · ${s.inspectionVerdict}: ${s.inspectionVerdicts[inspection.verdict]}` : ''}</div>
+                <div className="muted">{s.inspectionPolicy}: <code>{inspection.policyVersion}</code>{inspection.scannerVersion ? ` · ${s.inspectionVersion}: ${inspection.scannerVersion}` : ''}</div>
+                {inspection.scannerPin && <div className="muted">{s.inspectionPin}: <code className="skill-hash" title={inspection.scannerPin}>{shortDigest(inspection.scannerPin)}</code></div>}
+              </li>
             ))}
           </ul>
         </div>
@@ -409,10 +435,6 @@ function SkillImportPanel({ t, kind, busy, picker, agents, workspaces, onImport,
   }, [agents, kind, workspaceId]);
   const names = skills?.workspaceId === workspaceId && skills.report ? [...skills.report.allowed, ...skills.report.pending].map(skill => skill.name).sort() : [];
   const chosen = names.includes(name) ? name : names[0] ?? '';
-  const choose = async () => {
-    const selection = await picker?.selectDirectory().catch(() => null);
-    if (selection?.path) setFolder(selection.path);
-  };
   return (
     <form className="skill-import" onSubmit={event => {
       event.preventDefault();
@@ -425,7 +447,8 @@ function SkillImportPanel({ t, kind, busy, picker, agents, workspaces, onImport,
           <span>{s.folderLabel}</span>
           <span className="skill-import-row">
             <input type="text" value={folder} placeholder={s.folderPlaceholder} spellCheck={false} autoComplete="off" onChange={event => setFolder(event.target.value)} />
-            {picker && <button type="button" className="button small" disabled={busy} onClick={() => void choose()}><Icon name="folder" />{s.browse}</button>}
+            {(picker || typeof agents.browseDirectories === 'function') && <DirectoryPickerButton t={t} agents={agents} picker={picker} purpose="skill"
+              title={t.directoryPicker.skill} label={s.browse} initialPath={folder} disabled={busy} onSelected={setFolder} />}
           </span>
         </label>
       ) : !workspaces.length ? <p className="small muted">{s.noProjects}</p> : (

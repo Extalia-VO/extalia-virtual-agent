@@ -28,7 +28,7 @@ export function MouseAndPad({
         <meshStandardMaterial color="#34464b" roughness={0.76} />
       </mesh>
       </WorkstationPart>
-      <group position={[mouseOnPad[0], MOUSE_CENTRE_Y, mouseOnPad[1]]} userData={{ officeDeskInput: "mouse" }}>
+      <group position={[mouseOnPad[0], MOUSE_CENTRE_Y, mouseOnPad[1]]} userData={{ officeDeskInput: "mouse", officeSmallDecor: true }}>
         <WorkstationPart asset="mouse">
         <mesh receiveShadow scale={[width / 2, height / 2, length / 2]}>
           <sphereGeometry args={[1, 20, 14]} />
@@ -65,7 +65,7 @@ export function DeskAccessorySet({
 }) {
   const cupHeld = useCoffeeCupHeldAtDesk(resourceId);
   return (
-    <group>
+    <group userData={{ officeSmallDecor: true }}>
       {cup && !cupHeld && (
         <group position={[-0.60, topY, 0.18]} userData={{ officeDynamic: true }}>
           <mesh receiveShadow position={[0, 0.055, 0]}>

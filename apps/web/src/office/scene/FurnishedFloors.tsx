@@ -30,7 +30,8 @@ export function FurnishedFloors({ view, agents, language, allocations }: {
     <FixtureLighting />
     <ScreenIllumination />
     {([1, 2, 3] as const).map(floor => <FloorVisibilityProvider key={floor} value={view === floor}>
-      <group visible={all || view === floor} position={[0, (floor - 1) * FLOOR_HEIGHT, 0]} name={`furnished-floor-${floor}`}>
+      <group visible={all || view === floor} position={[0, (floor - 1) * FLOOR_HEIGHT, 0]} name={`furnished-floor-${floor}`}
+        userData={{ officeSkipHiddenRenderTransforms: true }}>
         <StructuralCeilingProvider floor={floor}>
           <StaticCampusBatch>
             <OfficeCeilings floor={floor} />

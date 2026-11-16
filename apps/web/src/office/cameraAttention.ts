@@ -9,6 +9,8 @@ export interface CameraPendingApproval {
   agentId?: string;
 }
 
+export interface CameraPendingInput { id: string; sessionId: string; requestedAt: string; agentId?: string }
+
 interface Attention { characterId: string; at: string; key: string }
 interface ApprovalAttention extends Attention { sessionId: string }
 interface PhaseAttention extends Attention { phase: 'input' | 'approval'; activity?: ActivityKind }
@@ -17,7 +19,8 @@ const approvalKey = (sessionId: string, id: string) => JSON.stringify([sessionId
 const byTime = (a: Attention, b: Attention) => a.at.localeCompare(b.at) || a.characterId.localeCompare(b.characterId) || a.key.localeCompare(b.key);
 const eventOrder = (a: ExtaliaEvent, b: ExtaliaEvent) => {
   if (a.seq !== undefined && b.seq !== undefined && a.seq !== b.seq) return a.seq - b.seq;
-  return a.at.localeCompare(b.at) || a.id.localeCompare(b.id);
+  // Same-timestamp hook steps retain delivery order; opaque IDs are not a clock.
+  return a.at.localeCompare(b.at);
 };
 
 /**
@@ -31,6 +34,7 @@ export function cameraAttentionIds(
   agents: readonly OfficeAgent[],
   events: readonly ExtaliaEvent[],
   pending: readonly CameraPendingApproval[],
+  inputs: readonly CameraPendingInput[] = [],
 ): string[] {
   const visible = new Map(agents.filter(agent => isAdmitted(agent) && !agent.earlier
     && !['offline', 'paused', 'unavailable'].includes(agent.status)
@@ -92,6 +96,10 @@ export function cameraAttentionIds(
     const id = characterId(request.sessionId, request.agentId);
     // Without a protocol request, only the managed host's current summary is authoritative.
     if (visible.get(id)?.control === 'managed') attention.push({ characterId: id, at: request.requestedAt, key });
+  }
+  for (const request of inputs) {
+    const id = characterId(request.sessionId, request.agentId);
+    if (visible.get(id)?.control === 'observed') attention.push({ characterId: id, at: request.requestedAt, key: request.id });
   }
   for (const agent of visible.values()) {
     const key = agent.pendingApprovalId ? approvalKey(agent.sessionId, agent.pendingApprovalId) : undefined;

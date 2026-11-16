@@ -1,10 +1,12 @@
 import { createEvent, type EventBody } from '@extalia/protocol';
-import { createElement } from 'react';
+import { createElement, isValidElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { TranscriptView } from '../src/chat/TranscriptView';
 import { projectTranscript, type TranscriptItem, type UserItem } from '../src/chat/transcript';
 import { MESSAGES } from '../src/i18n';
+import { UserMessage } from '../src/chat/UserMessage';
+import { CopyButton } from '../src/ui/CopyButton';
 
 const user = (text: string): UserItem => ({ kind: 'user', id: 'user-1', text, at: '2026-10-30T00:00:00.000Z' });
 const render = (items: TranscriptItem[], language: 'en' | 'id' = 'en', approvalsEnabled = false) => renderToStaticMarkup(createElement(TranscriptView, {
@@ -38,7 +40,7 @@ describe('readable message presentation', () => {
     expect(JSON.stringify(item)).toBe(before);
   });
 
-  it.each(['en', 'id'] as const)('renders all answers as a normal user message with a localized copy action in %s', language => {
+  it.each(['en', 'id'] as const)('groups each question with its answer and a localized clean copy action in %s', language => {
     const text = '<send_user_message_question_reply>' + JSON.stringify([
       { questionItemId: 'q1', question: 'Which workspace?', answer: 'Example' },
       { questionItemId: 'q2', question: 'Which option?', answer: 'Use **the second** option.' },
@@ -49,11 +51,41 @@ describe('readable message presentation', () => {
     expect(html).toContain('<strong>the second</strong>');
     expect(html).toContain(MESSAGES[language].chat.copyMessage);
     expect(html).toContain('class="copy-button ');
-    expect(html).not.toContain('Which workspace?');
-    expect(html).not.toContain('Which option?');
-    expect(html).not.toContain('class="question-label"');
+    expect(html.match(/class="question-answer"/g)).toHaveLength(2);
+    expect(html).toContain('class="question-label" title="Which workspace?" aria-expanded="false"');
+    expect(html).toContain('class="question-label" title="Which option?" aria-expanded="false"');
+    expect(html.indexOf('Which workspace?')).toBeLessThan(html.indexOf('<p>Example</p>'));
+    expect(html.indexOf('Which option?')).toBeLessThan(html.indexOf('<strong>the second</strong>'));
     expect(html).not.toContain('questionItemId');
     expect(html).not.toContain('send_user_message_question_reply');
+  });
+
+  it('copies readable question-answer pairs without source IDs or transport markup', () => {
+    const text = '<send_user_message_question_reply>' + JSON.stringify([
+      { questionItemId: 'q1', question: 'Which workspace?', answer: 'Example' },
+      { questionItemId: 'q2', question: 'Which option?', answer: 'The second option.' },
+    ]) + '</send_user_message_question_reply>';
+    function elements(node: ReactNode): ReturnType<typeof createElement>[] {
+      if (Array.isArray(node)) return node.flatMap(elements);
+      if (!isValidElement<{ children?: ReactNode }>(node)) return [];
+      return [node, ...elements(node.props.children)];
+    }
+    const tree = UserMessage({ t: MESSAGES.en, item: user(text) });
+    const copy = elements(tree).find(element => element.type === CopyButton);
+    expect(copy?.props).toMatchObject({ text: 'Which workspace?\nExample\n\nWhich option?\nThe second option.' });
+  });
+
+  it('keeps a long or unsafe question as escaped plain text with its full accessible title', () => {
+    const question = 'A long question '.repeat(40) + '<script>question()</script>';
+    const text = '<send_user_message_question_reply>' + JSON.stringify([
+      { questionItemId: 'q1', question, answer: '<script>answer()</script> **Ready**.' },
+    ]) + '</send_user_message_question_reply>';
+    const html = render([user(text)]);
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).toContain('title="' + question.replaceAll('<', '&lt;').replaceAll('>', '&gt;') + '"');
+    expect(html).toContain('<strong>Ready</strong>');
+    expect(html).not.toContain('<script>');
+    expect(html).not.toContain('questionItemId');
   });
 
   it('keeps a question reply quoted in a code block as literal user code', () => {

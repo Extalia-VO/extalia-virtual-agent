@@ -4,12 +4,14 @@ interface MonitorOptions {
   getState(): Promise<HostState>;
   onState(state: HostState): void;
   onError(error: unknown): void;
+  /** Only a fresh successful getState confirms that the transport is connected. */
+  onConnected?(): void;
   pollMs?: number;
   timeoutMs?: number;
 }
 
 /** Keep connection status current even when no agent emits events. */
-export function createHostStateMonitor({ getState, onState, onError, pollMs = 5_000, timeoutMs = 8_000 }: MonitorOptions) {
+export function createHostStateMonitor({ getState, onState, onError, onConnected, pollMs = 5_000, timeoutMs = 8_000 }: MonitorOptions) {
   let disposed = false;
   let sequence = 0;
   let pending: { id: number; timer: ReturnType<typeof setTimeout> } | undefined;
@@ -34,6 +36,7 @@ export function createHostStateMonitor({ getState, onState, onError, pollMs = 5_
         if (disposed || pending?.id !== id) return;
         cancelPending();
         onState(next);
+        onConnected?.();
       },
       error => {
         if (disposed || pending?.id !== id) return;

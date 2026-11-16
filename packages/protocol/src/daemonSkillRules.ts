@@ -44,9 +44,9 @@ const origin = def('SkillOrigin', enumeration(SKILL_ORIGINS));
 const riskClass = def('SkillRiskClass', enumeration(SKILL_RISK_CLASSES));
 const permission = def('SkillPermissionEntry', object({ capability: enumeration(SKILL_CAPABILITIES), scope: text(256) }));
 const summary = def('SkillRevisionSummary', object({
-  packageId: packageId.ref, revisionId: revisionId.ref, origin: origin.ref, version: text(128), treeSha256: digest, skillMdSha256: digest,
+  packageId: packageId.ref, revisionId: revisionId.ref, origin: origin.ref, marketplaceSource: optional(boolean), version: text(128), treeSha256: digest, skillMdSha256: digest,
   state: state.ref, stateReason: optional(skillReason.ref), riskClass: riskClass.ref, manifestInferred: boolean, permissionDigest: digest,
-  permissions: array(permission.ref, false, 0, DAEMON_SKILL_LIMITS.permissions), active: boolean, createdAt: timestamp, updatedAt: timestamp,
+  permissions: array(permission.ref, false, 0, DAEMON_SKILL_LIMITS.permissions), active: boolean, activationApprovalId: optional(positive), createdAt: timestamp, updatedAt: timestamp,
 }));
 const file = def('SkillFileEntry', object({ path: skillPath.ref, size: count, sha256: digest, executable: boolean }));
 const inspection = def('SkillInspectionRecord', object({
@@ -66,16 +66,47 @@ const scanner = def('SkillScannerReport', object({
 }));
 const activation = def('SkillActivationResult', object({ packageId: packageId.ref, revisionId: revisionId.ref, approvalId: positive, activatedAt: timestamp, indexGeneration: count }));
 const decision = enumeration(SKILL_REVIEW_DECISIONS);
+const learningIdentity = (max: number) => matching(new RegExp(`^[A-Za-z0-9][A-Za-z0-9._-]{0,${max - 1}}$`), 'expected a bounded learning identity', max);
+const candidateProvenance = object({ profileId: learningIdentity(200), workspaceId: learningIdentity(160), sessionId: learningIdentity(160), promptSha256: digest });
+
+function withRefinementBase(base: Rule): Rule {
+  const fields = ['expectedBaseRevisionId', 'expectedBaseSkillSha256', 'learningProfileId', 'learningWorkspaceId'];
+  return rule((value, path, errors) => {
+    base.check(value, path, errors);
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return;
+    const record = value as Record<string, unknown>;
+    if (fields.some(key => Object.hasOwn(record, key))) {
+      for (const key of fields) if (!Object.hasOwn(record, key)) fail(`${path}.${key}`, 'expected complete refinement base', errors);
+      if (record.origin !== 'generated') fail(`${path}.origin`, 'refinements require generated origin', errors);
+    }
+  }, { ...base.schema, dependentRequired: Object.fromEntries(fields.map(key => [key, fields.filter(other => other !== key)])),
+    allOf: [{ if: { anyOf: fields.map(key => ({ required: [key] })) }, then: { properties: { origin: { const: 'generated' } } } }] });
+}
+
+/** Older daemons omit provenance; a newer reply must send the complete bounded projection. */
+function withImportSources(base: Rule): Rule {
+  const fields = ['sources', 'sourcesTotal', 'sourcesOmitted'];
+  return rule((value, path, errors) => {
+    base.check(value, path, errors);
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return;
+    const record = value as Record<string, unknown>;
+    if (fields.some(key => Object.hasOwn(record, key))) {
+      for (const key of fields) if (!Object.hasOwn(record, key)) fail(`${path}.${key}`, 'expected complete source provenance', errors);
+    }
+  }, { ...base.schema, dependentRequired: Object.fromEntries(fields.map(key => [key, fields.filter(other => other !== key)])) });
+}
 
 export const SKILL_PARAMS: Record<DaemonSkillOp, Rule> = {
   'skill.preflight': skillPreflightParams,
   'skill.routingPreview': skillRoutingParams,
-  'skill.import': object({ origin: enumeration(SKILL_IMPORT_ORIGINS), path: skillPath.ref, sourceRef: optional(text(DAEMON_SKILL_LIMITS.sourceRef)) }),
+  'skill.import': withRefinementBase(object({ origin: enumeration(SKILL_IMPORT_ORIGINS), path: skillPath.ref, sourceRef: optional(text(DAEMON_SKILL_LIMITS.sourceRef)), expectedTreeSha256: optional(digest),
+    expectedBaseRevisionId: optional(revisionId.ref), expectedBaseSkillSha256: optional(digest), learningProfileId: optional(learningIdentity(200)), learningWorkspaceId: optional(learningIdentity(160)) })),
   'skill.list': object({
     cursor: optional(matching(SKILL_LIST_CURSOR_PATTERN, 'expected a cursor from a previous page')),
     limit: optional(number(1, true, DAEMON_SKILL_LIST_MAX_LIMIT)), packageId: optional(packageId.ref),
   }),
   'skill.inspect': object({ revisionId: revisionId.ref, workspaceId: optional(workspaceId.ref) }),
+  'skill.rescan': object({ revisionId: revisionId.ref }),
   'skill.review': object({ revisionId: revisionId.ref, treeSha256: digest, principal: principal.ref, decision, note: optional(multiline(DAEMON_SKILL_LIMITS.note, true)) }),
   'skill.approve': object({
     revisionId: revisionId.ref, treeSha256: digest, permissionDigest: digest, principal: principal.ref, workspaceId: optional(workspaceId.ref), expiresAt: optional(timestamp),
@@ -85,6 +116,7 @@ export const SKILL_PARAMS: Record<DaemonSkillOp, Rule> = {
   'skill.rollback': object({ packageId: packageId.ref, revisionId: revisionId.ref }),
   'skill.revoke': object({ revisionId: revisionId.ref }),
   'skill.read': object({ revisionId: revisionId.ref, path: skillPath.ref }),
+  'skill.reviewRead': object({ revisionId: revisionId.ref, path: skillPath.ref, profileId: learningIdentity(200), workspaceId: learningIdentity(160) }),
   'skill.scanner': object({}),
 };
 export const SKILL_RESULTS: Record<DaemonSkillOp, Rule> = {
@@ -93,15 +125,19 @@ export const SKILL_RESULTS: Record<DaemonSkillOp, Rule> = {
   'skill.import': object({
     packageId: packageId.ref, revisionId: revisionId.ref, treeSha256: digest, version: text(128), state: state.ref, stateReason: optional(skillReason.ref), created: boolean,
   }),
+  'skill.rescan': object({ revisionId: revisionId.ref, packageId: packageId.ref, state: state.ref, stateReason: optional(skillReason.ref) }),
   'skill.list': object({
     revisions: array(summary.ref, false, 0, DAEMON_SKILL_LIST_MAX_LIMIT),
     nextCursor: optional(matching(SKILL_LIST_CURSOR_PATTERN, 'expected a cursor')), indexGeneration: count,
   }),
-  'skill.inspect': object({
+  'skill.inspect': withImportSources(object({
     revision: summary.ref, manifest: text(DAEMON_SKILL_LIMITS.manifest), files: array(file.ref, false, 0, DAEMON_SKILL_LIMITS.files),
+    instructions: optional(multiline(65_536, true)), instructionsUnavailable: optional(boolean),
+    sources: optional(array(object({ origin: enumeration(SKILL_IMPORT_ORIGINS), sourceRef: text(DAEMON_SKILL_LIMITS.sourceRef), recordedAt: timestamp }), false, 0, 20)),
+    sourcesTotal: optional(number(0, true, 256)), sourcesOmitted: optional(number(0, true, 256)),
     inspections: array(inspection.ref, false, 0, DAEMON_SKILL_LIMITS.inspections), approvals: array(approval.ref, false, 0, DAEMON_SKILL_LIMITS.approvals),
     history: array(event.ref, false, 0, DAEMON_SKILL_LIMITS.history), consent: array(consent.ref, false, 0, DAEMON_SKILL_LIMITS.consent),
-  }),
+  })),
   'skill.review': object({ revisionId: revisionId.ref, decision, state: state.ref, stateReason: optional(skillReason.ref), reviewId: optional(positive) }),
   'skill.approve': object({ approvalId: positive, revisionId: revisionId.ref, state: state.ref, expiresAt: timestamp }),
   'skill.activate': activation.ref,
@@ -111,6 +147,11 @@ export const SKILL_RESULTS: Record<DaemonSkillOp, Rule> = {
   'skill.read': object({
     revisionId: revisionId.ref, packageId: packageId.ref, path: skillPath.ref, size: number(0, true, DAEMON_SKILL_READ_MAX_BYTES), sha256: digest,
     content: multiline(DAEMON_SKILL_READ_MAX_BYTES, false),
+  }),
+  'skill.reviewRead': object({
+    revisionId: revisionId.ref, packageId: packageId.ref, path: skillPath.ref, size: number(0, true, 70 * 1024), sha256: digest,
+    content: multiline(70 * 1024, false), skillMdSha256: digest, untrusted: literal(true), reviewReceipt: digest,
+    provenance: candidateProvenance, referencePaths: array(skillPath.ref, true, 0, 4),
   }),
   'skill.scanner': scanner.ref,
 };

@@ -4,7 +4,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { PassThrough } from 'node:stream';
 import type { ExtaliaEvent } from '@extalia/protocol';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   ensureHookToken,
   hookFiles,
@@ -24,11 +24,15 @@ import {
 } from '../src/hooks/http.js';
 import { createHookIngest, type HookIngest } from '../src/hooks/ingest.js';
 import {
+  clearAntigravityBackgroundTasks,
+  hasAntigravityBackgroundTasks,
   normalizeAntigravityHook,
   normalizeClaudeHook,
   normalizeCodexHook,
   normalizeGeminiHook,
   normalizeHermesHook,
+  normalizeHook,
+  hookProtocolEvents,
 } from '../src/hooks/normalize.js';
 import { createAgentHost } from '../src/service.js';
 import { useTempDirs } from './helpers.js';
@@ -491,9 +495,50 @@ describe('HTTP hook ingest (hooks/http.ts & hooks/ingest.ts)', () => {
     await ingest.close();
     expect(await readHookEndpoint(dataDir)).toBeUndefined();
   });
+
+  it.each(['codex', 'claude', 'gemini', 'antigravity', 'hermes'] as const)('admits %s meeting reports only through authenticated ingestion and enforces labels-only', async app => {
+    const dataDirectory = path.join(await temp(), 'data');
+    const received: unknown[] = [];
+    const ingest = await createHookIngest({ dataDirectory, kind: 'desktop', labelsOnly: true, sink: hook => received.push(hook) });
+    const listener = await startTestHookEndpoint((req, res, source) => ingest.handle(req, res, source), ingest);
+    const token = (await readHookToken(dataDirectory))!;
+    const body = JSON.stringify({ session_id: 'meeting-session', hook_event_name: 'report_meeting', tool_input: { phase: 'start', meeting_id: 'meeting-1', participants: ['primary'], room_id: 'meeting-a', topic: 'Private meeting topic' } });
+    try {
+      expect((await listener.request({ app, body, headers: { 'content-type': 'application/json' } })).status).toBe(401);
+      expect(received).toEqual([]);
+      expect((await listener.request({ app, body, headers: { 'content-type': 'application/json', ...(app === 'hermes' ? { 'x-hermes-signature-256': hermesSignature(token, body) } : { authorization: `Bearer ${token}` }) } })).status).toBe(204);
+      expect(received).toMatchObject([{ app, sessionId: 'meeting-session', steps: [{ agentId: 'primary', body: { type: 'meeting.started', meetingId: 'meeting-1', participants: ['primary'], roomId: 'meeting-a' } }] }]);
+      expect(JSON.stringify(received)).not.toContain('Private meeting topic');
+    } finally { await listener.close(); await ingest.close(); }
+  });
 });
 
 describe('normalizers (hooks/normalize.ts)', () => {
+  it.each(['codex', 'claude', 'gemini', 'antigravity', 'hermes'] as const)('maps only explicit meeting reports for %s and removes private content', app => {
+    const start = { phase: 'start', meeting_id: 'meeting-1', participants: ['primary', 'worker-1'], room_id: 'meeting-b', topic: 'api_key=synthetic-meeting-secret' };
+    const normalize = (input: unknown, labelsOnly = false) => normalizeHook(app, { session_id: 'session-1', hook_event_name: 'report_meeting', tool_input: input }, { labelsOnly });
+    expect(normalize(start)?.steps).toMatchObject([{ agentId: 'primary', body: { type: 'meeting.started', meetingId: 'meeting-1', participants: ['primary', 'worker-1'], roomId: 'meeting-b' } }]);
+    expect(normalizeHook(app, { session_id: 'session-1', hook_event_name: 'report_meeting', cwd: '/projects/example', ...start })?.steps).toEqual(normalize(start)?.steps);
+    expect(JSON.stringify(normalize(start))).not.toContain('synthetic-meeting-secret');
+    expect(normalize(start, true)?.steps[0]?.body).toEqual({ type: 'meeting.started', meetingId: 'meeting-1', participants: ['primary', 'worker-1'], roomId: 'meeting-b' });
+    const contribution = { phase: 'contribution', meeting_id: 'meeting-1', agent_id: 'worker-1', round: 2, text: 'A concise proposal.' };
+    const hook = normalize(contribution)!;
+    expect(hook.steps).toEqual([{ agentId: 'worker-1', body: { type: 'meeting.contribution', meetingId: 'meeting-1', round: 2, text: 'A concise proposal.' } }]);
+    expect(hookProtocolEvents(hook, { sessionId: 'observed-1', at: '2026-10-09T00:00:00.000Z', id: i => `event-${i}` })[0]).toMatchObject({ agentId: 'worker-1', source: { runtime: app, channel: 'hook' }, body: { type: 'meeting.contribution' } });
+    expect(normalize(contribution, true)?.steps).toEqual([]);
+    expect(normalize({ phase: 'complete', meeting_id: 'meeting-1', outcome: 'completed', note_path: '/projects/example/private-note.md' }, true)?.steps).toEqual([{ agentId: 'primary', body: { type: 'meeting.completed', meetingId: 'meeting-1', outcome: 'completed' } }]);
+    const prompt = normalizeHook(app, { session_id: 'session-1', hook_event_name: app === 'hermes' ? 'pre_llm_call' : 'UserPromptSubmit', prompt: 'Hold a meeting and save an Obsidian note' });
+    expect(prompt?.steps.some(step => step.body.type.startsWith('meeting.'))).toBe(false);
+    const tool = normalizeHook(app, { session_id: 'session-1', hook_event_name: app === 'hermes' ? 'pre_tool_call' : 'PreToolUse', tool_name: 'write_meeting_note', tool_input: { path: '/projects/example/Obsidian/meeting.md', ...start } });
+    expect(tool?.steps.some(step => step.body.type.startsWith('meeting.'))).toBe(false);
+  });
+
+  it('recognizes the exact namespaced report tool and ignores its post-tool duplicate', () => {
+    const payload = { session_id: 'session-1', tool_name: 'mcp__extalia__report_meeting', tool_input: { phase: 'start', meeting_id: 'meeting-1', participants: ['primary'] } };
+    expect(normalizeCodexHook({ ...payload, hook_event_name: 'PreToolUse' })?.steps[0]?.body.type).toBe('meeting.started');
+    expect(normalizeCodexHook({ ...payload, hook_event_name: 'PostToolUse', tool_response: 'ok' })?.steps).toEqual([]);
+    expect(normalizeCodexHook({ ...payload, tool_name: 'report_meeting_summary', hook_event_name: 'PreToolUse' })?.steps.some(step => step.body.type.startsWith('meeting.'))).toBe(false);
+  });
   it('normalizes SessionStart and UserPromptSubmit/BeforeAgent with title hints', () => {
     // Codex SessionStart
     const start = normalizeCodexHook({
@@ -896,6 +941,53 @@ describe('normalizers (hooks/normalize.ts)', () => {
     });
     expect(hook?.transcriptPath).toBe(`${logs}/transcript.jsonl`);
   });
+
+  it('keeps Antigravity working across Stop when PostToolUse starts a background task until manage_task cancels or clears it', () => {
+    const conv = 'agy-bg-hook-1';
+    clearAntigravityBackgroundTasks(conv);
+    normalizeAntigravityHook({
+      conversationId: conv,
+      hook_event_name: 'PreToolUse',
+      stepIdx: 2,
+      toolCall: { name: 'run_command', args: { CommandLine: 'pnpm check', Cwd: '/projects/demo' } },
+    });
+    const bgPost = normalizeAntigravityHook({
+      conversationId: conv,
+      hook_event_name: 'PostToolUse',
+      stepIdx: 2,
+      toolOutput: 'Tool is running as a background task with task id: agy-bg-hook-1/task-5',
+    });
+    expect(bgPost?.steps.map(s => s.body.type)).toEqual(['agent.state']);
+    expect(bgPost?.steps[0]?.body).toMatchObject({ type: 'agent.state', state: 'working' });
+    expect(hasAntigravityBackgroundTasks(conv)).toBe(true);
+
+    const interimStop = normalizeAntigravityHook({
+      conversationId: conv,
+      hook_event_name: 'Stop',
+    });
+    expect(interimStop?.steps.map(s => s.body.type)).toEqual(['agent.state']);
+    expect(interimStop?.steps[0]?.body).toMatchObject({ type: 'agent.state', state: 'working' });
+
+    normalizeAntigravityHook({
+      conversationId: conv,
+      hook_event_name: 'PreToolUse',
+      stepIdx: 4,
+      toolCall: { name: 'manage_task', args: { Action: 'kill', TaskId: 'agy-bg-hook-1/task-5' } },
+    });
+    const cancelPost = normalizeAntigravityHook({
+      conversationId: conv,
+      hook_event_name: 'PostToolUse',
+      stepIdx: 4,
+      toolOutput: 'Task "agy-bg-hook-1/task-5" cancelled.',
+    });
+    expect(cancelPost?.steps.map(s => s.body.type)).toEqual(['tool.completed', 'tool.completed']);
+    expect(cancelPost?.steps[1]?.body).toMatchObject({ type: 'tool.completed', toolCallId: 'step-2', ok: false });
+    expect(hasAntigravityBackgroundTasks(conv)).toBe(false);
+
+    const finalStop = normalizeAntigravityHook({ conversationId: conv, hook_event_name: 'Stop' });
+    expect(finalStop?.steps.map(s => s.body.type)).toEqual(['turn.completed', 'agent.state']);
+    expect(finalStop?.steps[1]?.body).toEqual({ type: 'agent.state', state: 'idle' });
+  });
 });
 
 describe('end-to-end host + observations hook flow', () => {
@@ -960,6 +1052,14 @@ describe('end-to-end host + observations hook flow', () => {
     state = await runtime.host.getState();
     expect(state.sessions.find(s => s.observation?.nativeSessionId === 'some-other-id')).toBeUndefined();
 
+    // Observation events become visible before their local memory baseline
+    // settles. Reserve its idle notification before submitting the hook.
+    let hookDrained = false;
+    const stopWatchingIdle = runtime.onIdle(() => {
+      if (events.some(event => event.body.type === 'prompt.submitted' && event.body.text === 'Build new feature')) hookDrained = true;
+    });
+    cleanups.push(async () => stopWatchingIdle());
+
     // 2. Real outside hook creates an observed session with hook = true
     const realStatus = await send('claude', {
       session_id: 'claude-outside-session-1',
@@ -986,6 +1086,14 @@ describe('end-to-end host + observations hook flow', () => {
     // Verify events were emitted over host.subscribe
     expect(events.some(e => e.body.type === 'session.started')).toBe(true);
     expect(events.some(e => e.body.type === 'prompt.submitted' && (e.body as { text: string }).text === 'Build new feature')).toBe(true);
+
+    // Finish the accepted hook's persistence/memory ownership before mutating
+    // workspace boundaries; do not retry a production mutation after rejection.
+    await vi.waitFor(() => {
+      expect(hookDrained).toBe(true);
+      expect(runtime.isBusy()).toBe(false);
+    });
+    stopWatchingIdle();
 
     // 3. Extalia-managed Hermes session skipping
     const hermesProjectDir = path.join(root, 'hermes-project');
@@ -1030,9 +1138,15 @@ describe('end-to-end host + observations hook flow', () => {
     await new Promise(resolve => setTimeout(resolve, 50));
 
     state = await runtime.host.getState();
-    const outsideHermesObserved = state.sessions.find(s => s.observation?.nativeSessionId === 'hermes-outside-100');
-    expect(outsideHermesObserved).toBeDefined();
-    expect(outsideHermesObserved?.observation?.hook).toBe(true);
+    expect(state.sessions.find(s => s.observation?.nativeSessionId === 'hermes-outside-100')).toBeUndefined();
+    const outsideStart = events.filter(event => event.body.type === 'session.started' && event.source.runtime === 'hermes' && event.source.channel === 'hook').at(-1);
+    expect(outsideStart).toBeDefined();
+    // Lifecycle metadata is retained but hidden. Actual outside work reveals the same channel.
+    expect(await send('hermes', { session_id: 'hermes-outside-100', hook_event_name: 'pre_tool_call', tool_name: 'read_file', tool_input: { path: '/projects/example/README.md' } })).toBe(204);
+    await vi.waitFor(async () => {
+      state = await runtime.host.getState();
+      expect(state.sessions.find(s => s.observation?.nativeSessionId === 'hermes-outside-100')).toMatchObject({ id: outsideStart!.sessionId, observation: { hook: true } });
+    });
   });
 
   it('links transcript_path when inside a known root and deduplicates transcript vs hook steps', async () => {
@@ -1092,5 +1206,28 @@ describe('end-to-end host + observations hook flow', () => {
     expect(sessionEvents.length).toBeGreaterThan(0);
     expect(sessionEvents.some(e => e.body.type === 'session.started')).toBe(true);
     expect(sessionEvents.some(e => e.body.type === 'tool.started')).toBe(true);
+  });
+});
+
+
+describe('explicit hook effort metadata', () => {
+  it('reads top-level settings and preserves their reporting actor', () => {
+    for (const normalizer of [normalizeCodexHook, normalizeClaudeHook, normalizeGeminiHook]) {
+      const hook = normalizer({ session_id: 'effort-session', hook_event_name: 'UserPromptSubmit', agent_id: 'worker-1', model: 'example-model', reasoning_effort: 'high' });
+      expect(hook).toMatchObject({ effort: 'high', effortReported: true, agentId: 'worker-1', model: 'example-model' });
+    }
+    expect(normalizeCodexHook({ session_id: 'effort-session', hook_event_name: 'SessionStart', effortLevel: 'max' })).toMatchObject({ effort: 'max', effortReported: true });
+  });
+
+  it('marks invalid explicit settings as unknown and ignores nested prose or tool input', () => {
+    for (const effort of ['ultra', 'HIGH', 1, null, { value: 'high' }]) {
+      const hook = normalizeCodexHook({ session_id: 'effort-session', hook_event_name: 'SessionStart', effort });
+      expect(hook?.effortReported).toBe(true);
+      expect(hook?.effort).toBeUndefined();
+    }
+    const hook = normalizeCodexHook({ session_id: 'effort-session', hook_event_name: 'UserPromptSubmit', prompt: 'Use reasoning_effort=high', reasoning: 'private effort max', tool_input: { effort: 'high' } });
+    expect(hook?.effort).toBeUndefined();
+    expect(hook?.effortReported).toBeUndefined();
+    expect(JSON.stringify(hook)).not.toContain('private effort max');
   });
 });

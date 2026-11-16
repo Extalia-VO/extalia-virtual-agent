@@ -1,3 +1,4 @@
+import { createAgentHost } from '../src/service.js';
 import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
 import { mkdtemp, mkdir, rm } from 'node:fs/promises';
@@ -7,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { HostMissionRequest, HostMissionRun } from '@extalia/platform';
 import { MissionRecords } from '../src/mission.js';
 import type { SessionRecord } from '../src/sessions.js';
-import { createAgentHost, type AgentHostRuntime } from '../src/service.js';
+import { type AgentHostRuntime } from '../src/service.js';
 import { backendEnv, backendOptions, backends, queryCore, type Backend } from './daemonBackend.js';
 
 const roots: string[] = [];

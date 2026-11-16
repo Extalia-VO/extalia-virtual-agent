@@ -26,6 +26,8 @@ export interface StepAttachment {
   size: number;
   mimeType?: string;
   data?: string;
+  /** Host-owned private copy reference, never a filesystem path. Filled only after observation admission. */
+  ref?: string;
 }
 
 export type TranscriptFileChange = 'add' | 'update' | 'delete';
@@ -40,8 +42,8 @@ export type TranscriptStep = StepBase & (
   | { type: 'prompt'; text: string; attachments?: StepAttachment[] }
   /** `final` is set only when the source marks the reply as the end of the turn. */
   | { type: 'reply'; text: string; final?: boolean; model?: string }
-  | { type: 'tool.call'; tool: string; callId?: string; target?: string; command?: string; files?: TranscriptFileChangeCandidate[] }
-  | { type: 'tool.result'; callId?: string; tool?: string; ok: boolean; output?: string; files?: TranscriptFileChangeCandidate[]; writesConfirmed?: boolean }
+  | { type: 'tool.call'; tool: string; callId?: string; target?: string; command?: string; files?: TranscriptFileChangeCandidate[]; imagePath?: string }
+  | { type: 'tool.result'; callId?: string; tool?: string; ok: boolean; output?: string; files?: TranscriptFileChangeCandidate[]; writesConfirmed?: boolean; attachments?: StepAttachment[]; imagePath?: string }
   | { type: 'turn.end'; reason?: 'completed' | 'interrupted' }
   /**
    * v0.0.38: a state the source states without a tool call or message: the model
@@ -71,7 +73,7 @@ export interface TranscriptContext {
   compactions: number;
 }
 
-export const STEP_TEXT_LIMIT = 20_000;
+export const STEP_TEXT_LIMIT = 50_000;
 export const STEP_OUTPUT_LIMIT = 4_000;
 const MAX_STEPS = 20_000;
 
@@ -114,7 +116,7 @@ function patchFiles(patch: string): string[] {
 }
 
 const MAX_FILE_CANDIDATES = 200;
-const EDIT_TOOL = /^(?:apply_patch|patch|edit|write|multiedit|write_file|edit_file|replace|write_to_file|notebookedit|str_replace_editor|writefile|editfile|replace_file_content|multi_replace_file_content)$/i;
+const EDIT_TOOL = /^(?:apply_patch|patch|edit|write|multiedit|write_file|edit_file|replace|write_to_file|notebookedit|str_replace_editor|writefile|editfile|replace_file_content|multi_replace_file_content|create_file|update_file|modify_file|save_file)$/i;
 
 export function normalizeWrittenFilePath(value: unknown, cwd?: string): string | undefined {
   if (typeof value !== 'string') return undefined;
@@ -163,17 +165,25 @@ export function extractWrittenFiles(tool: string, input: unknown, response?: unk
     }
   }
   if (!found.length) {
-    const path = [record.file_path, record.filePath, record.absolute_path, record.AbsolutePath, record.TargetFile, record.notebook_path, record.path].find(value => typeof value === 'string' && value.trim());
+    const unquotedRecord: RecordValue = Object.fromEntries(Object.entries(record).map(([key, val]) => [key, unquote(val)]));
+    const path = [unquotedRecord.file_path, unquotedRecord.filePath, unquotedRecord.absolute_path, unquotedRecord.AbsolutePath, unquotedRecord.TargetFile, unquotedRecord.notebook_path, unquotedRecord.path, unquotedRecord.Path].find(value => typeof value === 'string' && value.trim());
     const collectNested = (value: unknown, depth = 0): void => {
       if (depth > 5 || found.length >= MAX_FILE_CANDIDATES) return;
       if (Array.isArray(value)) { for (const item of value.slice(0, MAX_FILE_CANDIDATES)) collectNested(item, depth + 1); return; }
       const item = obj(value);
-      const nestedPath = [item.file_path, item.filePath, item.absolute_path, item.AbsolutePath, item.TargetFile, item.notebook_path, item.path]
+      const nestedPath = [item.file_path, item.filePath, item.absolute_path, item.AbsolutePath, item.TargetFile, item.notebook_path, item.path, item.Path]
+        .map(unquote)
         .find(candidate => typeof candidate === 'string' && candidate.trim());
       if (nestedPath) add(nestedPath);
       for (const [key, child] of Object.entries(item)) if (['edits', 'changes', 'operations'].includes(key)) collectNested(child, depth + 1);
     };
-    if (path) add(path, name.toLowerCase() === 'write_to_file' && record.Overwrite !== true && record.Overwrite !== 'true' ? 'add' : 'update');
+    const lowerName = name.toLowerCase();
+    const isCreateCall = lowerName === 'create_file' || (
+      (lowerName === 'write_to_file' || ((lowerName === 'write_file' || lowerName === 'writefile') && (unquotedRecord.Path !== undefined || unquotedRecord.TargetFile !== undefined))) &&
+      unquotedRecord.Overwrite !== true && unquotedRecord.Overwrite !== 'true' &&
+      unquotedRecord.Append !== true && unquotedRecord.Append !== 'true'
+    );
+    if (path) add(path, isCreateCall ? 'add' : 'update');
     else collectNested(args);
   }
   // Some adapters return structured changed-file lists. Never parse prose or command output for paths.
@@ -250,7 +260,7 @@ export function toolHints(tool: string, input: unknown): { target?: string; comm
   if (command.trim()) return { command: commandHead(command), target: commandHead(command) };
   const patch = str(record.input) || str(record.patch);
   if (patch) { const hints = toolHints(tool, patch); if (hints.target) return hints; }
-  const file = [record.file_path, record.filePath, record.absolute_path, record.AbsolutePath, record.TargetFile, record.notebook_path, record.path, record.dir_path, record.DirectoryPath, record.SearchPath].find(value => typeof value === 'string' && value.trim());
+  const file = [record.file_path, record.filePath, record.absolute_path, record.AbsolutePath, record.TargetFile, record.notebook_path, record.path, record.Path, record.dir_path, record.DirectoryPath, record.SearchPath].find(value => typeof value === 'string' && value.trim());
   if (typeof file === 'string') return { target: fileTarget(file) };
   const url = str(record.url) || str(record.Url);
   const host = /^[a-z][a-z0-9+.-]*:\/\/(?:[^/?#\s@]*@)?([^/?#\s]+)/i.exec(url)?.[1];
@@ -289,7 +299,7 @@ export function statedSuccess(output: unknown, depth = 0, seen = new Set<object>
     return nestedStatus;
   }
   if (typeof value !== 'string') return undefined;
-  const match = /(?:^|\n)(?:Exit code:|Process exited with code)\s*(-?\d+)/.exec(value);
+  const match = /(?:^|\n)[ \t]*(?:Exit code:|(?:The\s+)?(?:Process|Command) exited with code)\s*(-?\d+)/i.exec(value);
   return match ? Number(match[1]) === 0 : undefined;
 }
 
@@ -439,6 +449,60 @@ export function promptAttachments(parts: unknown): StepAttachment[] {
     }
   }
   return out;
+}
+
+/** Explicit tool-result content blocks only. A URL is metadata, never permission to fetch it. */
+export function toolResultAttachments(value: unknown): StepAttachment[] {
+  const out: StepAttachment[] = [];
+  const visit = (input: unknown, depth: number) => {
+    if (depth > 3 || out.length >= MAX_STEP_ATTACHMENTS) return;
+    if (typeof input === 'string') {
+      if (input.length < MAX_INLINE_IMAGE_BYTES * 14 && /^[\s]*[[{]/.test(input)) {
+        try { visit(JSON.parse(input), depth + 1); } catch { /* plain tool output */ }
+      }
+      return;
+    }
+    if (Array.isArray(input)) { for (const part of input.slice(0, 64)) visit(part, depth + 1); return; }
+    const part = record(input), type = text(part.type);
+    if (['image', 'input_image', 'image_url', 'output_image'].includes(type)) {
+      if (type === 'image' && typeof part.data === 'string') {
+        out.push(imageAttachment({ base64: part.data, mimeType: text(part.mimeType ?? part.mime_type), name: text(part.name) || undefined }, out.length));
+      } else out.push(...promptAttachments([type === 'output_image' ? { ...part, type: 'input_image' } : part]).slice(0, MAX_STEP_ATTACHMENTS - out.length));
+      return;
+    }
+    if (part.content !== undefined) visit(part.content, depth + 1);
+    else if (part.output !== undefined) visit(part.output, depth + 1);
+  };
+  visit(value, 0);
+  // Bound aggregate retained base64 as well as each image; metadata remains available.
+  let retained = 0;
+  return out.map(file => {
+    if (!file.data) return file;
+    retained += file.size;
+    if (retained <= MAX_INLINE_IMAGE_BYTES * 2) return file;
+    const { data: _data, ...metadata } = file;
+    return metadata;
+  });
+}
+
+/** Text accompanying explicit image content, never its image bytes or remote URL. */
+export function toolImageOutputText(value: unknown): string {
+  const parts: string[] = [];
+  const visit = (input: unknown, depth: number) => {
+    if (depth > 4 || parts.length >= 64) return;
+    if (typeof input === 'string') {
+      if (/^[\s]*[[{]/.test(input)) { try { visit(JSON.parse(input), depth + 1); return; } catch { /* text */ } }
+      parts.push(input.replace(/data:image\/[^;,\s]+;base64,[A-Za-z0-9+/=\s]+/g, '[image omitted]')); return;
+    }
+    if (Array.isArray(input)) { input.slice(0, 64).forEach(part => visit(part, depth + 1)); return; }
+    const part = record(input);
+    if (['image', 'input_image', 'image_url', 'output_image'].includes(text(part.type))) return;
+    if (typeof part.text === 'string') visit(part.text, depth + 1);
+    else if (part.content !== undefined) visit(part.content, depth + 1);
+    else if (part.output !== undefined) visit(part.output, depth + 1);
+  };
+  visit(value, 0);
+  return parts.join('\n').slice(0, STEP_OUTPUT_LIMIT);
 }
 
 /** Codex `user_message` events list pasted images as `data:` URLs and attached files as local paths. */

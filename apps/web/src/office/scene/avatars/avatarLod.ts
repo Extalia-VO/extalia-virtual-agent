@@ -38,8 +38,20 @@ export function lodTier(pixels: number, previous: LodTier): LodTier {
   return 2;
 }
 
-export interface LodState { tier: LodTier; frame: number; pending: number }
-export const createLodState = (): LodState => ({ tier: 0, frame: 0, pending: 0 });
+export interface LodState { tier: LodTier; frame: number; pending: number; visible: boolean }
+export const createLodState = (): LodState => ({ tier: 0, frame: 0, pending: 0, visible: false });
+
+/** Hidden floors still simulate movement, but their rigs need no visual pose work. */
+export function beginAvatarPose(state: LodState, root: Object3D | null): boolean {
+  let visible = root !== null;
+  for (let ancestor = root; ancestor && visible; ancestor = ancestor.parent) visible = ancestor.visible;
+  if (!visible) { state.visible = false; state.pending = 0; return false; }
+  // The first revealed frame must show the current pose at every detail tier.
+  // Only this rendered frame's delta belongs to it, never the hidden interval.
+  if (!state.visible) { state.frame = 59; state.pending = 0; }
+  state.visible = true;
+  return true;
+}
 
 /**
  * Advance one rendered frame. Returns the time step to pose with this frame

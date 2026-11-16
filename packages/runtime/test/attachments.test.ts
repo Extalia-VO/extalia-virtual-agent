@@ -1,10 +1,8 @@
+import { createProvider, toChatMessages } from '../src/index.js';
 import type { SessionPermissionMode, WorkspacePermissions } from '@extalia/core';
 import type { EventBody } from '@extalia/protocol';
 import { describe, expect, it } from 'vitest';
-import {
-  TEXT_INLINE_LIMIT, composeTurn, createProvider, decide, offersAccess, runTurn, toAnthropicMessages, toChatMessages,
-  type AnyTool, type FetchLike, type ModelMessage, type ModelProvider, type ModelRequest, type ModelResult, type ToolAccess, type TurnAttachment,
-} from '../src/index.js';
+import { TEXT_INLINE_LIMIT, composeTurn, decide, offersAccess, runTurn, toAnthropicMessages, type AnyTool, type FetchLike, type ModelMessage, type ModelProvider, type ModelRequest, type ModelResult, type ToolAccess, type TurnAttachment } from '../src/index.js';
 
 const PNG_BASE64 = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]).toString('base64');
 const image: TurnAttachment = { name: 'shot.png', mimeType: 'image/png', kind: 'image', size: 11, data: PNG_BASE64 };

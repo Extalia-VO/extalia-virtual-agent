@@ -92,14 +92,19 @@ export function transcriptEvents(input: ObservedTranscript): ExtaliaEvent[] {
   };
   add({ type: 'session.started', control: 'observed', title: input.title || 'Observed session', ...(input.cwd ? { cwd: input.cwd } : {}) }, input.createdAt, ['session.started'], undefined, false);
 
-  const calls = new Map<string, Call>();
+  const calls = new Map<string, { agentId: string; call: Call }>();
   const callKey = (agentId: string, callId: string) => JSON.stringify([agentId, callId]);
-  const open = new Map<string, { model?: string; lastStep?: 'prompt' | 'reply' | 'tool.call' | 'tool.result' | 'status'; lastPos?: string; lastAt?: string }>();
+  const open = new Map<string, { model?: string; lastStep?: 'prompt' | 'reply' | 'tool.call' | 'tool.result' | 'status'; lastPos?: string; lastAt?: string; openCallIds: Set<string>; unkeyedTools: number }>();
   // A closed turn leaves its agent idle; `phase` tells an interrupted or failed turn from a finished one,
   // and v0.0.43 `reason` why a failed one stopped (out of quota, rate limited, signed out, …) when the source says.
   const close = (agentId: string, at: string, pos: string, slot: string, phase?: 'interrupted' | 'error', reason?: StopReason) => {
     const turn = open.get(agentId);
     open.delete(agentId);
+    if (slot !== 'before') {
+      for (const [key, entry] of calls.entries()) {
+        if (entry.agentId === agentId) calls.delete(key);
+      }
+    }
     const why = phase === 'error' && reason ? { reason } : {};
     if (turn) {
       add(phase === 'error' ? { type: 'turn.failed', error: reason ? STOP_REASON_TEXT[reason] : 'The turn failed.', ...why } : { type: 'turn.completed', ...(turn.model ? { model: turn.model } : {}) }, at, [pos, slot, 'turn'], agentId);
@@ -147,19 +152,19 @@ export function transcriptEvents(input: ObservedTranscript): ExtaliaEvent[] {
         close(agentId, at, step.pos, 'before');
         if (!input.labelsOnly) {
           const attachments = (step.attachments ?? []).slice(0, 10).map(file => {
-            const ref = file.data && file.mimeType ? input.keepAttachment?.(file.data, file.mimeType) : undefined;
+            const ref = file.ref ?? (file.data && file.mimeType ? input.keepAttachment?.(file.data, file.mimeType) : undefined);
             return { name: file.name, kind: file.kind, size: file.size, ...(ref ? { ref } : {}) };
           });
           add({ type: 'prompt.submitted', text: step.text, via: 'native', ...(attachments.length ? { attachments } : {}) }, at, [step.pos, 'prompt'], agentId);
         }
         add({ type: 'agent.state', state: 'thinking' }, at, [step.pos, 'thinking'], agentId);
-        open.set(agentId, { lastStep: 'prompt', lastPos: step.pos, lastAt: at });
+        open.set(agentId, { lastStep: 'prompt', lastPos: step.pos, lastAt: at, openCallIds: new Set(), unkeyedTools: 0 });
         break;
       case 'reply': {
         if (!input.labelsOnly) {
           add({ type: 'model.completed', text: step.text, ...(step.model ? { model: step.model } : {}) }, at, [step.pos, 'reply'], agentId);
         }
-        const turn = open.get(agentId) ?? {};
+        const turn = open.get(agentId) ?? { openCallIds: new Set<string>(), unkeyedTools: 0 };
         if (step.model) turn.model = step.model;
         turn.lastStep = 'reply';
         turn.lastPos = step.pos;
@@ -170,8 +175,9 @@ export function transcriptEvents(input: ObservedTranscript): ExtaliaEvent[] {
       }
       case 'tool.call': {
         const call = describe(step);
-        if (step.callId) calls.set(callKey(agentId, step.callId), { ...call, ...(step.files ? { files: step.files } : {}) });
-        const turn = open.get(agentId) ?? {};
+        if (step.callId) calls.set(callKey(agentId, step.callId), { agentId, call: { ...call, ...(step.files ? { files: step.files } : {}) } });
+        const turn = open.get(agentId) ?? { openCallIds: new Set<string>(), unkeyedTools: 0 };
+        if (step.callId) turn.openCallIds.add(step.callId); else turn.unkeyedTools++;
         turn.lastStep = 'tool.call';
         turn.lastPos = step.pos;
         turn.lastAt = at;
@@ -181,13 +187,23 @@ export function transcriptEvents(input: ObservedTranscript): ExtaliaEvent[] {
         break;
       }
       case 'tool.result': {
-        const call: Call = (step.callId ? calls.get(callKey(agentId, step.callId)) : undefined) ?? (() => { const tool = step.tool || 'tool'; const classified = classifyTool(tool); return { tool, kind: classified.kind, label: classified.label }; })();
+        const call: Call = (step.callId ? calls.get(callKey(agentId, step.callId))?.call : undefined) ?? (() => { const tool = step.tool || 'tool'; const classified = classifyTool(tool); return { tool, kind: classified.kind, label: classified.label }; })();
         const output = !input.labelsOnly && step.output ? step.output.slice(0, OUTPUT_LIMIT) : undefined;
+        const attachments = !input.labelsOnly && step.ok ? (step.attachments ?? []).slice(0, 10).map(file => {
+          const ref = file.ref ?? (file.data && file.mimeType ? input.keepAttachment?.(file.data, file.mimeType) : undefined);
+          return { name: file.name, kind: file.kind, size: file.size, ...(ref ? { ref } : {}) };
+        }) : [];
         const turn = open.get(agentId);
-        if (turn) { turn.lastStep = 'tool.result'; turn.lastPos = step.pos; turn.lastAt = at; }
+        if (turn) {
+          turn.lastStep = 'tool.result';
+          turn.lastPos = step.pos;
+          turn.lastAt = at;
+          if (step.callId) turn.openCallIds.delete(step.callId);
+          else if (turn.unkeyedTools > 0) turn.unkeyedTools--;
+        }
         add({
           type: 'tool.completed', ...(step.callId ? { toolCallId: step.callId } : {}), tool: call.tool, kind: call.kind, label: call.label, ok: step.ok,
-          ...(call.target ? { target: call.target } : {}), ...(output ? { output } : {}),
+          ...(call.target ? { target: call.target } : {}), ...(output ? { output } : {}), ...(attachments.length ? { attachments } : {}),
         }, at, [step.pos, 'tool.completed'], agentId);
         // Calls alone are proposals. Only their successful result confirms candidate writes.
         if (step.ok && step.writesConfirmed !== false) {
@@ -219,7 +235,7 @@ export function transcriptEvents(input: ObservedTranscript): ExtaliaEvent[] {
   // Settle trailing replies from sources that do not emit an explicit final marker.
   if (input.nowMs !== undefined) {
     for (const [agentId, turn] of [...open.entries()]) {
-      if (turn.lastStep === 'reply' && turn.lastPos && turn.lastAt) {
+      if (turn.lastStep === 'reply' && turn.lastPos && turn.lastAt && turn.openCallIds.size === 0 && turn.unkeyedTools === 0) {
         const replyMs = Date.parse(turn.lastAt);
         if (Number.isFinite(replyMs) && input.nowMs - replyMs >= IDLE_REPLY_SETTLE_MS) {
           close(agentId, turn.lastAt, turn.lastPos, 'settled');

@@ -1,0 +1,116 @@
+{
+  "version": "0.4.246",
+  "fixture": "Fresh mock ready + observed sessions; 1366x900 CSS viewport; no real profile or provider",
+  "developmentMovementTrace": {
+    "trace": [
+      {
+        "atMs": 3122.4000000059605,
+        "count": 2,
+        "added": 2,
+        "removed": 0,
+        "deferredPortraits": 15
+      },
+      {
+        "atMs": 4818.20000000298,
+        "count": 4,
+        "added": 2,
+        "removed": 0,
+        "deferredPortraits": 12
+      },
+      {
+        "atMs": 5912.9000000059605,
+        "count": 6,
+        "added": 2,
+        "removed": 0,
+        "deferredPortraits": 9
+      },
+      {
+        "atMs": 6992.20000000298,
+        "count": 8,
+        "added": 2,
+        "removed": 0,
+        "deferredPortraits": 6
+      },
+      {
+        "atMs": 11898,
+        "count": 10,
+        "added": 2,
+        "removed": 0,
+        "deferredPortraits": 4
+      },
+      {
+        "atMs": 12586,
+        "count": 12,
+        "added": 2,
+        "removed": 0,
+        "deferredPortraits": 2
+      },
+      {
+        "atMs": 14349.30000000447,
+        "count": 13,
+        "added": 1,
+        "removed": 0,
+        "deferredPortraits": 0
+      }
+    ],
+    "unadmittedPortraits": 0,
+    "finalCount": 13,
+    "deferredPortraits": 0,
+    "pageErrors": []
+  },
+  "productionReactPortraitAdmissionTrace": {
+    "trace": [
+      {
+        "atMs": 1871.1999999955297,
+        "count": 2,
+        "added": 2,
+        "removed": 0
+      },
+      {
+        "atMs": 3474.5,
+        "count": 4,
+        "added": 2,
+        "removed": 0
+      },
+      {
+        "atMs": 4707,
+        "count": 6,
+        "added": 2,
+        "removed": 0
+      },
+      {
+        "atMs": 8090.39999999851,
+        "count": 8,
+        "added": 2,
+        "removed": 0
+      },
+      {
+        "atMs": 8736.5,
+        "count": 10,
+        "added": 2,
+        "removed": 0
+      },
+      {
+        "atMs": 11351.89999999851,
+        "count": 12,
+        "added": 2,
+        "removed": 0
+      },
+      {
+        "atMs": 11910.29999999702,
+        "count": 13,
+        "added": 1,
+        "removed": 0
+      }
+    ],
+    "deferredPortraits": 0,
+    "pageErrors": [],
+    "consoleErrors": []
+  },
+  "limits": [
+    "Observed RAF snapshots can lag actual admission times during shader/loading stalls; these timestamps do not certify minimum display intervals.",
+    "Movement policy timing, 8/32-member cases, portal blocking and cancellation are verified by deterministic movement tests.",
+    "Development trace asserts page exceptions and scene roster; production trace additionally asserts no console errors.",
+    "This verifies staged visual construction, not lower eventual model count, whole-app memory or faster agent execution."
+  ]
+}

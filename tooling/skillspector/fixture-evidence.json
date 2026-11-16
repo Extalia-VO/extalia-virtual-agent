@@ -1,0 +1,114 @@
+{
+  "schema_version": 1,
+  "date": "2026-11-09",
+  "scanner_version": "2.13.4",
+  "source_commit": "54824463814a0be01360792523ec7245a69190fc",
+  "runtime_version": "3.13.18",
+  "platform": "macos-aarch64",
+  "manifest_sha256": "fbe8a72f86e0a5985c1738cdd4d949890c5ab0d9a4dc9004adaed912609a17c9",
+  "license_sha256": "9f8785b47596b2993a17a3fa8d747ae63126a2c5e80a9e77195a907273d71839",
+  "mode": "static-only, no credentials, Python network/process audit denial; native OS sandbox is outside this probe and requires separate daemon verification",
+  "observations": [
+    {
+      "fixture": "benign",
+      "code": 0,
+      "signal": null,
+      "elapsed_ms": 3337,
+      "peak_rss_kib_sampled_100ms": 202240,
+      "stderr_empty": true,
+      "result": {
+        "schema_version": 1,
+        "scanner_version": "2.13.4",
+        "source_commit": "54824463814a0be01360792523ec7245a69190fc",
+        "normalizer_version": "extalia-skillspector-v1",
+        "revision_id": "skr_1111111111111111111111111111111111111111111111111111111111111111",
+        "tree_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "policy_version": "skill-policy-v1",
+        "outcome": "completed",
+        "severity": "none",
+        "coverage": "complete",
+        "issue_count": 0
+      }
+    },
+    {
+      "fixture": "malicious",
+      "code": 0,
+      "signal": null,
+      "elapsed_ms": 3253,
+      "peak_rss_kib_sampled_100ms": 201680,
+      "stderr_empty": true,
+      "result": {
+        "schema_version": 1,
+        "scanner_version": "2.13.4",
+        "source_commit": "54824463814a0be01360792523ec7245a69190fc",
+        "normalizer_version": "extalia-skillspector-v1",
+        "revision_id": "skr_1111111111111111111111111111111111111111111111111111111111111111",
+        "tree_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "policy_version": "skill-policy-v1",
+        "outcome": "completed",
+        "severity": "high",
+        "coverage": "complete",
+        "issue_count": 2
+      }
+    },
+    {
+      "fixture": "malformed",
+      "code": 0,
+      "signal": null,
+      "elapsed_ms": 3292,
+      "peak_rss_kib_sampled_100ms": 201296,
+      "stderr_empty": true,
+      "result": {
+        "schema_version": 1,
+        "scanner_version": "2.13.4",
+        "source_commit": "54824463814a0be01360792523ec7245a69190fc",
+        "normalizer_version": "extalia-skillspector-v1",
+        "revision_id": "skr_1111111111111111111111111111111111111111111111111111111111111111",
+        "tree_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "policy_version": "skill-policy-v1",
+        "outcome": "incomplete",
+        "severity": "none",
+        "coverage": "partial",
+        "issue_count": 0
+      }
+    },
+    {
+      "fixture": "offline-dependency",
+      "code": 0,
+      "signal": null,
+      "elapsed_ms": 3322,
+      "peak_rss_kib_sampled_100ms": 204528,
+      "stderr_empty": true,
+      "result": {
+        "schema_version": 1,
+        "scanner_version": "2.13.4",
+        "source_commit": "54824463814a0be01360792523ec7245a69190fc",
+        "normalizer_version": "extalia-skillspector-v1",
+        "revision_id": "skr_1111111111111111111111111111111111111111111111111111111111111111",
+        "tree_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "policy_version": "skill-policy-v1",
+        "outcome": "incomplete",
+        "severity": "low",
+        "coverage": "partial",
+        "issue_count": 1
+      }
+    }
+  ],
+  "oversize_observation": {
+    "bytes": 12000080,
+    "signal": "SIGXCPU",
+    "cpu_limit_seconds": 30,
+    "usable_attestation": false
+  },
+  "previous_functional_bundle_manifest_sha256": "f7209b275a58586fa4e801d4a2e7d8227d01288507226402dd526402f926b81d",
+  "reproducibility": {
+    "independent_offline_builds": 2,
+    "different_absolute_output_paths": true,
+    "identical_manifest_and_payload_hashes": true,
+    "file_count": 12315,
+    "payload_bytes": 213679956,
+    "signed_native_files": 49,
+    "unused_console_entrypoints_removed": 15
+  },
+  "portable_final_fixture_results_match": true
+}

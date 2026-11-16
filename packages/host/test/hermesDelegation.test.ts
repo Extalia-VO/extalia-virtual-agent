@@ -1,3 +1,4 @@
+import { createAgentHost } from '../src/service.js';
 import { assertHermesTeamCapacity, type AgentTeam } from '@extalia/core';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -5,7 +6,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { hermesDelegationLimits } from '../src/hermesDelegation.js';
 import type * as HermesDelegationModule from '../src/hermesDelegation.js';
 import { hermesEnvironment } from '../src/hermes.js';
-import { createAgentHost, type AgentHostRuntime } from '../src/service.js';
+import { type AgentHostRuntime } from '../src/service.js';
+import { mockModelDiscovery } from './modelDiscoveryFixture.js';
 import { useTempDirs } from './helpers.js';
 
 const tempDir = useTempDirs();
@@ -79,7 +81,8 @@ describe('selected Hermes profile delegation limits', () => {
     const { env, home, root } = await fixture({ 'config.yaml': 'delegation: { oneshot_max_children: 6, model: vendor/default-worker }\n', '.env': 'DELEGATION_MAX_CONCURRENT_CHILDREN=8\n', 'profiles/lab/config.yaml': 'model: vendor/lab-lead\n' });
     expect(await hermesDelegationLimits(env, home, 'lab')).toMatchObject({ profile: 'lab', oneshotMaxChildren: 2, maxConcurrentChildren: 10, workerModel: 'vendor/lab-lead' });
     const selected = { ...env, HERMES_HOME: path.join(root, 'profiles', 'lab') };
-    expect(await hermesDelegationLimits(selected, home, 'default')).toMatchObject({ maxTeamMembers: 6, workerModel: 'vendor/default-worker' });
+    // An explicit profile-valued home remains selected for the environment default.
+    expect(await hermesDelegationLimits(selected, home, 'default')).toMatchObject({ maxTeamMembers: 2, workerModel: 'vendor/lab-lead' });
     expect(await hermesDelegationLimits(selected, home, 'lab')).toMatchObject({ maxTeamMembers: 2, workerModel: 'vendor/lab-lead' });
   });
 
@@ -147,7 +150,7 @@ async function setup() {
   await mkdir(project);
   const requests: string[] = [];
   const runtime = await createAgentHost({ kind: 'bridge', version: '0.0.0-test', dataDirectory: path.join(context.home, 'data'), importHome: context.home,
-    env: { ...context.env, EXTALIA_SECRET_STORE: 'memory', PATH: '' }, fetch: async input => { requests.push(String(input)); throw new Error('Unexpected model request'); } });
+    env: { ...context.env, EXTALIA_SECRET_STORE: 'memory', PATH: '' }, fetch: async input => { requests.push(String(input)); throw new Error('Unexpected model request'); }, modelDiscovery: mockModelDiscovery(async input => { requests.push(String(input)); throw new Error('Unexpected model request'); }) });
   runtimes.push(runtime);
   const state = await runtime.host.saveWorkspace({ name: 'Project', projectLocation: project, runtimeId: 'hermes', runtimeProfileId: 'default', permissions: { fileWrite: 'ask', commands: 'ask' } });
   return { ...context, host: runtime.host, workspace: state.workspaces[0]!, project, requests };

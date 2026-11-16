@@ -202,6 +202,25 @@ describe('startBridge', () => {
     expect(await running).toBe(0);
   });
 
+  it('honours terminal stop during update drain instead of launching a replacement service', async () => {
+    let finishDrain!: () => void;
+    const draining = new Promise<void>(resolve => { finishDrain = resolve; });
+    const running = startBridge({ port: 0, open: false, updateCheck: false }, deps({
+      updater: fakeUpdater('available'), token: TOKEN,
+      createAgentHost: async () => ({ ...runtime, close: async () => { closed++; await draining; } }),
+    }));
+    try {
+      const port = await bridgePort();
+      expect((await post(port, '/api/update/install', TOKEN)).status).toBe(200);
+      await expect.poll(() => closed).toBe(1);
+      signals.emit('SIGINT');
+    } finally { finishDrain(); }
+    expect(await running).toBe(0);
+    expect(spawned).toEqual([]);
+    expect(closed).toBe(1);
+    expect(signals.count('SIGINT') + signals.count('SIGTERM')).toBe(0);
+  });
+
   it('refuses installs while agents work and restarts only after they finish', async () => {
     const updater = fakeUpdater('available');
     const running = startBridge({ port: 0, open: false, updateCheck: false }, deps({ updater, token: TOKEN }));

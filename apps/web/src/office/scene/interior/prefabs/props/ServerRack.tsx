@@ -1,6 +1,6 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
-import { MeshStandardMaterial } from "three";
+import { MeshStandardMaterial, type Group } from "three";
 import { InteriorPart } from "../../InteriorPart";
 
 const SERVER_BAYS = Array.from({ length: 7 }, (_, index) => -0.76 + index * 0.25);
@@ -13,17 +13,26 @@ export function ServerRack({
   position?: [number, number, number];
   rotationY?: number;
 }) {
+  const rootRef = useRef<Group>(null);
+  const nextTick = useRef(0);
   const leds = useMemo(() => SERVER_BAYS.map((_, index) => new MeshStandardMaterial({
     name: "Server LED", color: index % 3 === 0 ? "#39d98a" : "#39b8d8",
     emissive: index % 3 === 0 ? "#1cba6a" : "#137fa8", emissiveIntensity: 0.65, toneMapped: false
   })), []);
   const motionPreference = useMemo(() => typeof matchMedia === "undefined" ? null : matchMedia("(prefers-reduced-motion: reduce)"), []);
   useEffect(() => () => leds.forEach(material => material.dispose()), [leds]);
-  useFrame(({ clock }) => leds.forEach((material, index) => {
-    material.emissiveIntensity = motionPreference?.matches ? 0.65 : 0.45 + (Math.sin(clock.elapsedTime * (2.7 + index * 0.23) + index * 1.9) > 0.1 ? 0.7 : 0.08);
-  }));
+  useFrame(({ clock }) => {
+    if (motionPreference?.matches || clock.elapsedTime < nextTick.current) return;
+    for (let node: { visible: boolean; parent: typeof node } | null = rootRef.current; node; node = node.parent) {
+      if (!node.visible) return;
+    }
+    nextTick.current = clock.elapsedTime + 0.1;
+    leds.forEach((material, index) => {
+      material.emissiveIntensity = 0.45 + (Math.sin(clock.elapsedTime * (2.7 + index * 0.23) + index * 1.9) > 0.1 ? 0.7 : 0.08);
+    });
+  });
   return (
-    <group position={position} rotation-y={rotationY} name="server-rack">
+    <group ref={rootRef} position={position} rotation-y={rotationY} name="server-rack">
       <group position={[0, 1.09, 0]}>
       <InteriorPart model="server-rack" position={[0, -1.09, 0]}>
       <group position={[0, 1.09, 0]}>

@@ -5,12 +5,15 @@ import type { OfficeAgent } from '../presence';
 import type { FurnishedOfficeView } from './FurnishedFloors';
 import type { OfficeAgentAllocation } from './interior/seating';
 import { bubbleCharacters, quietCharacters, selectBubbles, trackArrivals } from './bubbles';
-import { semanticBubble } from '../semanticBubble';
+import { semanticCategory, semanticPhrase } from '../semanticBubble';
 import { MESSAGES, type Language } from '../../i18n';
-import { Icon } from '../../ui/Icon';
+import { ActivityBubble, CharacterCalloutBubble } from '../overlay/ActivityBubble';
 import { LiveAnchor } from './movement/LiveAnchor';
 import type { CharacterPositionSource } from './movement/positionStore';
 import { characterCallouts, type CalloutStore } from './callouts';
+
+const subscribeNothing = () => () => {};
+const noVersion = () => 0;
 
 /**
  * Live speech/activity anchored to source characters (at their live position when walking). History does not replay on mount.
@@ -24,6 +27,10 @@ export function CharacterBubbles({ activities, agents, allocations, view, select
   callouts?: CalloutStore;
 }) {
   useSyncExternalStore(callouts.subscribe, callouts.version);
+  useSyncExternalStore(positions?.subscribe ?? subscribeNothing, positions?.version ?? noVersion);
+  // A queued character has a reserved seat but no rendered body yet. Do not
+  // anchor its activity or quick reply to an empty desk while admission waits.
+  const admitted = positions ? allocations.filter(seat => positions.position(seat.agentId) !== undefined) : allocations;
   const [now, setNow] = useState(() => Date.now());
   const [arrivals, setArrivals] = useState<ReadonlyMap<string, number>>(() => trackArrivals(undefined, activities, Date.now()));
   useEffect(() => {
@@ -41,7 +48,7 @@ export function CharacterBubbles({ activities, agents, allocations, view, select
     return () => clearInterval(timer);
   }, [activities.length, hasActiveAgent]);
   // Characters on the stairs or in an elevator count for the floor they are on now.
-  const floors = positions ? allocations.map(seat => ({ agentId: seat.agentId, floor: positions.floor(seat.agentId) ?? seat.floor })) : allocations;
+  const floors = positions ? admitted.map(seat => ({ agentId: seat.agentId, floor: positions.floor(seat.agentId) ?? seat.floor })) : admitted;
   const bubbles = selectBubbles({
     activities,
     arrivals,
@@ -53,7 +60,7 @@ export function CharacterBubbles({ activities, agents, allocations, view, select
     fadeMs: reducedMotion ? 0 : 380,
   });
   const t = MESSAGES[language];
-  return <group>{allocations.map(seat => {
+  return <group>{admitted.map(seat => {
     const name = agents.find(agent => agent.id === seat.agentId)?.displayName;
     // Above a standing head while walking, above a seated one at the desk.
     const height = positions?.moving(seat.agentId) ? 2.1 : 1.75;
@@ -61,19 +68,18 @@ export function CharacterBubbles({ activities, agents, allocations, view, select
     const callout = callouts.current(seat.agentId);
     if (callout) return <LiveAnchor key={seat.agentId} source={positions} id={seat.agentId} fallback={seat.position}>
       <Html position={[0, height, 0]} center zIndexRange={[19, 13]} style={{ pointerEvents: 'none' }}>
-        <div key={callout.key} className={`office-character-callout ${reducedMotion ? 'reduced' : ''}`} role="status" aria-label={name ? `${name}: ${callout.text}` : callout.text}>
-          <span>{callout.text}</span>
-        </div>
+        <CharacterCalloutBubble key={callout.key} text={callout.text} variation={callout.key}
+          name={name} reducedMotion={reducedMotion} />
       </Html>
     </LiveAnchor>;
     const bubble = bubbles.get(seat.agentId);
-    const phrase = bubble && semanticBubble(bubble.activity, t);
-    if (!bubble || !phrase) return null;
+    const category = bubble && semanticCategory(bubble.activity);
+    if (!bubble || !category) return null;
+    const phrase = semanticPhrase(category, t);
     return <LiveAnchor key={seat.agentId} source={positions} id={seat.agentId} fallback={seat.position}>
       <Html position={[0, height, 0]} center zIndexRange={[18, 12]} style={{ pointerEvents: 'none' }}>
-        <div className={`office-character-bubble tone-${bubble.tone} ${bubble.fading ? 'fading' : ''}`} aria-label={name}>
-          {bubble.icon && <Icon name={bubble.icon} />}<span>{phrase}</span>
-        </div>
+        <ActivityBubble phrase={phrase} category={category} tone={bubble.tone} icon={bubble.icon}
+          name={name} fading={bubble.fading} reducedMotion={reducedMotion} />
       </Html>
     </LiveAnchor>;
   })}</group>;

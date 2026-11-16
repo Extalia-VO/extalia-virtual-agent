@@ -6,8 +6,8 @@ import type { Messages } from '../i18n';
 import { Icon } from '../ui/Icon';
 
 /** Browse folders on the host; browser directory handles cannot reveal host paths. */
-export function DirectoryBrowser({ t, agents, startPath, onSelect, onClose }: {
-  t: Messages; agents: AgentHostApi; startPath?: string;
+export function DirectoryBrowser({ t, agents, startPath, title, onSelect, onClose }: {
+  t: Messages; agents: AgentHostApi; startPath?: string; title?: string;
   onSelect(path: string): void; onClose(): void;
 }) {
   const id = useId();
@@ -46,7 +46,7 @@ export function DirectoryBrowser({ t, agents, startPath, onSelect, onClose }: {
     onCancel={event => { event.preventDefault(); onClose(); }}
     onClick={event => { if (event.target === event.currentTarget) onClose(); }}>
     <div className="folder-browser-body">
-      <div className="section-head"><h2 id={`${id}-title`}>{t.workspace.browser.title}</h2>
+      <div className="section-head"><h2 id={`${id}-title`}>{title ?? t.workspace.browser.title}</h2>
         <button type="button" className="icon-button" onClick={onClose} aria-label={t.common.close}><Icon name="close" /></button></div>
       <p className="muted small">{t.workspace.browser.lead}</p>
       <div className="row-actions">

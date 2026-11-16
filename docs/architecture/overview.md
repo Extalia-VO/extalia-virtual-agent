@@ -24,6 +24,24 @@ Two rules protect this structure (PRD §47):
 - **Personal setups are configuration, not code.** Names, rosters, rooms and
   integrations are user data. Core never special-cases them.
 
+Reusable [agent operating profiles](../adr/0083-team-and-individual-operating-profiles.md)
+provide workspace defaults for purpose, personality, models and team members.
+The host resolves these defaults into a session snapshot; Native runtime code
+uses bounded guidance, while UI code only edits and presents the settings.
+Operating profiles are separate from display preferences, Knowledge vault
+profiles and storage namespaces. They grant no file, memory or skill access.
+
+[Native session project roots](../adr/0085-native-session-project-roots.md) let a saved
+conversation choose its relative-path base among registered workspace folders.
+Same-workspace drag/drop retains existing grants and history; transfers between
+workspaces use the reviewed settings flow. Workspace memory and vault scope stay
+unchanged by a folder selection.
+
+[Native skill learning](../adr/0086-native-user-skill-learning-sources.md) uses
+profile-owned automatic curation and explicit current-message learning requests,
+without a prompt checkbox. Bounded Rust source reads supply untrusted evidence;
+generated user candidates remain separate from built-ins and activation consent.
+
 ## Repository layout
 
 ```text
@@ -56,10 +74,55 @@ it never launches a separate agent host or connects directly to a provider.
 The campus and furnished floors are adapted from the existing Virtual Office.
 New visual improvements belong in this repository; see
 [Office development](../design/office-development.md). Per-character
-appearance is saved in the host and shared by Web and Desktop; avatar walking and
-navigation remain later scene milestones.
+appearance is saved in the host and shared by Web and Desktop. Avatar walking,
+door/chair interaction and cross-floor navigation have implemented paths;
+remaining crowd/performance acceptance is listed in the
+[Office module](../modules/office.md).
 
-Native process placement follows [ADR 0053](../adr/0053-evidence-based-native-process-partition.md): Rust owns the target control/harness lifecycle, TypeScript retains UI and transitional adapters, and verified Python workloads remain optional and on demand. Resource improvements require measured whole-process comparisons; current provider calls and tools are still in the TypeScript host.
+Backend placement follows [ADR 0071](../adr/0071-rust-openai-completion-and-resource-evidence.md): choose Rust, supervised Python or TypeScript from measured resource/latency tradeoffs and output compatibility. Retain TypeScript where migration adds latency without worthwhile memory or responsiveness benefits; React stays presentation-only. This supersedes the mandatory zero-TypeScript destination in [ADR 0069](../adr/0069-ui-only-typescript-and-backend-ownership.md), while retaining its source ownership inventory. A pure parser or scheduler remains backend work even without Node imports. Earlier [ADR 0053](../adr/0053-evidence-based-native-process-partition.md) permission, parity and settlement gates still apply.
+
+Workspace-bound [deferred learning](../adr/0074-deferred-learning-and-workspace-knowledge.md)
+uses a bounded host admission timer and independent background settlement. Rust
+retains curator execution and artifact ownership. Isolated workspaces bind a stable
+vault profile, and scoped Knowledge requests reuse the daemon's dedicated index
+thread with an eight-profile LRU. All default/scoped Knowledge requests share a host
+admission lane so queue wait does not consume wire execution deadlines.
+
+[Idle team knowledge](../adr/0075-idle-team-knowledge-and-office-context.md)
+extends that same timer owner with real team discussions and acknowledged artifact
+results. Conflicting foreground work fences maintenance and drains its entered effects; the full chosen quiet interval restarts after actual conflicting foreground settlement. Unique non-default isolated vault profiles can curate alongside known unrelated Native and Observe work, including scoped observed-memory lifetimes. Unbound Observe activity is treated as default/global for admission only; no workspace or Knowledge access is granted. Shared/default maintenance, unknown ownership, privacy/settings changes and shared resources retain conservative guards. One curator runs at a time. Skills remain a shared, scanner-gated user library, separate from vault isolation.
+Office portals the shared countdown above its prompt while keeping source-context
+selection independent from the global character board and automatic camera.
+
+[Operational work memory](../adr/0089-operational-work-memory-and-context-reuse.md)
+adds a Rust-owned profile/workspace-scoped SQLite/FTS5 index for attributed Native
+and opted-in Observe outcomes. A bounded host outbox retries exact local captures;
+it does not replay inference or uncertain artifact publication. Before Native
+lead/worker requests, the host prepares mandatory skills, retrieves bounded
+operational evidence and freshly read Knowledge excerpts, then revalidates access
+and admits only optional context that fits. Curators receive historical context
+separately from current evidence. Native runtime compaction can replace older
+tool bodies in a request projection only after a separate scoped archive reader
+and durable publication acknowledgement exist. Full stored history stays intact;
+Windows archive compaction and general external runtime injection remain unavailable.
+
+The skill registry uses that same lazy profile daemon independently of mission
+backend selection. [Pinned SkillSpector inspection](../adr/0068-pinned-skillspector-inspection.md)
+runs in a separate bounded Rust-owned worker, with a bundled Python/scanner
+manifest pinned into the daemon. Scanner evidence, user review, approval and
+activation remain distinct; imported text never grants its own permissions.
+
+[OpenAI-compatible model discovery](../adr/0070-rust-provider-model-discovery.md)
+uses an isolated Rust mode for actual HTTP and catalog parsing, with child-close
+settlement. [Completion measurements](../adr/0071-rust-openai-completion-and-resource-evidence.md)
+retain TypeScript as the production default: neither native candidate provides an
+overall workload efficiency improvement. Native completion modes are development
+experiments excluded from ordinary release builds. A shared-worker candidate uses separately owned request
+runtimes and positive owner-join receipts; IPC failure still retains affected
+ownership until actual process close. Native orchestration/history, Anthropic
+processing and privileged host services currently remain TypeScript.
+The [resource comparison](../bench/provider-completion.md) measures the isolated
+production provider path, not whole Desktop or 3D Office memory.
 
 ## Dependency direction
 
@@ -75,6 +138,31 @@ protocol ← core ← platform ← apps (web, desktop, cli)
   it runs in.
 
 `pnpm lint` enforces these rules.
+
+[Cross-agent work continuity](../adr/0076-cross-agent-work-continuity.md) keeps a
+canonical work record across reviewed Native connection changes and existing
+observed endpoints. Immutable source archives, user-reviewed notes and honest
+transport receipts remain distinct from hidden harness context. Existing Native
+sessions keep their ID; observed app IDs remain separate aliases. Scoped external
+MCP readers expose only the notes/snapshots pinned by an explicit handover,
+with expiring hash-only grants, live privacy checks and no future-work access.
+Native agents receive bounded read tools only after handover. Old generated
+capsules are replaced in model history without deleting conversation events.
+The continuity journal acknowledges POSIX directory publication before dispatch,
+and exact external archive-read tool identities are excluded from fresh evidence.
+The [four-stage acceptance contract](../bench/cross-agent-continuity-acceptance.md)
+keeps synthetic host regressions, local artifact verification and genuine native
+provider evidence separate. Windows power-loss durability, the scope-bound memory
+barrier and installed Gemini compaction observation remain explicit limits.
+
+[Repeatable Observe handover](../adr/0090-repeatable-observe-handover.md) pins a
+reviewed checkpoint while its source continues, validates access separately from
+transcript progress, and retains immutable evidence deltas. Explicit lineage joins
+preserve old canonical archive grants without granting future evidence. Scoped
+Native destination writes avoid global workspace mutation flags. Stable CLI
+pairing survives normal transcript growth; Hermes exact stored-session resume and
+explicit idempotent creation use verified native profile/project capabilities.
+Passive destination discovery does not attach a gateway or start an agent.
 
 Saved native mission checkpoints and canonical native control events use
 host-owned SQLite WAL under the profile lock, with one-time import of legacy
@@ -105,13 +193,15 @@ actual local pipeline completion on the original connection records a weak
 observation. It does not establish later mission-root, child or writer ownership.
 Saved Rust mission starts also retain a [durable preparation lifetime](../adr/0052-durable-mission-preparation-lifetime.md) before credentials or worktree creation. It correlates the future mission and actual supervisor, drains entered preparation, and hands off only after canonical creation plus host/startup persistence. Uncertain preparation or cleanup remains blocked across backend changes and restart; it is not complete executor or writer ownership.
 Physical-settlement reconciliation and execution-time action approvals
-remain later gates. Production Python
-worker execution and embedded CPython installer packaging are planned, not yet implemented.
+remain later gates. Generic Python workload execution remains planned; the
+separately pinned SkillSpector worker described above is a specific supervised
+Python integration and does not provide a general Native executor.
 The [probe-only worker protocol](../adr/0041-probe-only-worker-protocol.md) adds
 an independent bounded NDJSON codec and pure Rust correlation/deadline state
 machine, with a test-only Python health reference. It has no production launcher,
 scanner operation or runtime consumer; cancellation/EOF never proves physical
-settlement and the inspector remains unavailable.
+settlement or scanner readiness. The later pinned SkillSpector integration is
+separate from this probe-only contract.
 The [owned health-probe supervisor](../adr/0042-owned-health-probe-supervision.md)
 now exercises genuine subprocesses through a disconnected Rust library API,
 with bounded I/O, watchdogs and direct-child reaping. Its feature-gated fixtures
@@ -121,13 +211,14 @@ The [bundle inventory observer](../adr/0043-worker-bundle-artifact-observation.m
 checks an independently supplied manifest pin and bounded exact file contents
 on trusted quiescent Unix staging trees. Its portable contract does not
 authorize a launch; Windows observation refuses until handle/reparse checks are
-implemented. No production Python bundle or consumer is enabled.
+implemented. This observer alone does not enable a production Python consumer.
 An [explicit developer experiment](../adr/0044-relocated-developer-python-bundle.md)
 now stages a pinned CPython source archive, materializes regular files, relocates
 the payload and exercises the Rust health owner on macOS ARM64. The manifest
 permits sixteen path components to retain measured upstream license paths.
-This is not installer integration or a scanner; other platforms remain untested
-and all production capability gates stay closed.
+That developer experiment is not installer or scanner certification. The later
+SkillSpector release path has its own pinning, confinement and packaging evidence;
+generic Python workload execution and unverified platform gates remain closed.
 
 The [shared Native status panel](../adr/0054-native-status-and-recovery-inspection.md) projects actual local operation/worker lifetimes and narrow recorded mission metadata. Explicit rechecks may retire only positively observed inactive scope markers; run-bound cancellation, stale-response guards and existing recovery inspection preserve uncertainty without replay.
 
@@ -139,6 +230,13 @@ Native Chat and Teams use [progressive workspace memory](../adr/0045-progressive
 a bounded summary catalog, literal metadata search and optional paged reads.
 Workers receive read tools only. Built-in recall and opt-in concise-response
 instructions do not install upstream hooks or enable automatic learning.
+[Automatic Native skill context](../adr/0073-automatic-native-skill-context.md)
+uses that private inventory for complete, bounded procedure reads before each
+managed Chat, delegation or meeting request. Mandatory memory guidance and
+configured-lead orchestration remain separate from capabilities. Selection
+refreshes after steering and re-verifies selected external revisions; a quiet
+metadata-only receipt appears in the shared Chat/Office transcript. Canonical
+mission workers and observed external harnesses remain separate contracts.
 The [bounded Native skill inventory](../adr/0057-bounded-native-skill-discovery.md)
 retains external metadata/private digests and offers constant-size discovery
 schemas. Fresh registered reads remain mandatory; initial verification still
@@ -161,7 +259,20 @@ overview locally; they do not change the vault or widen agent access.
 
 Knowledge is [independent of the mission backend](../adr/0051-knowledge-independent-of-mission-backend.md): Desktop and Bridge expose its page and vault setup with either backend, using the same lazy sidecar as recorded Rust recovery.
 
+[Automatic learning and profile artifacts](../adr/0067-rust-owned-learning-and-profile-artifacts.md)
+also use that same sidecar. Rust owns curator jobs and result processing, hash
+admissions, generated skill staging and two-phase Markdown exports. A bounded
+worker keeps this filesystem work away from mission/control dispatch. Host ports
+retain consent, approved provider HTTP, actual effect draining and event projection;
+this does not migrate ordinary Native Chat tools or claim local model inference.
+
 ## Further reading
+
+Optional [next-prompt suggestions](../getting-started/prompt-suggestions.md) use
+memory-only platform snapshots. Native prepares bounded completed-task context
+and generates only when the view requests its advertised completion anchor.
+Observed predictions come from an existing harness connection or authenticated
+cooperative report. They never authorize prompt execution or modify history.
 
 PRD v2 adoption follows [ADR 0036](../adr/0036-prd-v2-compatible-adoption.md)
 and its [acceptance map](../product/prd-v2-acceptance-map.md). The additive
