@@ -690,6 +690,15 @@
       "unresolvedRuntimeImports": 0
     },
     {
+      "path": "packages/host/src/codexSuggestionSessions.ts",
+      "category": "legacy-backend",
+      "sha256": "7d79ba6f9edb6bfef94858a26d579ed280dd8ea2a8cfd962b3135d0e1fe95954",
+      "loc": 24,
+      "bytes": 1249,
+      "effectKinds": [],
+      "unresolvedRuntimeImports": 0
+    },
+    {
       "path": "packages/host/src/connect/antigravity.ts",
       "category": "legacy-backend",
       "sha256": "c4e79115a9861bdbd70ca0889c94c3e992c56ef3283902882a9682938e491806",
@@ -1184,9 +1193,9 @@
     {
       "path": "packages/host/src/hooks/normalize.ts",
       "category": "legacy-backend",
-      "sha256": "0dd141cab67973975bf8182a06f8f31373520805cbf5d4f8b9e18dfe3696e688",
-      "loc": 570,
-      "bytes": 34307,
+      "sha256": "db7dcb487e41c8f4a4088dd8fca2292162a51e36cfed2f8dac48a60cfad12b8e",
+      "loc": 617,
+      "bytes": 36914,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -1417,9 +1426,9 @@
     {
       "path": "packages/host/src/nativeImport.ts",
       "category": "legacy-backend",
-      "sha256": "b77ff15738c604fd7c7a5368604fb6a00bc8c41a0c75b33003927fac743d4ef4",
-      "loc": 1509,
-      "bytes": 96262,
+      "sha256": "a786df983443eaacf06f05015e7c75458e8b4cc21814f96f54e0482738cd022a",
+      "loc": 1605,
+      "bytes": 102854,
       "effectKinds": [
         "node-builtin"
       ],
@@ -1513,9 +1522,9 @@
     {
       "path": "packages/host/src/observations.ts",
       "category": "legacy-backend",
-      "sha256": "174a73045a53e01766ee8f9721b5e12239187b5a22018f0f12ef197375c8cedb",
-      "loc": 1518,
-      "bytes": 100699,
+      "sha256": "18ce685b0b4afc8cab6cdc583c38f0a72b12fa0f4d4414237d2e1dc79b5c3a33",
+      "loc": 1775,
+      "bytes": 118357,
       "effectKinds": [
         "node-builtin",
         "runtime-call"
@@ -2082,9 +2091,9 @@
     {
       "path": "packages/host/src/transcriptEvents.ts",
       "category": "legacy-backend",
-      "sha256": "5bbcb09fc4d396d0f0a5fe70bab68bdde3254d4cdbc811a415f4deaff844fdde",
-      "loc": 246,
-      "bytes": 15039,
+      "sha256": "e603c3d36f2538d0c6ea5aefa830587f6070fc36a925d11b0dbdd2eb5faf115e",
+      "loc": 258,
+      "bytes": 15741,
       "effectKinds": [
         "node-builtin"
       ],
@@ -2262,18 +2271,18 @@
     {
       "path": "packages/importers/src/parsers.ts",
       "category": "legacy-backend",
-      "sha256": "da3842aa753107ba9106c48846917a4a8a2c334e524220778e0ab9945620dca7",
-      "loc": 796,
-      "bytes": 57207,
+      "sha256": "89284fe6c6c22f50eb3f714e5b2b86d8c868d702720e2e4f5e62a95c4fd29359",
+      "loc": 884,
+      "bytes": 63013,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
     {
       "path": "packages/importers/src/steps.ts",
       "category": "legacy-backend",
-      "sha256": "ea40e0197a564c02d941273e72d4ebcd3e9bd1e1301771f6844b8daa2fcb6db3",
+      "sha256": "fab84c4ada92140a14acf8f11bb87fe1dad7b5529295f7921e64c088cf3e9fe0",
       "loc": 514,
-      "bytes": 29777,
+      "bytes": 29807,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -3959,12 +3968,22 @@
       "runtimeSignature": "92e7a1d1d5a593f5a834aa69bd1e033cb1f9627cad9464e9d251e6c2a5dedc11"
     },
     {
+      "path": "apps/web/src/observe/ObservedSubagents.tsx",
+      "category": "ui",
+      "runtimeSignature": "49229ec42f17ed79d69dd6dbf73ce1778dc7596ed4286be74690068e20a5bdc1"
+    },
+    {
       "path": "apps/web/src/observe/ObservedWorkspaceLinkDialog.tsx",
       "category": "ui",
       "runtimeSignature": "2f6a65cc0f13cd2f2affeca23628effd53673fd52d60d97cdb12e292ccf41680"
     },
     {
       "path": "apps/web/src/observe/observerTabs.ts",
+      "category": "ui",
+      "runtimeSignature": "0a144d1b52939ff20b1ace05314d2cfb962ed218c4eafd4072bd333f3a812da7"
+    },
+    {
+      "path": "apps/web/src/observe/observeScroll.ts",
       "category": "ui",
       "runtimeSignature": "0a144d1b52939ff20b1ace05314d2cfb962ed218c4eafd4072bd333f3a812da7"
     },
@@ -3977,6 +3996,11 @@
       "path": "apps/web/src/observe/useObservedRead.ts",
       "category": "ui",
       "runtimeSignature": "7f518cd02e8550da13f7a59bd0c4b6d27a8fc8f786c5338f39c034f7cebd345e"
+    },
+    {
+      "path": "apps/web/src/observe/useObserveScroll.ts",
+      "category": "ui",
+      "runtimeSignature": "5385b37ac4e58d62e4d3ba8c0d682aa4e12dbdabc97d4afe86bea9102b5b1b2f"
     },
     {
       "path": "apps/web/src/office/activityFeed.ts",
@@ -4134,6 +4158,11 @@
       "runtimeSignature": "57843013141a855aedd20b6ebb49f646aaf01cd896957226c77aee5f5aac5d31"
     },
     {
+      "path": "apps/web/src/office/overlay/ActivityBubble.tsx",
+      "category": "ui",
+      "runtimeSignature": "017da173965ef3b492c36301f07e7922a3a91b031da7175d9a4a79ff56aec9d7"
+    },
+    {
       "path": "apps/web/src/office/overlay/AgentPortrait.tsx",
       "category": "ui",
       "runtimeSignature": "e4cbd2a32c262b2fc9e5a60f93c2e6bbe2f43e33c25e53dea496a921418ffdf3"
@@ -4229,6 +4258,11 @@
       "runtimeSignature": "c6d8fd33668e15a1995cc3718c0cebe0f21916aeb9b2f7fdf97ad02c2c71b1ab"
     },
     {
+      "path": "apps/web/src/office/overlay/portrait3d/framing.ts",
+      "category": "ui",
+      "runtimeSignature": "84c76dc549d4b6c9d35b2e4ff48b47eb93d4a7ca5f808e178755a95b7d64f7d3"
+    },
+    {
       "path": "apps/web/src/office/overlay/portrait3d/index.tsx",
       "category": "ui",
       "runtimeSignature": "bf9daa62123ac24b081c701e594579ab0e08d39d547d7926947ae3d468842ed7"
@@ -4241,7 +4275,7 @@
     {
       "path": "apps/web/src/office/overlay/portrait3d/renderer.tsx",
       "category": "ui",
-      "runtimeSignature": "b76f52fe215278af1e208779ad2de0046496a51c2f942a492084cc636647d52f"
+      "runtimeSignature": "c22272a16b5a19d6242a1e15b124bbe52e3cf7fcb70639c87c72def1a2dcc731"
     },
     {
       "path": "apps/web/src/office/overlay/RoomPicker.tsx",
@@ -4696,7 +4730,7 @@
     {
       "path": "apps/web/src/office/scene/CharacterBubbles.tsx",
       "category": "ui",
-      "runtimeSignature": "8395bf424ef42e1387b543ee660c6633e368576f217983d0a4a40d349fdac613"
+      "runtimeSignature": "9fa3d1b95e71670865b3aeebae6ad3d6c37cbef850d2d62cb31542394a197003"
     },
     {
       "path": "apps/web/src/office/scene/characterIntent.ts",
@@ -5506,7 +5540,7 @@
     {
       "path": "apps/web/src/office/scene/movement/naturalClearance.ts",
       "category": "ui",
-      "runtimeSignature": "2257810fb38e750f672076fa9a8ab1f32269f86bd9cbeb16ebc9c00f463cbeca"
+      "runtimeSignature": "0638a2a4f88106116b4653d7efe339d7539a3bace3601af552a6b469fbe94730"
     },
     {
       "path": "apps/web/src/office/scene/movement/naturalWalking.ts",
@@ -5836,7 +5870,7 @@
     {
       "path": "apps/web/src/pages/ObserverPage.tsx",
       "category": "ui",
-      "runtimeSignature": "b2fb3907e5b8759ea169e3e4f67b534867ce83500bb6798ae989e960c67a89f0"
+      "runtimeSignature": "d5a27e316f65b4f2d2de6d842a2a0f51d8e0467e5443ee5565f0f564780695ba"
     },
     {
       "path": "apps/web/src/pages/OfficePage.tsx",

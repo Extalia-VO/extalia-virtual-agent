@@ -126,7 +126,8 @@ export const EXECUTIVE_DESK_TOP = 0.8455;
 export const EXECUTIVE_KEYBOARD_BASE = [0.25, EXECUTIVE_DESK_TOP + KEYBOARD_HEIGHT / 2, -0.38] as const;
 /** Reception hardware uses counter-local coordinates; the shelf top remains .76 m. */
 export const RECEPTION_DESK_TOP = 0.76;
-export const RECEPTION_KEYBOARD_BASE = [0, RECEPTION_DESK_TOP + 0.015, 0.82] as const;
+// Preserve typing reach after clearing the fixed chair's side exit behind the shelf.
+export const RECEPTION_KEYBOARD_BASE = [0, RECEPTION_DESK_TOP + 0.015, 0.92] as const;
 
 /** Same rotation as the registry: a child-to-parent yaw about +Y. */
 export function rotateXZ(x: number, z: number, yaw: number): XZ {

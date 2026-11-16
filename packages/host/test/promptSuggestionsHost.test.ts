@@ -92,13 +92,14 @@ it('stages authenticated observed harness reports until completion, clears on a 
       body: JSON.stringify({ session_id: 'observed-source', hook_event_name, ...extra }) });
     expect(result.ok).toBe(true);
   };
+  const started: string[] = [];
+  const unsubscribe = f.host.subscribe(event => { if (event.body.type === 'session.started' && event.source.runtime === 'claude') started.push(event.sessionId); });
   await emit('SessionStart');
-  let id = '';
-  await vi.waitFor(async () => {
-    id = (await f.host.getState()).sessions.find(session => session.observation?.nativeSessionId === 'observed-source')?.id ?? '';
-    expect(id).not.toBe('');
-  }, { interval: 5 });
+  await vi.waitFor(() => expect(started).toHaveLength(1), { interval: 5 });
+  const id = started[0]!; unsubscribe();
+  expect((await f.host.getState()).sessions.some(session => session.id === id)).toBe(false);
   await emit('UserPromptSubmit', { prompt: 'Update the parser.' });
+  await vi.waitFor(async () => expect((await f.host.getState()).sessions.some(session => session.id === id)).toBe(true), { interval: 5 });
   const prompts = ['Inspect optional-field scenarios.'];
   await emit('report_followups', { tool_input: { prompts } });
   expect((await f.host.promptSuggestions!(id)).prompts).toEqual([]);

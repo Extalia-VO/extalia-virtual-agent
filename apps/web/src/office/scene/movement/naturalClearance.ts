@@ -1,11 +1,13 @@
 import { Box3, Vector3, type Mesh, type Object3D } from 'three';
 import { FLOOR_HEIGHT, type Point3 } from '../layout';
 import { buildingFootprintPolygon } from '../interior/buildingFootprintGeometry';
-import type { SeatApproach } from './navGraph';
+import { seatApproach, type SeatApproach } from './navGraph';
 import type { DoorInfo } from '../interior/doorTraffic';
 import { getDoorPortalsSnapshot } from '../interior/occupants/movingOccupants';
 import { modelBatchSourceVisibility } from '../modelBatchSources';
 import { CHAIR_FRONT_APPROACH, chairRootForward, chairWalkPath, chairWorld, smooth01, standPull } from './chairChoreography';
+import { isDeskChair } from '../interior/deskChairs';
+import { resourceById } from '../interior/resourceRegistry';
 
 type XZ = readonly [number, number];
 interface Bounds { minX: number; maxX: number; minZ: number; maxZ: number; minY: number; maxY: number; seatOwner?: Object3D; stationOwner?: Object3D; podOwner?: Object3D; footprint?: readonly XZ[] }
@@ -178,15 +180,25 @@ export class WalkingClearance {
     const owner = this.seatOwner(seat);
     return Boolean(owner) && this.segmentClearExcept(from, to, radius, owner);
   };
-  /** Meeting/guest chairs and mounted equipment retain only their authored departure lane. */
+  /** Fixed office seats authenticate both endpoints before permitting a sideways chair contact. */
+  private fixedOfficeSeat(seat: SeatApproach): boolean {
+    if (seat.seatStyle !== 'office' || seat.standing || seat.equipment || isDeskChair(seat.seatId)) return false;
+    const resource = resourceById(seat.seatId);
+    if (!resource || resource.kind !== 'workstation' || resource.interaction.seatStyle !== 'office') return false;
+    const authored = seatApproach(resource);
+    return seat.floor === authored.floor && Math.abs(seat.rotationY - authored.rotationY) < 1e-6
+      && seat.seat.every((value, i) => Math.abs(value - authored.seat[i]!) < 1e-6)
+      && seat.staging.every((value, i) => Math.abs(value - authored.staging[i]!) < 1e-6);
+  }
+  /** Fixed chairs and mounted equipment retain only their authored departure lane. */
   seatExitClear = (seat: SeatApproach, from: Readonly<Point3>, to: Readonly<Point3>, radius = .29): boolean => {
-    const equipment = seat.equipment === true;
-    if ((!equipment && !['meeting', 'guest'].includes(seat.seatStyle ?? '')) || ![...seat.seat, ...seat.staging, seat.rotationY, ...from, ...to, radius].every(Number.isFinite)
+    const equipment = seat.equipment === true, fixedOffice = this.fixedOfficeSeat(seat);
+    if ((!equipment && !fixedOffice && !['meeting', 'guest'].includes(seat.seatStyle ?? '')) || ![...seat.seat, ...seat.staging, seat.rotationY, ...from, ...to, radius].every(Number.isFinite)
       || Math.abs(seat.staging[1] - seat.seat[1]) > .05) return false;
     const dx = seat.staging[0] - seat.seat[0], dz = seat.staging[2] - seat.seat[2], length2 = dx * dx + dz * dz;
-    // Equipment may dismount sideways; ordinary chair stages must remain rearward.
-    if (length2 < .01 || (!equipment && dx * Math.sin(seat.rotationY) + dz * Math.cos(seat.rotationY) >= -.05)) return false;
-    const epsilon = equipment ? 1e-6 : .01;
+    // Fixed office chairs and equipment may use an explicitly authored side lane.
+    if (length2 < .01 || (!equipment && !fixedOffice && dx * Math.sin(seat.rotationY) + dz * Math.cos(seat.rotationY) >= -.05)) return false;
+    const epsilon = equipment || fixedOffice ? 1e-6 : .01;
     const progress: number[] = [];
     for (const point of [from, to]) {
       const x = point[0] - seat.seat[0], z = point[2] - seat.seat[2], t = (x * dx + z * dz) / length2;

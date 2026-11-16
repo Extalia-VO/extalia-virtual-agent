@@ -569,6 +569,10 @@ const en = {
     noMatches: 'No sessions match this search.', unknownProject: 'Unknown project', folderOnly: 'Folder only',
     closeTools: 'Close conversation tools', sessionDetails: 'Session details', harness: 'Harness', workspace: 'Workspace', folder: 'Project folder', model: 'Reported model', status: 'Observation', lastUpdated: 'Last checked', unlinkedWorkspace: 'Not linked to a workspace',
     latestMessages: 'Latest messages',
+    subagentsWorking: 'Working', subagentsFinished: 'Finished',
+    subagents: 'Subagents', inspector: 'Conversation inspector', closeInspector: 'Close conversation inspector',
+    delegatedBy: (name: string) => `Delegated by ${name}`,
+    subagentNotReported: 'The source has not reported this subagent’s messages or activity yet.',
     activityUnavailable: 'Live activity could not be refreshed. The visible history may be incomplete.',
     readOnly: 'This source has no available message channel. Open Conversation tools to inspect its capabilities.',
   },
@@ -1234,6 +1238,10 @@ const en = {
   characterCallouts: [
     "Yes, I'm here!", 'Hi there!', 'Ready when you are', 'Over here 👋', 'Right here!', 'You called?', 'Present!', 'Hey, over here!',
     'At your service', 'Need something?', "That's me!", 'Waving at you 👋', 'Here and ready', 'Looking for me?', 'Hello!',
+    'Found me!', 'Hello from this corner', 'A friendly hello 👋', 'Nice to see you', 'Yes? Hello!', 'You rang?', 'A little wave your way',
+    'Hello, neighbor!', 'Here I am', 'Oh, hi!', 'Good to see you here', 'A hello just for you', 'Yep, this is me', 'Welcome over!',
+    'A wave from the office 👋', 'Hello again!', 'Spotted me?', 'Right this way', 'Hey, nice to see you!', 'Checking in with a hello',
+    'One friendly wave', 'Your friendly office neighbor', 'Hello, hello!', 'A small hello from me', 'Thanks for stopping by',
   ],
   officeUx: {
     loadingLabel: 'Loading the office', loadingEngine: 'Loading the 3D engine…', loadingScene: 'Building floors, furniture and characters…', loadingReady: 'Ready',
@@ -1253,6 +1261,8 @@ const en = {
     semantic: {
       meeting: 'Discussing in a meeting…',
       command: 'Running a command…', read: 'Reading a file…', search: 'Searching files…', git: 'Checking repository…', test: 'Running tests…',
+      write: 'Writing a file…', create: 'Creating a file or folder…', delete: 'Deleting files…', move: 'Moving files…', copy: 'Copying files…',
+      format: 'Formatting code…', build: 'Building the project…', install: 'Installing dependencies…', data: 'Processing data…',
       edit: 'Editing code…', web: 'Researching…', think: 'Planning next steps…', review: 'Reviewing changes…', delegate: 'Coordinating another agent…',
       knowledge: 'Checking notes…', approval: 'Waiting for approval…', failed: 'Something needs attention', reply: 'Responding…',
       prompt: 'Got a new task…', working: 'Working…', question: 'Waiting for your answer…',
@@ -3257,6 +3267,10 @@ const id: Messages = {
     noMatches: 'Tidak ada sesi yang cocok dengan pencarian.', unknownProject: 'Project belum diketahui', folderOnly: 'Folder saja',
     closeTools: 'Tutup alat percakapan', sessionDetails: 'Detail sesi', harness: 'Harness', workspace: 'Workspace', folder: 'Folder project', model: 'Model yang dilaporkan', status: 'Pengamatan', lastUpdated: 'Terakhir diperiksa', unlinkedWorkspace: 'Belum terhubung ke workspace',
     latestMessages: 'Pesan terbaru',
+    subagentsWorking: 'Sedang bekerja', subagentsFinished: 'Selesai',
+    subagents: 'Subagent', inspector: 'Panel percakapan', closeInspector: 'Tutup panel percakapan',
+    delegatedBy: (name: string) => `Didelegasikan oleh ${name}`,
+    subagentNotReported: 'Sumber belum melaporkan pesan atau aktivitas subagent ini.',
     activityUnavailable: 'Aktivitas langsung belum dapat diperbarui. Riwayat yang terlihat mungkin belum lengkap.',
     readOnly: 'Sumber ini belum memiliki saluran pesan. Buka Alat percakapan untuk memeriksa kemampuannya.',
   },
@@ -3920,6 +3934,10 @@ const id: Messages = {
   characterCallouts: [
     'Ya, saya di sini!', 'Halo!', 'Siap kapan pun', 'Di sini 👋', 'Hadir!', 'Panggil saya?', 'Saya di sini, lho!', 'Hai, sebelah sini!',
     'Siap membantu', 'Ada yang bisa dibantu?', 'Itu saya!', 'Dadah dari sini 👋', 'Siap sedia', 'Cari saya?', 'Halo, halo!',
+    'Ketemu saya!', 'Salam dari sudut sini', 'Halo yang ramah 👋', 'Senang melihat Anda', 'Ya? Halo!', 'Ada yang memanggil?', 'Lambaian kecil untuk Anda',
+    'Halo, tetangga!', 'Ini saya', 'Oh, hai!', 'Senang Anda di sini', 'Halo khusus untuk Anda', 'Yap, ini saya', 'Silakan mendekat!',
+    'Lambaian dari kantor 👋', 'Halo lagi!', 'Sudah lihat saya?', 'Sebelah sini, ya', 'Hai, senang bertemu!', 'Mampir untuk menyapa',
+    'Satu lambaian ramah', 'Tetangga kantor yang ramah', 'Hai, hai!', 'Sapaan kecil dari saya', 'Terima kasih sudah mampir',
   ],
   officeUx: {
     loadingLabel: 'Memuat kantor', loadingEngine: 'Memuat mesin 3D…', loadingScene: 'Menyusun lantai, furnitur, dan karakter…', loadingReady: 'Siap',
@@ -3939,6 +3957,8 @@ const id: Messages = {
     semantic: {
       meeting: 'Berdiskusi dalam rapat…',
       command: 'Menjalankan perintah…', read: 'Membaca berkas…', search: 'Mencari berkas…', git: 'Memeriksa repositori…', test: 'Menjalankan tes…',
+      write: 'Menulis berkas…', create: 'Membuat berkas atau folder…', delete: 'Menghapus berkas…', move: 'Memindahkan berkas…', copy: 'Menyalin berkas…',
+      format: 'Memformat kode…', build: 'Membangun proyek…', install: 'Memasang dependensi…', data: 'Mengolah data…',
       edit: 'Mengedit kode…', web: 'Meneliti…', think: 'Menyusun langkah berikutnya…', review: 'Meninjau perubahan…', delegate: 'Mengoordinasikan agent lain…',
       knowledge: 'Memeriksa catatan…', approval: 'Menunggu persetujuan…', failed: 'Ada yang perlu perhatian', reply: 'Sedang membalas…',
       prompt: 'Menerima tugas baru…', working: 'Sedang bekerja…', question: 'Menunggu jawaban Anda…',

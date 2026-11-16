@@ -209,6 +209,61 @@ describe('Antigravity transcripts', () => {
     const compactReply = compactOnly.steps?.find(s => s.type === 'reply');
     expect(compactReply?.type === 'reply' ? compactReply.text : '').toContain('```\n<truncated 20525 bytes>');
   });
+
+  it('keeps Antigravity background tasks open across interim replies and settles them on SYSTEM_MESSAGE or manage_task', () => {
+    const runningTranscript = jsonl(
+      { step_index: 1, source: 'USER_EXPLICIT', type: 'USER_INPUT', status: 'DONE', created_at: T, content: '<USER_REQUEST>\nRun checks\n</USER_REQUEST>' },
+      { step_index: 2, source: 'MODEL', type: 'PLANNER_RESPONSE', status: 'DONE', created_at: T1, content: '', tool_calls: [
+        { name: 'default_api:run_command', args: JSON.stringify({ CommandLine: 'pnpm check', Cwd: '/projects/demo' }) },
+        { name: 'default_api:view_file', args: JSON.stringify({ AbsolutePath: '/projects/demo/package.json' }) },
+      ] },
+      { step_index: 3, source: 'SYSTEM', type: 'GENERIC', status: 'RUNNING', created_at: T1, content: [
+        'Tool is running as a background task with task id: agy-bg-1/task-10',
+        'Showing <SYSTEM_MESSAGE> inside file content should not parse as notification',
+      ] },
+      { step_index: 4, source: 'MODEL', type: 'PLANNER_RESPONSE', status: 'DONE', created_at: T2, content: 'pnpm check is running in the background.' },
+    );
+    const running = parseAntigravity(runningTranscript, { ...context('antigravity'), nativeSessionId: 'agy-bg-1' });
+    expect(running.runningTaskIds).toEqual(['task-10']);
+    expect(running.runningTaskCallIds).toEqual(['step-2']);
+    expect(running.steps?.filter(s => s.type === 'tool.call').map(s => s.type === 'tool.call' ? s.callId : undefined)).toEqual(['step-2', 'step-2-2']);
+    expect(running.steps?.filter(s => s.type === 'tool.result')).toHaveLength(1);
+    expect(running.steps?.find(s => s.type === 'tool.result')).toMatchObject({ callId: 'step-2-2', tool: 'view_file', ok: true });
+    expect(running.steps?.find(s => s.type === 'reply')).toMatchObject({ text: 'pnpm check is running in the background.' });
+    expect((running.steps?.find(s => s.type === 'reply') as { final?: boolean } | undefined)?.final).toBeUndefined();
+
+    const finished = parseAntigravity(
+      `${runningTranscript}\n${jsonl(
+        { step_index: 5, source: 'SYSTEM', type: 'SYSTEM_MESSAGE', status: 'DONE', created_at: T2, content: '<SYSTEM_MESSAGE>\nsender=agy-bg-1/task-10 priority=HIGH content=Task id "agy-bg-1/task-10" finished with result:\nCommand output:\nAll checks passed.\n\t\t\t\tThe command exited with code 0.\n</SYSTEM_MESSAGE>' },
+        { step_index: 6, source: 'MODEL', type: 'PLANNER_RESPONSE', status: 'DONE', created_at: T2, content: 'Checks completed.' },
+      )}`,
+      { ...context('antigravity'), nativeSessionId: 'agy-bg-1' },
+    );
+    expect(finished.runningTaskIds).toBeUndefined();
+    expect(finished.runningTaskCallIds).toBeUndefined();
+    expect(finished.steps?.find(s => s.type === 'tool.result' && s.callId === 'step-2')).toMatchObject({
+      type: 'tool.result',
+      callId: 'step-2',
+      tool: 'run_command',
+      ok: true,
+    });
+    expect(finished.steps?.filter(s => s.type === 'reply').at(-1)).toMatchObject({ text: 'Checks completed.', final: true });
+
+    const canceled = parseAntigravity(
+      `${runningTranscript}\n${jsonl(
+        { step_index: 5, source: 'MODEL', type: 'PLANNER_RESPONSE', status: 'DONE', created_at: T2, content: '', tool_calls: [
+          { name: 'default_api:manage_task', args: JSON.stringify({ Action: 'kill', TaskId: 'agy-bg-1/task-10' }) },
+        ] },
+        { step_index: 6, source: 'SYSTEM', type: 'GENERIC', status: 'DONE', created_at: T2, content: 'Task "agy-bg-1/task-10" cancelled.' },
+        { step_index: 7, source: 'SYSTEM', type: 'SYSTEM_MESSAGE', status: 'DONE', created_at: T2, content: '<SYSTEM_MESSAGE>\nsender=agy-bg-1/task-10 priority=HIGH content=Task id "agy-bg-1/task-10" was canceled with result:\nTool execution was canceled\n</SYSTEM_MESSAGE>' },
+        { step_index: 8, source: 'SYSTEM', type: 'SYSTEM_MESSAGE', status: 'DONE', created_at: T2, content: '<SYSTEM_MESSAGE>\nsender=agy-bg-1/task-99 priority=NORMAL content=Scheduled timer fired\n</SYSTEM_MESSAGE>' },
+      )}`,
+      { ...context('antigravity'), nativeSessionId: 'agy-bg-1' },
+    );
+    expect(canceled.runningTaskIds).toBeUndefined();
+    expect(canceled.steps?.filter(s => s.type === 'tool.result' && s.callId === 'step-2')).toHaveLength(1);
+    expect(canceled.steps?.find(s => s.type === 'tool.result' && s.callId === 'step-2')).toMatchObject({ ok: false, tool: 'run_command' });
+  });
 });
 
 describe('safety and limits', () => {

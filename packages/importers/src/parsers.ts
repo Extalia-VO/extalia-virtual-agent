@@ -48,6 +48,10 @@ export interface NativeParseResult {
   effort?: Effort;
   /** Latest source effort context, including contexts with unknown or invalid effort. */
   effortAt?: string;
+  /** Antigravity background task ids (`task-N`) still running at the end of the transcript. */
+  runningTaskIds?: string[];
+  /** Tool call ids for Antigravity background tasks still running at the end of the transcript. */
+  runningTaskCallIds?: string[];
   diagnostics: string[];
 }
 
@@ -169,7 +173,7 @@ export function isInjectedContext(text: string): boolean {
   return INJECTED_CONTEXT.test(text);
 }
 
-function finish(context: ParseContext, id: unknown, drafts: Draft[], diagnostics: string[], metadata: { path?: unknown; title?: unknown; customTitle?: unknown; start?: unknown; parser: string; model?: string; modelAt?: string; effort?: Effort; effortAt?: string; context?: TranscriptContext; empty?: true }, steps?: StepList): NativeParseResult {
+function finish(context: ParseContext, id: unknown, drafts: Draft[], diagnostics: string[], metadata: { path?: unknown; title?: unknown; customTitle?: unknown; start?: unknown; parser: string; model?: string; modelAt?: string; effort?: Effort; effortAt?: string; context?: TranscriptContext; empty?: true; runningTaskIds?: string[]; runningTaskCallIds?: string[] }, steps?: StepList): NativeParseResult {
   const nativeId = (str(id) || context.nativeSessionId || '').trim();
   if (!nativeId) return { diagnostics: [...diagnostics, 'The session identity is missing.'] };
   const readable = drafts.filter(message => message.content.trim());
@@ -216,7 +220,7 @@ function finish(context: ParseContext, id: unknown, drafts: Draft[], diagnostics
     lastMessageAt: messages.at(-1)?.createdAt ?? new Date(start).toISOString(),
   };
   const decoded = decodePortableSession(session);
-  return decoded.ok ? { session: decoded.value, ...(steps ? { steps: steps.steps } : {}), ...(metadata.model ? { model: metadata.model } : {}), ...(metadata.modelAt ? { modelAt: metadata.modelAt } : {}), ...(metadata.effort ? { effort: metadata.effort } : {}), ...(metadata.effortAt ? { effortAt: metadata.effortAt } : {}), ...(metadata.context ? { context: metadata.context } : {}), diagnostics } : { diagnostics: [...diagnostics, `The conversation failed validation: ${decoded.errors.join(' ')}`] };
+  return decoded.ok ? { session: decoded.value, ...(steps ? { steps: steps.steps } : {}), ...(metadata.model ? { model: metadata.model } : {}), ...(metadata.modelAt ? { modelAt: metadata.modelAt } : {}), ...(metadata.effort ? { effort: metadata.effort } : {}), ...(metadata.effortAt ? { effortAt: metadata.effortAt } : {}), ...(metadata.context ? { context: metadata.context } : {}), ...(metadata.runningTaskIds?.length ? { runningTaskIds: metadata.runningTaskIds } : {}), ...(metadata.runningTaskCallIds?.length ? { runningTaskCallIds: metadata.runningTaskCallIds } : {}), diagnostics } : { diagnostics: [...diagnostics, `The conversation failed validation: ${decoded.errors.join(' ')}`] };
 }
 
 /** Context Codex injects as user-role messages; it is not something the user typed (bug 7). */
@@ -699,6 +703,38 @@ function repairAntigravityTruncatedMarkdown(text: string): string {
   return out.join('\n');
 }
 
+interface AntigravityRunningTask { fullId: string; shortId: string; callId: string; tool: string }
+
+function shortAntigravityTaskId(taskId: string): string {
+  const parts = taskId.trim().split('/').filter(Boolean);
+  return parts.at(-1) ?? taskId.trim();
+}
+
+function findAntigravityTask(tasks: Map<string, AntigravityRunningTask>, taskId: string): AntigravityRunningTask | undefined {
+  const trimmed = taskId.trim();
+  const exact = tasks.get(trimmed);
+  if (exact) return exact;
+  const shortId = shortAntigravityTaskId(trimmed);
+  for (const task of tasks.values()) {
+    if (task.shortId === shortId) return task;
+  }
+  return undefined;
+}
+
+function parseAntigravitySystemMessages(rawContent: string): { sender?: string; body: string }[] {
+  if (!/<SYSTEM_MESSAGE>/i.test(rawContent)) return [{ body: rawContent }];
+  const blocks: { sender?: string; body: string }[] = [];
+  const matcher = /<SYSTEM_MESSAGE>([\s\S]*?)<\/SYSTEM_MESSAGE>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = matcher.exec(rawContent)) !== null) {
+    const inner = match[1] ?? '';
+    const sender = /(?:^|\s)sender=([^\s]+)/i.exec(inner)?.[1]?.trim();
+    const contentMatch = /(?:^|\s)content=([\s\S]*?)\s*$/i.exec(inner);
+    blocks.push({ ...(sender ? { sender } : {}), body: unquoteArg(contentMatch ? contentMatch[1] : inner) });
+  }
+  return blocks;
+}
+
 /** Antigravity brain transcript JSONL (`~/.gemini/antigravity/brain/<id>/.system_generated/logs/transcript.jsonl`). */
 export function parseAntigravity(text: string, context: ParseContext): NativeParseResult {
   const diagnostics: string[] = [], rows = records(text, diagnostics);
@@ -708,6 +744,26 @@ export function parseAntigravity(text: string, context: ParseContext): NativePar
   const drafts: Draft[] = [], steps = new StepList();
   let model: string | undefined, projectPath = context.projectPath, startAt: unknown;
   let pendingCalls: { callId: string; tool: string }[] = [];
+  const runningTasks = new Map<string, AntigravityRunningTask>();
+  const settledTasks = new Set<string>();
+
+  const settleTask = (taskId: string, finished: boolean, resultText: string, stepPos: string, rawAt: unknown, fallbackAt?: string) => {
+    const task = findAntigravityTask(runningTasks, taskId);
+    const shortId = task?.shortId ?? shortAntigravityTaskId(taskId);
+    if (!task && (settledTasks.has(taskId.trim()) || settledTasks.has(shortId))) return;
+    if (task) runningTasks.delete(task.fullId);
+    for (const id of [task?.fullId, task?.shortId, taskId.trim(), shortId]) {
+      if (id) settledTasks.add(id);
+    }
+    const callId = task?.callId ?? shortId;
+    const tool = task?.tool ?? 'run_command';
+    const status = statedSuccess(resultText);
+    const failed = !finished || status === false || explicitToolFailure(resultText);
+    const ok = failed ? false : status ?? true;
+    const output = stepOutput(outputText(resultText) || resultText.trim());
+    drafts.push({ role: 'tool', content: `Task result (${safeLabel(callId, 120)})\n${resultText.trim() || (finished ? 'finished' : 'canceled')}`, at: rawAt });
+    steps.push({ pos: stepPos, ...(fallbackAt ? { at: fallbackAt } : {}), type: 'tool.result', callId, tool, ok, writesConfirmed: !failed, ...(output ? { output } : {}) });
+  };
 
   for (const [index, row] of rows.entries()) {
     const stepIdx = typeof row.step_index === 'number' ? row.step_index : index;
@@ -735,15 +791,30 @@ export function parseAntigravity(text: string, context: ParseContext): NativePar
       if (!prompt && !attached.length) continue;
       if (prompt) drafts.push({ role: 'user', content: prompt, at: row.created_at ?? row.timestamp });
       steps.push({ ...base, type: 'prompt', text: prompt, ...files(attached) });
-    } else if (type === 'SYSTEM_MESSAGE' && /Extalia Prompt/.test(rawContent)) {
-      const bodyMatch = /<SYSTEM_MESSAGE>[\s\S]*?\bcontent=([\s\S]*?)\s*<\/SYSTEM_MESSAGE>/i.exec(rawContent);
-      const prompt = unquoteArg(bodyMatch?.[1] ?? '');
-      if (prompt && !isInjectedContext(prompt)) {
-        pendingCalls = [];
-        const tagModel = /\[Model:\s*([^\]]+)\]/i.exec(prompt)?.[1]?.trim();
-        if (tagModel && !/^(?:none|auto)$/i.test(tagModel)) model = safeLabel(tagModel, 120);
-        drafts.push({ role: 'user', content: prompt, at: row.created_at ?? row.timestamp });
-        steps.push({ ...base, type: 'prompt', text: prompt });
+    } else if (type === 'SYSTEM_MESSAGE') {
+      const blocks = parseAntigravitySystemMessages(rawContent);
+      for (const [mIdx, block] of blocks.entries()) {
+        if (/Extalia Prompt/.test(block.body)) {
+          if (block.body && !isInjectedContext(block.body)) {
+            pendingCalls = [];
+            const tagModel = /\[Model:\s*([^\]]+)\]/i.exec(block.body)?.[1]?.trim();
+            if (tagModel && !/^(?:none|auto)$/i.test(tagModel)) model = safeLabel(tagModel, 120);
+            drafts.push({ role: 'user', content: block.body, at: row.created_at ?? row.timestamp });
+            steps.push({ ...base, ...(blocks.length > 1 ? { pos: `${pos}:m${mIdx}` } : {}), type: 'prompt', text: block.body });
+          }
+          continue;
+        }
+        const taskResult = /\bTask id ["']?([^\s"'`<>]+)["']? (finished|was cancell?ed|failed) with result:\s*([\s\S]*)/i.exec(block.body);
+        if (taskResult) {
+          settleTask(taskResult[1]!, taskResult[2]!.toLowerCase() === 'finished', taskResult[3] ?? '', `${pos}:m${mIdx}`, row.created_at ?? row.timestamp, at);
+        } else if (/All your subagents and background tasks have been stopped/i.test(block.body)) {
+          for (const [sIdx, running] of [...runningTasks.values()].entries()) {
+            settleTask(running.fullId, false, 'Background tasks stopped.', `${pos}:m${mIdx}s${sIdx}`, row.created_at ?? row.timestamp, at);
+          }
+          runningTasks.clear();
+        } else if (block.sender && /(?:^|\/)task-\d+$/i.test(block.sender) && findAntigravityTask(runningTasks, block.sender)) {
+          settleTask(block.sender, true, block.body, `${pos}:m${mIdx}`, row.created_at ?? row.timestamp, at);
+        }
       }
     } else if (type === 'PLANNER_RESPONSE') {
       pendingCalls = [];
@@ -751,7 +822,7 @@ export function parseAntigravity(text: string, context: ParseContext): NativePar
       if (str(row.thinking).trim()) steps.push({ ...base, pos: `${pos}:t`, type: 'status', status: 'thinking' });
       if (rawContent.trim()) {
         drafts.push({ role: 'assistant', content: rawContent, at: row.created_at ?? row.timestamp });
-        steps.push({ ...base, type: 'reply', text: rawContent, ...(calls.length ? {} : { final: true }), ...(model ? { model } : {}) });
+        steps.push({ ...base, type: 'reply', text: rawContent, ...(calls.length || runningTasks.size ? {} : { final: true }), ...(model ? { model } : {}) });
       }
       for (const [k, call] of calls.entries()) {
         const rawTool = str(call.name).replace(/^default_api:/, '');
@@ -759,7 +830,7 @@ export function parseAntigravity(text: string, context: ParseContext): NativePar
         if (typeof rawArgs === 'string') {
           try { rawArgs = JSON.parse(rawArgs); } catch { /* keep string */ }
         }
-        const args = obj(rawArgs), callId = str(call.id) || `step-${stepIdx}-${k}`;
+        const args = obj(rawArgs), callId = str(call.id) || (k === 0 ? `step-${stepIdx}` : `step-${stepIdx}-${k + 1}`);
         if (!projectPath) {
           const cwd = unquoteArg(args.Cwd ?? args.cwd ?? args.DirectoryPath ?? args.SearchPath);
           if (/^(?:\/|[A-Za-z]:[\\/])/.test(cwd)) projectPath = cwd;
@@ -783,14 +854,31 @@ export function parseAntigravity(text: string, context: ParseContext): NativePar
       for (const [rIdx, itemText] of items.entries()) {
         const call = pendingCalls.shift();
         if (!call) break;
+        const bgTaskMatch = /Tool is running as a background task with task id:\s*([^\s"'`<>]+)/i.exec(itemText);
+        if ((bgTaskMatch || (row.status === 'RUNNING' && items.length === 1)) && call.tool !== 'schedule' && call.tool !== 'invoke_subagent') {
+          const taskId = bgTaskMatch?.[1] || `pending:${call.callId}`;
+          const shortId = shortAntigravityTaskId(taskId);
+          settledTasks.delete(taskId);
+          settledTasks.delete(shortId);
+          runningTasks.set(taskId, { fullId: taskId, shortId, callId: call.callId, tool: call.tool });
+          drafts.push({ role: 'tool', content: `Tool result (${safeLabel(call.callId, 120)})\n${itemText}`, at: row.created_at ?? row.timestamp });
+          continue;
+        }
         const status = statedSuccess(itemText), failed = row.status === 'ERROR' || status === false || explicitToolFailure(itemText), ok = failed ? false : status ?? true;
         drafts.push({ role: 'tool', content: `Tool result (${safeLabel(call.callId, 120)})\n${itemText}`, at: row.created_at ?? row.timestamp });
         const output = stepOutput(outputText(itemText));
         steps.push({ ...base, pos: `${pos}:r${rIdx}`, type: 'tool.result', callId: call.callId, tool: call.tool, ok, writesConfirmed: !failed, ...(output ? { output } : {}) });
+        if (call.tool === 'manage_task') {
+          const cancelMatch = /Task\s+["']?([^\s"'`<>]+)["']?\s+cancell?ed\b/i.exec(itemText);
+          const canceled = cancelMatch?.[1] ? findAntigravityTask(runningTasks, cancelMatch[1]) : undefined;
+          if (canceled) settleTask(canceled.fullId, false, `Canceled background task (${canceled.shortId}).`, `${pos}:bg${rIdx}`, row.created_at ?? row.timestamp, at);
+        }
       }
     }
   }
   const sessionId = context.nativeSessionId || str(rows[0]?.conversation_id ?? rows[0]?.session_id) || 'antigravity-session';
-  return finish(context, sessionId, drafts, diagnostics, { path: projectPath, start: startAt, parser: 'antigravity-jsonl', ...(model ? { model } : {}) }, steps);
+  const runningTaskIds = [...new Set([...runningTasks.values()].map(task => task.shortId).filter(id => /^task-\d+$/.test(id)))];
+  const runningTaskCallIds = [...new Set([...runningTasks.values()].map(task => task.callId).filter(Boolean))];
+  return finish(context, sessionId, drafts, diagnostics, { path: projectPath, start: startAt, parser: 'antigravity-jsonl', ...(model ? { model } : {}), ...(runningTaskIds.length ? { runningTaskIds } : {}), ...(runningTaskCallIds.length ? { runningTaskCallIds } : {}) }, steps);
 }
 

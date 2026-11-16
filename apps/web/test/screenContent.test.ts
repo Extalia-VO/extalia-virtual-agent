@@ -107,7 +107,7 @@ describe('power state', () => {
 describe('truthful content', () => {
   it('shows a safe phrase for the work, never the raw target or summary', () => {
     const shown = resolve({ occupant: occupant('working', { activity: 'command', target: 'rm -rf /Users/someone/secret.txt', summary: 'Running the build' }) });
-    expect(shown).toMatchObject({ phrase: 'command', name: 'Agent' });
+    expect(shown).toMatchObject({ phrase: 'delete', name: 'Agent' });
     expect(shown).not.toHaveProperty('summary');
     expect(JSON.stringify(shown)).not.toContain('secret');
     const bare = resolve({ occupant: occupant('working', { activity: 'command' }) });

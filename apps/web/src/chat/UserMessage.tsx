@@ -107,7 +107,7 @@ export function UserMessage({ t, item, previewAttachment, language }: { t: Messa
   // Only app metadata (e.g. an image note whose picture is listed with its prompt) has nothing to show.
   if (!text.trim() && !files.length) return null;
   const time = Date.parse(item.at);
-  return <li className="msg user"><span className="visually-hidden">{t.chat.you}: </span>
+  return <li data-transcript-id={item.id} className="msg user"><span className="visually-hidden">{t.chat.you}: </span>
     {text.trim() && <div className="message-actions">
       {Number.isFinite(time) && <time dateTime={item.at}>{new Intl.DateTimeFormat(language, { timeStyle: 'short' }).format(time)}</time>}
       <CopyButton text={text} label={t.chat.copyMessage} />

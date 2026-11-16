@@ -55,12 +55,17 @@ describe('transient cooperative follow-up reports', () => {
     try {
       await send(); expect(observer.summaries()).toEqual([]); expect(onFollowups).not.toHaveBeenCalled();
       await observer.receiveHook(normalizeHook('codex', { session_id: 'native-one', hook_event_name: 'SessionStart' })!);
-      const id = observer.summaries()[0]!.id; const before = observer.events(id); emitted.mockClear();
+      // Lifecycle-only channels remain registered, but follow-up reports must not expose an empty row.
+      expect(observer.summaries()).toEqual([]);
+      const announced = emitted.mock.calls.map(call => call[0]).find(event => event.body.type === 'session.started');
+      const id = announced.sessionId as string;
+      expect(observer.has(id)).toBe(true);
+      const before = observer.events(id); emitted.mockClear();
       const saved = await readFile(path.join(root, 'state', 'observations.json'), 'utf8').catch(() => '');
       await send(); expect(onFollowups).toHaveBeenCalledExactlyOnceWith(id, report.prompts); expect(emitted).not.toHaveBeenCalled();
       expect(observer.events(id)).toEqual(before);
       expect(await readFile(path.join(root, 'state', 'observations.json'), 'utf8').catch(() => '')).toBe(saved);
-      await send({ session_id: 'foreign' }); expect(observer.summaries()).toHaveLength(1); expect(onFollowups).toHaveBeenCalledTimes(1);
+      await send({ session_id: 'foreign' }); expect(observer.summaries()).toEqual([]); expect(onFollowups).toHaveBeenCalledTimes(1);
       await observer.setWatching(id, false); await send(); expect(onFollowups).toHaveBeenCalledTimes(1);
       await observer.setWatching(id, true); await observer.setPrivacy({ labelsOnly: true }); await send(); expect(onFollowups).toHaveBeenCalledTimes(1);
       expect(JSON.stringify(observer.events(id))).not.toContain(report.prompts[0]);

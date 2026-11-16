@@ -24,6 +24,8 @@ import {
 } from '../src/hooks/http.js';
 import { createHookIngest, type HookIngest } from '../src/hooks/ingest.js';
 import {
+  clearAntigravityBackgroundTasks,
+  hasAntigravityBackgroundTasks,
   normalizeAntigravityHook,
   normalizeClaudeHook,
   normalizeCodexHook,
@@ -939,6 +941,53 @@ describe('normalizers (hooks/normalize.ts)', () => {
     });
     expect(hook?.transcriptPath).toBe(`${logs}/transcript.jsonl`);
   });
+
+  it('keeps Antigravity working across Stop when PostToolUse starts a background task until manage_task cancels or clears it', () => {
+    const conv = 'agy-bg-hook-1';
+    clearAntigravityBackgroundTasks(conv);
+    normalizeAntigravityHook({
+      conversationId: conv,
+      hook_event_name: 'PreToolUse',
+      stepIdx: 2,
+      toolCall: { name: 'run_command', args: { CommandLine: 'pnpm check', Cwd: '/projects/demo' } },
+    });
+    const bgPost = normalizeAntigravityHook({
+      conversationId: conv,
+      hook_event_name: 'PostToolUse',
+      stepIdx: 2,
+      toolOutput: 'Tool is running as a background task with task id: agy-bg-hook-1/task-5',
+    });
+    expect(bgPost?.steps.map(s => s.body.type)).toEqual(['agent.state']);
+    expect(bgPost?.steps[0]?.body).toMatchObject({ type: 'agent.state', state: 'working' });
+    expect(hasAntigravityBackgroundTasks(conv)).toBe(true);
+
+    const interimStop = normalizeAntigravityHook({
+      conversationId: conv,
+      hook_event_name: 'Stop',
+    });
+    expect(interimStop?.steps.map(s => s.body.type)).toEqual(['agent.state']);
+    expect(interimStop?.steps[0]?.body).toMatchObject({ type: 'agent.state', state: 'working' });
+
+    normalizeAntigravityHook({
+      conversationId: conv,
+      hook_event_name: 'PreToolUse',
+      stepIdx: 4,
+      toolCall: { name: 'manage_task', args: { Action: 'kill', TaskId: 'agy-bg-hook-1/task-5' } },
+    });
+    const cancelPost = normalizeAntigravityHook({
+      conversationId: conv,
+      hook_event_name: 'PostToolUse',
+      stepIdx: 4,
+      toolOutput: 'Task "agy-bg-hook-1/task-5" cancelled.',
+    });
+    expect(cancelPost?.steps.map(s => s.body.type)).toEqual(['tool.completed', 'tool.completed']);
+    expect(cancelPost?.steps[1]?.body).toMatchObject({ type: 'tool.completed', toolCallId: 'step-2', ok: false });
+    expect(hasAntigravityBackgroundTasks(conv)).toBe(false);
+
+    const finalStop = normalizeAntigravityHook({ conversationId: conv, hook_event_name: 'Stop' });
+    expect(finalStop?.steps.map(s => s.body.type)).toEqual(['turn.completed', 'agent.state']);
+    expect(finalStop?.steps[1]?.body).toEqual({ type: 'agent.state', state: 'idle' });
+  });
 });
 
 describe('end-to-end host + observations hook flow', () => {
@@ -1089,9 +1138,15 @@ describe('end-to-end host + observations hook flow', () => {
     await new Promise(resolve => setTimeout(resolve, 50));
 
     state = await runtime.host.getState();
-    const outsideHermesObserved = state.sessions.find(s => s.observation?.nativeSessionId === 'hermes-outside-100');
-    expect(outsideHermesObserved).toBeDefined();
-    expect(outsideHermesObserved?.observation?.hook).toBe(true);
+    expect(state.sessions.find(s => s.observation?.nativeSessionId === 'hermes-outside-100')).toBeUndefined();
+    const outsideStart = events.filter(event => event.body.type === 'session.started' && event.source.runtime === 'hermes' && event.source.channel === 'hook').at(-1);
+    expect(outsideStart).toBeDefined();
+    // Lifecycle metadata is retained but hidden. Actual outside work reveals the same channel.
+    expect(await send('hermes', { session_id: 'hermes-outside-100', hook_event_name: 'pre_tool_call', tool_name: 'read_file', tool_input: { path: '/projects/example/README.md' } })).toBe(204);
+    await vi.waitFor(async () => {
+      state = await runtime.host.getState();
+      expect(state.sessions.find(s => s.observation?.nativeSessionId === 'hermes-outside-100')).toMatchObject({ id: outsideStart!.sessionId, observation: { hook: true } });
+    });
   });
 
   it('links transcript_path when inside a known root and deduplicates transcript vs hook steps', async () => {

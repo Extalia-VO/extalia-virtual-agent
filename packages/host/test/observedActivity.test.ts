@@ -151,8 +151,13 @@ describe('source-reported Observe activity metadata', () => {
       await send('PreToolUse'); await vi.waitFor(async () => expect(await running()).toBe(true));
       vi.setSystemTime(Date.now() + OBSERVED_ACTIVITY_LIVE_MS + 1); expect(await running()).toBe(false);
       await send('PreToolUse'); await vi.waitFor(async () => expect(await running()).toBe(true));
-      await runtime.close(); runtime = await createAgentHost(options); expect(await running()).toBe(false);
-      expect((await runtime.host.getStateSummary!()).sessions.some(row => row.observation?.nativeSessionId === 'activity-http')).toBe(true);
+      const id = (await runtime.host.getStateSummary!()).sessions.find(row => row.observation?.nativeSessionId === 'activity-http')!.id;
+      await runtime.close(); runtime = await createAgentHost(options); expect(await running()).toBeUndefined();
+      expect((await runtime.host.getStateSummary!()).sessions.some(row => row.observation?.nativeSessionId === 'activity-http')).toBe(false);
+      const registry = JSON.parse(await readFile(path.join(dataDirectory, 'state', 'observations.json'), 'utf8'));
+      expect(registry).toMatchObject([{ id, reference: { nativeSessionId: 'activity-http', path: '' } }]);
+      await send('PreToolUse'); await vi.waitFor(async () => expect(await running()).toBe(true));
+      expect((await runtime.host.getStateSummary!()).sessions.find(row => row.observation?.nativeSessionId === 'activity-http')?.id).toBe(id);
     } finally {
       await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
       await runtime.close();

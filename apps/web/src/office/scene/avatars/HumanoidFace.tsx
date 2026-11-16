@@ -59,6 +59,7 @@ export function HumanoidFace({ radius, skin, hair, seed, accessories, reducedMot
   const earbuds = accessories?.custom?.includes("earbuds") && !accessories?.headphones;
 
   return <group scale={radius}>
+    <object3D name="avatar-eyes" position={[0, 0.1, 0.918]} />
     {/* Jaw, chin and cheek planes break the head sphere into a sculpted face. */}
     <mesh ref={jaw} position={[0, -0.5, 0.56]} scale={[0.27, 0.2, 0.3]}>
       <sphereGeometry args={[1, 18, 12]} /><meshStandardMaterial color={skin} roughness={0.8} />

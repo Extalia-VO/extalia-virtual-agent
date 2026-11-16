@@ -254,6 +254,15 @@ Office/meeting/guest cushions sit at 46 cm, sofas at 43 cm and armchairs at
 targets with the same blueprint whenever changing chair geometry. Keep moving
 chairs independent even when their immutable mesh resources are instanced.
 
+Fixed office chairs use their authored seat-to-stage lane for departure and its
+reverse for arrival. Clearance authenticates the fixed workstation's registry
+pose and stage and masks only the owning chair along that lane; the reception
+counter, walls, other chairs and pedestrians remain solid. The receptionist's
+chair sits 15 cm farther behind the work shelf so the full walking body radius
+fits the side exit; its keyboard moves 10 cm toward the sitter while remaining
+supported by the shelf and within the normal typing reach. Facility chairs remain
+fixed and unavailable to agent seats.
+
 ### Desk device dimensions and placement
 
 `props/deviceGeometry.ts` owns physical monitor/laptop dimensions in metres.

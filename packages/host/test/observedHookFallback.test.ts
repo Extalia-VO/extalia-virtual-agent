@@ -1,8 +1,8 @@
-import { appendFile, mkdir, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, utimes, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { type ExtaliaEvent } from '@extalia/protocol';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { normalizeCodexHook, type HookStep } from '../src/hooks/normalize.js';
+import { normalizeAntigravityHook, normalizeCodexHook, type HookStep } from '../src/hooks/normalize.js';
 import { NativeImportService } from '../src/nativeImport.js';
 import { Observations } from '../src/observations.js';
 import { useTempDirs } from './helpers.js';
@@ -208,6 +208,114 @@ describe('bounded hook history with busy siblings', () => {
       expect(events.filter(event => event.body.type === 'subagent.spawned').map(event => event.body.type === 'subagent.spawned' ? event.body.subagentId : '')).toEqual(expect.arrayContaining(['quiet-worker', 'stopped-worker', 'busy-worker']));
       expect(events.every(event => event.sessionId === f.id('native-one'))).toBe(true);
       expect(f.observer.events(f.id('native-two')).some(event => event.source.channel === 'hook')).toBe(false);
+    } finally { await f.observer.close(); }
+  });
+});
+
+describe('Antigravity background task lifecycle', () => {
+  const agyRow = (stepIdx: number, type: string, offset: number, extra: Record<string, unknown>) =>
+    line({ step_index: stepIdx, type, source: type === 'USER_INPUT' ? 'USER_EXPLICIT' : type === 'PLANNER_RESPONSE' ? 'MODEL' : 'SYSTEM', status: extra.status ?? 'DONE', created_at: at(offset), ...extra });
+
+  async function setupAntigravity(convId: string, logAgeMs = 0) {
+    vi.useFakeTimers({ now: base, toFake: ['Date'] });
+    const root = await temp();
+    const home = path.join(root, 'home');
+    const convRoot = path.join(home, '.gemini', 'antigravity', 'brain', convId, '.system_generated');
+    const logsDir = path.join(convRoot, 'logs');
+    const tasksDir = path.join(convRoot, 'tasks');
+    await mkdir(logsDir, { recursive: true });
+    await mkdir(tasksDir, { recursive: true });
+    const transcriptPath = path.join(logsDir, 'transcript.jsonl');
+    const taskLogPath = path.join(tasksDir, 'task-128.log');
+
+    const initialTranscript = [
+      agyRow(1, 'USER_INPUT', -10_000, { content: '<USER_REQUEST>\nRun full check\n</USER_REQUEST>' }),
+      agyRow(2, 'PLANNER_RESPONSE', -8_000, { content: '', tool_calls: [{ name: 'default_api:run_command', args: JSON.stringify({ CommandLine: 'pnpm check', Cwd: '/projects/example' }) }] }),
+      agyRow(3, 'GENERIC', -5_000, { status: 'RUNNING', content: `Tool is running as a background task with task id: ${convId}/task-128` }),
+      agyRow(4, 'PLANNER_RESPONSE', -4_000, { content: 'pnpm check is running in the background.' }),
+    ].join('');
+    await writeFile(transcriptPath, initialTranscript);
+    await writeFile(taskLogPath, 'starting pnpm check...\n');
+    const mtime = new Date(base - logAgeMs);
+    await utimes(taskLogPath, mtime, mtime);
+
+    const source = await NativeImportService.create({ homeDirectory: home, env: {} });
+    const updates: ExtaliaEvent[] = [];
+    const observer = await Observations.create(path.join(root, 'state'), source, event => updates.push(event), 60_000);
+    const scan = source.scan(['antigravity']);
+    await observer.observe(scan.scanId, scan.sessions.map(session => session.id));
+    const sessionId = observer.summaries()[0]!.id;
+    const hook = (eventName: string, offset: number, extra: Record<string, unknown> = {}) => {
+      vi.setSystemTime(base + offset);
+      return observer.receiveHook(normalizeAntigravityHook({
+        conversationId: convId,
+        hook_event_name: eventName,
+        transcriptPath,
+        workspacePaths: ['/projects/example'],
+        ...extra,
+      })!);
+    };
+    return { observer, source, transcriptPath, taskLogPath, updates, sessionId, hook };
+  }
+
+  it('reconciles premature PostToolUse/Stop, stays live on task log writes, and publishes SYSTEM_MESSAGE completion', async () => {
+    const f = await setupAntigravity('agy-bg-live');
+    try {
+      await f.hook('PreInvocation', 100);
+      await f.hook('PreToolUse', 200, { stepIdx: 2, toolCall: { name: 'run_command', args: { CommandLine: 'pnpm check', Cwd: '/projects/example' } } });
+      await f.hook('PostToolUse', 1_000, { stepIdx: 2 });
+      await f.hook('Stop', 2_000);
+
+      expect(f.observer.summaries()[0]?.running).toBe(true);
+      const emittedAfterStop = realEvents(f.updates);
+      expect(emittedAfterStop.some(e => e.body.type === 'tool.completed')).toBe(false);
+      expect(emittedAfterStop.some(e => e.body.type === 'turn.completed')).toBe(false);
+      expect(emittedAfterStop.some(e => e.body.type === 'agent.state' && e.body.state === 'idle')).toBe(false);
+      expect(f.observer.events(f.sessionId).some(e => e.body.type === 'tool.completed')).toBe(false);
+
+      // Advance past IDLE_REPLY_SETTLE_MS (30s) and OBSERVED_ACTIVITY_LIVE_MS (120s) while task-128.log keeps writing.
+      for (const offset of [45_000, 90_000, 135_000]) {
+        vi.setSystemTime(base + offset);
+        f.updates.length = 0;
+        await appendFile(f.taskLogPath, `progress at ${offset}\n`);
+        const stamp = new Date(base + offset);
+        await utimes(f.taskLogPath, stamp, stamp);
+        await f.observer.refresh();
+        expect(f.observer.summaries()[0]?.running).toBe(true);
+        expect(realEvents(f.updates).some(e => e.body.type === 'agent.state' && e.body.state === 'working')).toBe(true);
+        expect(realEvents(f.updates).some(e => e.body.type === 'turn.completed')).toBe(false);
+      }
+
+      // Background task completes via SYSTEM_MESSAGE before wakeup PreInvocation, so PreInvocation watermark is slightly later.
+      await f.hook('PreInvocation', 141_000);
+      f.updates.length = 0;
+      vi.setSystemTime(base + 142_000);
+      await appendFile(
+        f.transcriptPath,
+        agyRow(5, 'SYSTEM_MESSAGE', 140_000, {
+          content: '<SYSTEM_MESSAGE>\nsender=agy-bg-live/task-128 priority=HIGH content=Task id "agy-bg-live/task-128" finished with result:\nCommand output:\nAll ok.\n\t\t\t\tThe command exited with code 0.\n</SYSTEM_MESSAGE>',
+        })
+        + agyRow(6, 'PLANNER_RESPONSE', 142_000, { content: 'All checks passed.' }),
+      );
+      await f.observer.refresh();
+      const finishedEvents = realEvents(f.updates);
+      expect(finishedEvents.find(e => e.body.type === 'tool.completed')?.body).toMatchObject({
+        type: 'tool.completed',
+        toolCallId: 'step-2',
+        ok: true,
+      });
+
+      await f.hook('Stop', 143_000);
+      expect(f.observer.summaries()[0]?.running).toBe(false);
+    } finally { await f.observer.close(); }
+  });
+
+  it('never marks an abandoned historical background task live when its task log is stale', async () => {
+    const f = await setupAntigravity('agy-bg-stale', 10 * 60_000);
+    try {
+      vi.setSystemTime(base + 1_000);
+      await f.observer.refresh();
+      expect(f.observer.summaries()[0]?.running).toBe(false);
     } finally { await f.observer.close(); }
   });
 });

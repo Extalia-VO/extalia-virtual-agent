@@ -61,7 +61,7 @@ export interface MovementEnv {
   readonly walkable?: WalkableSegment;
   /** Front contact may overlap its own cushion bounds, while other furniture still blocks it. */
   readonly seatContactClear?: (seat: SeatApproach, from: Readonly<Point3>, to: Readonly<Point3>, radius?: number) => boolean;
-  /** Controlled authored departure masks only its own meeting/guest chair or fitness station. */
+  /** Controlled authored departure masks only its own fixed chair or fitness station. */
   readonly seatExitClear?: (seat: SeatApproach, from: Readonly<Point3>, to: Readonly<Point3>, radius?: number) => boolean;
   readonly seatEntryClear?: (seat: SeatApproach, from: Readonly<Point3>, to: Readonly<Point3>, radius?: number) => boolean;
   readonly chairMotionClear?: (seat: SeatApproach, from: Readonly<Point3>, to: Readonly<Point3>, radius?: number) => boolean;
@@ -468,8 +468,9 @@ function leaveSeat(mover: Mover, env: MovementEnv) {
   if (!seat || !goal) { mover.phase = 'gone'; return; }
   if (goal.kind === 'seat' && goal.seat.seatId === seat.seatId) { mover.phase = 'sitting'; beginSitting(mover); mover.timer = 0; return; }
   if (isDeskChairSeat(seat)) { mover.goal = goal; startChair(mover, 'stand', seat, env); return; }
-  if (!routeFrom(mover, seatStageId(seat.seatId), goal, env, false, seat.equipment ? seat.staging : mover.position)) { mover.phase = 'gone'; return; }
-  if (seat.seatStyle === 'meeting' || seat.seatStyle === 'guest' || seat.equipment) {
+  const fixedOffice = isFixedOfficeSeat(seat);
+  if (!routeFrom(mover, seatStageId(seat.seatId), goal, env, false, seat.equipment || fixedOffice ? seat.staging : mover.position)) { mover.phase = 'gone'; return; }
+  if (seat.seatStyle === 'meeting' || seat.seatStyle === 'guest' || seat.equipment || fixedOffice) {
     // Reach the complete authored departure stage before ordinary clearance
     // takes over; a short backstep can remain inside a chair or fitness frame.
     mover.steps.unshift({ kind: 'walk', node: seatStageId(seat.seatId), to: [...seat.staging], stairs: false });
@@ -608,7 +609,7 @@ export function stepMover(mover: Mover, seconds: number, env: MovementEnv): void
         const scale = protectedHeadway(mover.id, before, seat.seat, walkSpeed(mover) * .7, dt, neighbors);
         easeWalk(mover, 1, dt);
         const remaining = walkToward(mover, seat.seat, dt, .7 * scale, false);
-        const contact = seat.seatStyle === 'meeting' || seat.seatStyle === 'guest' || seat.equipment ? env.seatEntryClear : undefined;
+        const contact = seat.seatStyle === 'meeting' || seat.seatStyle === 'guest' || seat.equipment || isFixedOfficeSeat(seat) ? env.seatEntryClear : undefined;
         if (!staticSeatNeighborsClear(mover.id, before, mover.position, neighbors, dt)
           || (contact && !contact(seat, before, mover.position, .29))) {
           copy(mover.position, before); mover.motion.phase = phase; easeWalk(mover, 0, dt); break;
@@ -1578,6 +1579,7 @@ const STAND_BEATS = ['walk-out', 'grip', 'push', 'let-go'] as const;
 
 /** Desk chairs only: the stand-up and sit-down beats apply to workstation chairs, never sofas, stools or staff stations. */
 const isDeskChairSeat = (seat: SeatApproach) => !seat.standing && isDeskChair(seat.seatId);
+const isFixedOfficeSeat = (seat: SeatApproach) => seat.seatStyle === 'office' && !seat.standing && !seat.equipment && !isDeskChairSeat(seat);
 const RIGHT = 1;
 const LEFT = 0;
 const handPoint: Point3 = [0, 0, 0];

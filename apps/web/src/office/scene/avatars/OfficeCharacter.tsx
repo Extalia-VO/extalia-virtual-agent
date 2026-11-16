@@ -272,8 +272,8 @@ function CharacterMesh({ visual, seated, typing, reducedMotion, motion, desk, re
     <group ref={torso} position={[0, p.standingHipHeight, 0]}>
       <GarmentTorso proportions={p} wardrobe={wardrobe} skin={skin} seated={seated} />
       {skirt && <SkirtYoke proportions={p} wardrobe={wardrobe} />}
-      <group ref={head} position={[0, p.headHeight, 0]} scale={presentationPreset(visual.presentation) === 'feminine' ? [0.94, HUMANOID_HEAD_ELONGATION, 1] : [1, HUMANOID_HEAD_ELONGATION, 1.04]}>
-        <mesh castShadow><sphereGeometry args={[p.headRadius, 16, 12]} /><meshStandardMaterial color={skin} roughness={0.87} /></mesh>
+      <group name="avatar-head" ref={head} position={[0, p.headHeight, 0]} scale={presentationPreset(visual.presentation) === 'feminine' ? [0.94, HUMANOID_HEAD_ELONGATION, 1] : [1, HUMANOID_HEAD_ELONGATION, 1.04]}>
+        <mesh name="avatar-head-surface" castShadow><sphereGeometry args={[p.headRadius, 16, 12]} /><meshStandardMaterial color={skin} roughness={0.87} /></mesh>
         <HairStyle variant={visual.hairVariant} color={hair} radius={p.headRadius} skin={skin} />
         {visual.accessories?.earrings && <Earrings style={visual.accessories.earrings} radius={p.headRadius} />}
         <HumanoidFace radius={p.headRadius} skin={skin} hair={hair} seed={rig.seed} accessories={visual.accessories} reducedMotion={reducedMotion}

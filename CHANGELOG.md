@@ -16,6 +16,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.334] - 2026-11-16
+
+- Track Antigravity background tasks accurately across hooks, transcripts, and task logs (`C14`): align fallback `step-N` call ids, parse command exit lines in `@extalia/importers`, keep background `run_command` tools open across interim replies and settle them on `<SYSTEM_MESSAGE>` task results or `manage_task` cancellations, guard 30 s reply settle on open tool calls, monitor `.system_generated/tasks/task-*.log` writes in `NativeImportService`, and reconcile `PostToolUse`/`Stop` hooks against active background tasks in `Observations`.
+- Omit recognized Codex internal prompt-suggestion helper sessions and hide metadata-only automatic empty Observe placeholders across Codex, Claude Code, Antigravity, Gemini CLI, and Hermes while preserving real prompts, attachments, tools, pending approvals, child work, manual selections, deliberate renames, cached history, and same-ID source recovery.
+- Arrange Observe as sessions on the left, main-agent conversation in the center, and tools plus a read-only subagent inspector on the right (`Working` children first, `Finished` folded), while preserving reading scroll position, historical anchors, bottom-follow, and implicit session selection stability across refreshes and streaming.
+- Keep avatar 3D portrait faces consistently sized and aligned across body heights, hairstyles, head animation, and procedural fallbacks (`O-PORTRAIT-FRAMING`).
+- Fix the receptionist getting stranded beside the fixed chair when leaving for a break (`O-RECEPTION-SEATING`) by keeping fixed-chair entry/exit within the authored side lane and adjusting chair/keyboard clearance behind the reception work shelf.
+- Integrate animated Office semantic activity bubbles (`ActivityBubble`) with rotating work gears, progress motion, varied localized greetings, and reduced-motion support (`O-ACTIVITY-BUBBLE-ROLLOUT`).
+
 ## [0.4.333] - 2026-11-15
 
 - Select UTF-8 explicitly for isolated Python verification on Windows, and wait

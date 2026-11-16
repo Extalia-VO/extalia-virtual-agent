@@ -156,29 +156,31 @@ function ToolRun({ t, items, previewAttachment, openStates, onSetOpenKeys }: {
 }
 
 /** Consecutive workers (subagents) as one card with a row each. */
-function WorkerRun({ t, items, language, previewAttachment, openStates, onSetOpenKeys }: {
+function WorkerRun({ t, items, language, previewAttachment, openStates, onSetOpenKeys, onOpenWorker, selectedWorkerId }: {
   t: Messages; items: Extract<TranscriptItem, { kind: 'worker' }>[]; language: string; previewAttachment?: AttachmentPreviewLoader;
   openStates: ReadonlyMap<string, boolean>; onSetOpenKeys: SetToolOpenKeys;
+  onOpenWorker?: (worker: WorkerItem) => void; selectedWorkerId?: string;
 }) {
-  return <ul className="tool-run-list worker-run">{items.map(item => <li key={item.id} className="tool-row"><HistoricalMessageFileScope scope={item.fileScope}><WorkerCard t={t} item={item} language={language} previewAttachment={previewAttachment} openStates={openStates} onSetOpenKeys={onSetOpenKeys} /></HistoricalMessageFileScope></li>)}</ul>;
+  return <ul className="tool-run-list worker-run">{items.map(item => <li key={item.id} data-transcript-id={item.id} className="tool-row"><HistoricalMessageFileScope scope={item.fileScope}><WorkerCard t={t} item={item} language={language} previewAttachment={previewAttachment} openStates={openStates} onSetOpenKeys={onSetOpenKeys} onOpenWorker={onOpenWorker} selectedWorkerId={selectedWorkerId} /></HistoricalMessageFileScope></li>)}</ul>;
 }
 
 const ignorePreviewDecision = async () => undefined;
 
-function WorkerCard({ t, item, language, previewAttachment, openStates, onSetOpenKeys }: {
+function WorkerCard({ t, item, language, previewAttachment, openStates, onSetOpenKeys, onOpenWorker, selectedWorkerId }: {
   t: Messages; item: WorkerItem; language: string; previewAttachment?: AttachmentPreviewLoader;
   openStates: ReadonlyMap<string, boolean>; onSetOpenKeys: SetToolOpenKeys;
+  onOpenWorker?: (worker: WorkerItem) => void; selectedWorkerId?: string;
 }) {
   const previewId = useId();
   const openKey = `worker:${item.id}`;
-  const open = openStates.get(openKey) ?? false;
+  const open = !onOpenWorker && (openStates.get(openKey) ?? false);
   const tier = item.tier && item.tier in t.connection.tiers ? t.connection.tiers[item.tier as keyof Messages['connection']['tiers']] : item.tier;
   const detail = item.status === 'running' ? item.activity ?? item.summary : item.summary ?? item.activity;
   const label = item.label ?? t.tool.worker;
   return (
     <div className={`worker status-${item.status}${open ? ' worker-expanded' : ''}`}>
-      <button type="button" className="worker-preview-toggle" aria-expanded={open} aria-controls={previewId}
-        title={open ? t.tool.hideWorkerPreview : t.tool.showWorkerPreview} onClick={() => onSetOpenKeys([openKey], !open)}>
+      <button type="button" className="worker-preview-toggle" aria-expanded={onOpenWorker ? undefined : open} aria-controls={onOpenWorker ? undefined : previewId} aria-pressed={onOpenWorker ? selectedWorkerId === item.id : undefined}
+        title={open ? t.tool.hideWorkerPreview : t.tool.showWorkerPreview} onClick={() => onOpenWorker ? onOpenWorker(item) : onSetOpenKeys([openKey], !open)}>
         <span className="tool-icon" aria-hidden="true"><Icon name="users" /></span>
         <span className="tool-label worker-label">
           {tier && <span className="tier-badge">{tier}</span>}
@@ -194,7 +196,7 @@ function WorkerCard({ t, item, language, previewAttachment, openStates, onSetOpe
       </button>
       {item.task && <p className="worker-task" title={item.task}><span>{t.tool.workerAssignment} </span>{item.task}</p>}
       {detail && detail !== item.task && <p className="worker-detail">{detail}</p>}
-      <MessageAttachments t={t} files={item.attachments ?? []} load={previewAttachment} label={t.tool.resultAttachments} className="tool-attachments" />
+      {!onOpenWorker && <MessageAttachments t={t} files={item.attachments ?? []} load={previewAttachment} label={t.tool.resultAttachments} className="tool-attachments" />}
       {open && <section className="worker-preview" id={previewId} aria-label={t.tool.workerPreview(label)}>
         <p className="worker-preview-caption">{t.tool.workerReadOnly}</p>
         <div className="worker-preview-scroll" role="region" aria-label={t.tool.workerPreview(label)} tabIndex={0}>
@@ -308,11 +310,14 @@ export function groupToolRuns(items: readonly TranscriptItem[]): (Exclude<Transc
   return out;
 }
 
-export function TranscriptView({ t, items, language, onDecide, previewAttachment, approvalsEnabled = false }: {
+export function TranscriptView({ t, items, language, onDecide, previewAttachment, approvalsEnabled = false, onOpenWorker, selectedWorkerId }: {
   t: Messages;
   items: TranscriptItem[];
   language: string;
   onDecide: (approvalId: string, decision: ApprovalDecisionInput) => Promise<void | boolean>;
+  /** An observing view can open a worker in its own read-only inspector instead of inline. */
+  onOpenWorker?: (worker: WorkerItem) => void;
+  selectedWorkerId?: string;
   /** Explicitly enabled only for a managed session that can actually accept decisions. */
   approvalsEnabled?: boolean;
   /** Loads images the host kept a copy of (observed transcripts); without it every file is listed. */
@@ -332,34 +337,34 @@ export function TranscriptView({ t, items, language, onDecide, previewAttachment
         if (Array.isArray(item)) {
           const run = item as Run;
           return run[0]!.kind === 'tool'
-            ? <li key={run[0]!.id} className="msg"><ToolRun t={t} items={run as ToolItem[]} previewAttachment={previewAttachment} openStates={openStates} onSetOpenKeys={setToolOpenKeys} /></li>
-            : <li key={run[0]!.id} className="msg worker-row"><WorkerRun t={t} items={run as Extract<TranscriptItem, { kind: 'worker' }>[]} language={language} previewAttachment={previewAttachment} openStates={openStates} onSetOpenKeys={setToolOpenKeys} /></li>;
+            ? <li key={run[0]!.id} data-transcript-id={run[0]!.id} className="msg"><ToolRun t={t} items={run as ToolItem[]} previewAttachment={previewAttachment} openStates={openStates} onSetOpenKeys={setToolOpenKeys} /></li>
+            : <li key={run[0]!.id} data-transcript-id={run[0]!.id} className="msg worker-row"><WorkerRun t={t} items={run as Extract<TranscriptItem, { kind: 'worker' }>[]} language={language} previewAttachment={previewAttachment} openStates={openStates} onSetOpenKeys={setToolOpenKeys} onOpenWorker={onOpenWorker} selectedWorkerId={selectedWorkerId} /></li>;
         }
         switch (item.kind) {
           case 'user':
             return <HistoricalMessageFileScope key={item.id} scope={item.fileScope}><UserMessage t={t} item={item} previewAttachment={previewAttachment} language={language} /></HistoricalMessageFileScope>;
           case 'assistant':
             return (
-              <li key={item.id} className={`msg assistant ${item.streaming ? 'streaming' : ''}`} aria-busy={item.streaming || undefined}>
+              <li key={item.id} data-transcript-id={item.id} className={`msg assistant ${item.streaming ? 'streaming' : ''}`} aria-busy={item.streaming || undefined}>
                 <span className="visually-hidden">{t.chat.agent}: </span>
                 <HistoricalMessageFileScope scope={item.fileScope}><Markdown text={item.text} /></HistoricalMessageFileScope>
                 {!item.streaming && item.text.trim() && <div className="message-actions"><CopyButton text={item.text} label={t.chat.copyMessage} /></div>}
               </li>
             );
-          case 'approval': return <li key={item.id} className="msg"><HistoricalMessageFileScope scope={item.fileScope}><ApprovalCard t={t} item={item} onDecide={onDecide} actionable={approvalsEnabled} /></HistoricalMessageFileScope></li>;
-          case 'files': return <li key={item.id} className="msg"><div className="tool-card status-ok"><FileList t={t} files={item.files} /></div></li>;
+          case 'approval': return <li key={item.id} data-transcript-id={item.id} className="msg"><HistoricalMessageFileScope scope={item.fileScope}><ApprovalCard t={t} item={item} onDecide={onDecide} actionable={approvalsEnabled} /></HistoricalMessageFileScope></li>;
+          case 'files': return <li key={item.id} data-transcript-id={item.id} className="msg"><div className="tool-card status-ok"><FileList t={t} files={item.files} /></div></li>;
           case 'notice':
             return (
-              <li key={item.id} className={`msg notice ${item.reason === 'cancelled' ? 'info' : 'error'}`}>
+              <li key={item.id} data-transcript-id={item.id} className={`msg notice ${item.reason === 'cancelled' ? 'info' : 'error'}`}>
                 <Icon name={item.reason === 'cancelled' ? 'stop' : 'alert'} />
                 <span>{item.reason === 'cancelled' ? t.chat.stopped : `${item.reason === 'failed' ? t.chat.failed : t.chat.agentError} ${item.text === 'native_context_limit' ? t.context.requestHeld : item.text ?? ''}`}</span>
               </li>
             );
-          case 'usage': return <li key={item.id} className="msg"><UsageLine t={t} item={item} language={language} /></li>;
-          case 'skills': return <li key={item.id} className="msg"><SkillLoadCard t={t} item={item} language={language} /></li>;
+          case 'usage': return <li key={item.id} data-transcript-id={item.id} className="msg"><UsageLine t={t} item={item} language={language} /></li>;
+          case 'skills': return <li key={item.id} data-transcript-id={item.id} className="msg"><SkillLoadCard t={t} item={item} language={language} /></li>;
           case 'handoff':
             return (
-              <li key={item.id} className={`msg handoff ${item.edge}`}>
+              <li key={item.id} data-transcript-id={item.id} className={`msg handoff ${item.edge}`}>
                 <span>{item.edge === 'start' ? t.handoff.carried(sourceLabel(item.runtime)) : t.handoff.here}</span>
               </li>
             );

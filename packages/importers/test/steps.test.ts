@@ -222,6 +222,10 @@ describe('transcript steps', () => {
     expect(statedSuccess({ isError: true })).toBe(false);
     expect(statedSuccess({ status: 'completed', exit_code: 1 })).toBe(false);
     expect(statedSuccess({ exit_code: 0, result: { response: { success: false } } })).toBe(false);
+    expect(statedSuccess('Command exited with code 0')).toBe(true);
+    expect(statedSuccess('Command output:\nfail\nCommand exited with code 1')).toBe(false);
+    expect(statedSuccess('Command output:\nok\n\t\t\t\tThe command exited with code 0.')).toBe(true);
+    expect(statedSuccess('Command output:\nerr\n\tThe command exited with code 2.')).toBe(false);
     const cyclic: Record<string, unknown> = {};
     cyclic.result = cyclic;
     expect(statedSuccess(cyclic)).toBeUndefined();

@@ -62,8 +62,12 @@ it.each(['en', 'id'] as const)('places transcript before the composer and keeps 
   expect(html).toContain(t.observer.searchSessions);
   expect(html).toContain('Example workspace');
   expect(html.indexOf('observe-transcript-region')).toBeLessThan(html.indexOf('observe-composer-region'));
-  const conversation = html.slice(html.indexOf('<section class="observe-conversation"'), html.indexOf('<aside class="observe-tools-panel"'));
+  const conversation = html.slice(html.indexOf('<section class="observe-conversation"'), html.indexOf('<aside class="observe-tools-panel observe-inspector"'));
   expect(conversation).not.toContain(t.observedCodexPrompt.settings);
-  expect(html).toMatch(/class="observe-tools-panel"[^>]+hidden=""/);
+  expect(html).toMatch(/class="observe-tools-panel observe-inspector"/);
+  expect(html).not.toMatch(/class="observe-tools-panel observe-inspector"[^>]+hidden=""/);
+  expect(html).not.toContain('observe-subagent-list');
+  expect(html).not.toContain('observe-subagent-preview');
+  expect(html).not.toContain(t.observedCodexPrompt.settings);
   expect(html).toContain(t.observer.folder);
 });

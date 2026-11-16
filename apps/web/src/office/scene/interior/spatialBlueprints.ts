@@ -99,7 +99,8 @@ export const RECEPTION_DESK_BLUEPRINT = Object.freeze({
   worldPosition: [0, -8.15] as XZ,
   rotationY: 0,
   staffOffsetX: -0.95,
-  chairOffsetZ: -0.7,
+  // Keep the fixed chair's side exit a full body radius behind the work shelf.
+  chairOffsetZ: -0.55,
   counterOffsetZ: -1.95,
   featureWallOffsetZ: 0.3,
   approachOffset: [-2.35, -0.25] as XZ,

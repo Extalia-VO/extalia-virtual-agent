@@ -1,3 +1,4 @@
+import { isCodexSuggestionOnlyMessages, isCodexSuggestionPrompt } from './codexSuggestionSessions.js';
 import { EFFORTS, decodePortableSession, generateFullName, isContextUsage, redact, safeLabel, safeText, type Effort, type MemberGender, type PortableSession } from '@extalia/core';
 import { claudeAnchor, isInjectedContext, type CodexUserInputEvidence, type TranscriptStep } from '@extalia/importers';
 import { normalizeAgentIdentity, type AttachmentPreview, type HookPrivacyOptions, type SessionContextUsage, type SessionSummary } from '@extalia/platform';
@@ -8,12 +9,12 @@ import { open, rm, stat, type FileHandle } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import path from 'node:path';
 import { HermesDashboardClient, parseHermesDashboardUrl } from './hermesDashboard.js';
-import { HOOK_APP_LABELS, HOOK_SOURCE_IDS, hookProtocolEvents, hookSource, isHookApp, type HookApp, type NormalizedHook } from './hooks/normalize.js';
+import { HOOK_APP_LABELS, HOOK_SOURCE_IDS, clearAntigravityBackgroundTasks, hookProtocolEvents, hookSource, isHookApp, type HookApp, type NormalizedHook } from './hooks/normalize.js';
 import { readJson, writeJsonAtomic } from './jsonStore.js';
 import type { NativeImportService, NativeObservationRef, ObservedRead } from './nativeImport.js';
 import { sessionContext } from './sessionContext.js';
 import { checkSessionId, newSessionId } from './sessions.js';
-import { latestTurn, transcriptEvents } from './transcriptEvents.js';
+import { describeToolCall, latestTurn, toolStateBody, transcriptEvents } from './transcriptEvents.js';
 import { ObservedImageStore } from './observedToolImages.js';
 
 /** Sessions the user picked by hand. */
@@ -30,6 +31,7 @@ export const DEFAULT_IGNORE_FOLDERS: readonly string[] = ['~/.claude-mem'];
 const MAX_IGNORE_FOLDERS = 50;
 /** Matches the Office's recent-source window; polling/replaying history never extends it. */
 export const OBSERVED_ACTIVITY_LIVE_MS = 2 * 60_000;
+const TASK_HEARTBEAT_INTERVAL_MS = 30_000;
 const MAX_ACTIVITY_ACTORS = 256;
 interface LiveActorActivity { at: number; running: boolean; waiting?: boolean; asyncInput?: boolean; terminal?: boolean }
 
@@ -77,6 +79,16 @@ function validOutputWatermark(value: unknown): value is ObservedOutputWatermark 
     && ['pendingHookHashes', 'pendingTranscriptHashes'].every(key => raw[key] === undefined || Array.isArray(raw[key]) && raw[key].length <= 64 && raw[key].every(outputHash));
 }
 interface ObservationRecord {
+  /** A real primary user prompt reported by hooks; preserve this when ephemeral hook text is gone. */
+  userConversation?: true;
+  /** Last bounded source or helper-only hook classification; no message text. */
+  suggestionOnly?: boolean;
+  /** Last bounded transcript read positively identified only metadata/injected input. */
+  internalEmpty?: boolean;
+  /** Explicit user title choice, including renames made before a source title exists. */
+  titleRenamed?: true;
+  /** New hook registration has supplied only lifecycle/configuration metadata so far. */
+  lifecycleOnly?: true;
   id: string; title: string; reference: NativeObservationRef; watching: boolean;
   createdAt: string; lastActiveAt: string; projectPath?: string;
   /** Explicit workspace association, tied to the source identity at the user's review. */
@@ -105,6 +117,8 @@ interface ObservationRecord {
 /** Hooks active for a session in this host run: they are its live channel, transcript events only fill history before `since`. */
 interface HookLive {
   app: HookApp; since: string; lastAt: string; events: ExtaliaEvent[]; subagents?: Set<string>;
+  /** Accepted activity in this host run, including bodies omitted by labels-only privacy. */
+  substantive?: true;
   /** v0.0.38: sub-agents whose transcript label/model were merged into the hook stream. */
   identified?: Set<string>;
   /** Explicit reports remain scoped to this observed source/session, never inferred from tools or text. */
@@ -112,10 +126,12 @@ interface HookLive {
   meetingIds?: Set<string>;
 }
 interface Live {
+  /** Revision-bound Codex source classification; false also preserves incomplete source windows. */
+  internalSuggestion?: boolean;
   /** Ephemeral only: populated from new accepted reports, never restored from saved history. */
   activity?: Map<string, LiveActorActivity>;
   userInput?: { fingerprint: string; evidence: CodexUserInputEvidence };
-  snapshot?: PortableSession; steps?: TranscriptStep[]; eventIds?: Set<string>; lastEventAt?: string;
+  snapshot?: PortableSession; steps?: TranscriptStep[]; eventIds?: Set<string>; lastEventAt?: string; taskHeartbeatAt?: string;
   revision: string; eventRevision?: string; sourceRevision?: string; status: 'watching' | 'paused' | 'unavailable'; lastCheckedAt?: string; error?: string;
   hook?: HookLive;
 }
@@ -156,6 +172,39 @@ const digest = (value: unknown) => createHash('sha256').update(JSON.stringify(va
 const sourceKey = (ref: NativeObservationRef) => `${ref.locationId}:${ref.nativeSessionId}`;
 const sameSession = (a: NativeObservationRef, b: NativeObservationRef) => a.sourceId === b.sourceId && a.nativeSessionId === b.nativeSessionId;
 const isMeeting = (body: EventBody) => body.type === 'meeting.started' || body.type === 'meeting.contribution' || body.type === 'meeting.completed';
+/** Lifecycle envelopes and idle reports alone do not establish a conversation. */
+function substantiveObservationBody(body: EventBody): boolean {
+  switch (body.type) {
+    case 'prompt.submitted': return Boolean((body.text.trim() && !isInjectedContext(body.text)) || body.attachments?.length);
+    case 'model.delta': case 'model.completed': case 'tool.output': case 'command.output': return Boolean(body.text.trim());
+    case 'tool.started': case 'tool.completed':
+    case 'command.started': case 'command.completed': case 'file.read': case 'file.written':
+    case 'approval.requested': case 'approval.resolved': case 'subagent.spawned': case 'subagent.state': return true;
+    case 'turn.failed': case 'agent.error': return true;
+    case 'agent.state': return body.phase === 'error';
+    default: return false;
+  }
+}
+/** Bare state reports are temporary activity, cleared by later idle or terminal reports. */
+function currentObservationState(live: Live | undefined, watching: boolean): boolean {
+  if (!watching || live?.status !== 'watching') return false;
+  const events = live.hook?.events ?? [];
+  for (let index = events.length - 1; index >= 0; index--) {
+    const event = events[index]!, body = event.body;
+    if (body.type === 'session.ended') return false;
+    if ((event.agentId ?? 'primary') !== 'primary') continue;
+    if (body.type === 'session.started' || terminalReport(event)) return false;
+    if (body.type === 'agent.state' || body.type === 'model.thinking') {
+      if (body.type === 'agent.state') {
+        if (body.state === 'waiting') return true;
+        if (body.state !== 'thinking' && body.state !== 'working') return false;
+      }
+      const age = Date.now() - Date.parse(event.at);
+      return age >= 0 && age <= OBSERVED_ACTIVITY_LIVE_MS;
+    }
+  }
+  return false;
+}
 /** Meeting content is optional for presence; labels-only never retains it. */
 function privateMeeting(body: EventBody): EventBody | undefined {
   if (body.type === 'meeting.contribution') return undefined;
@@ -258,6 +307,12 @@ function transcriptFallback(fresh: readonly ExtaliaEvent[], history: readonly Ex
     else if (resumesWork(event)) { terminal.delete(actor); if (actor === 'primary') ended = undefined; }
   }
   const reported = new Set(hook.events.map(stepKey).filter(Boolean));
+  const hookStartedTools = new Set<string>();
+  for (const event of hook.events) {
+    if (event.body.type === 'tool.started' && event.body.toolCallId) {
+      hookStartedTools.add(JSON.stringify([event.agentId ?? 'primary', 'tool.started', event.body.toolCallId]));
+    }
+  }
   // A hook can arrive before its matching row is flushed. That row's source time
   // fences earlier transcript states too, so an old prompt cannot replace its tool state.
   for (const event of history) {
@@ -280,12 +335,64 @@ function transcriptFallback(fresh: readonly ExtaliaEvent[], history: readonly Ex
     // Reply text exists only in the transcript (hooks report tools, not prose) and carries no state,
     // so a reply written before the tools it announced is still published instead of waiting for a reload.
     if (event.body.type === 'model.completed') return true;
-    if (event.at <= (watermarks.get(actor) ?? hook.since)) return false;
+    const hookStartedTool = event.body.type === 'tool.completed' && event.body.toolCallId
+      && hookStartedTools.has(JSON.stringify([actor, 'tool.started', event.body.toolCallId]));
     const stoppedAt = terminal.get(actor);
+    if (!hookStartedTool && event.at <= (watermarks.get(actor) ?? hook.since)) return false;
     // Trailing replies/tool results cannot revive a turn explicitly stopped by a hook.
     // A genuinely later prompt is independent evidence of a new turn, including on a later poll.
-    return !stoppedAt || history.some(prior => prior.body.type === 'prompt.submitted' && activityActor(prior) === actor && prior.at > stoppedAt && prior.at <= event.at);
+    return !stoppedAt
+      || (hookStartedTool && event.at <= stoppedAt)
+      || history.some(prior => prior.body.type === 'prompt.submitted' && activityActor(prior) === actor && prior.at > stoppedAt && prior.at <= event.at);
   });
+}
+
+function activeWorkingBody(activeCallIds: ReadonlySet<string>, events: readonly ExtaliaEvent[], steps?: readonly TranscriptStep[]): EventBody {
+  for (let index = events.length - 1; index >= 0; index--) {
+    const event = events[index]!;
+    if ((event.agentId ?? 'primary') !== 'primary' || event.body.type !== 'tool.started' || !event.body.toolCallId || !activeCallIds.has(event.body.toolCallId)) continue;
+    const prior = events[index - 1];
+    if (prior && (prior.agentId ?? 'primary') === 'primary' && prior.body.type === 'agent.state' && prior.body.state === 'working' && prior.at === event.at) {
+      return prior.body;
+    }
+    return { type: 'agent.state', state: 'working', activity: event.body.kind, ...(event.body.target ? { target: event.body.target } : {}), summary: event.body.label };
+  }
+  if (steps) {
+    for (let index = steps.length - 1; index >= 0; index--) {
+      const step = steps[index]!;
+      if ((step.agentId ?? 'primary') !== 'primary' || step.type !== 'tool.call' || !step.callId || !activeCallIds.has(step.callId)) continue;
+      return toolStateBody(describeToolCall(step));
+    }
+  }
+  return { type: 'agent.state', state: 'working', activity: 'command', summary: 'Running background task' };
+}
+
+function earliestAntigravityStartAt(activeCallIds: ReadonlySet<string>, ...sources: (readonly ExtaliaEvent[])[]): string | undefined {
+  let earliest: string | undefined;
+  for (const list of sources) {
+    for (const event of list) {
+      if ((event.agentId ?? 'primary') !== 'primary' || event.body.type !== 'tool.started' || !event.body.toolCallId || !activeCallIds.has(event.body.toolCallId)) continue;
+      if (!earliest || event.at < earliest) earliest = event.at;
+    }
+  }
+  return earliest;
+}
+
+function isPrematureAntigravityHookEvent(event: ExtaliaEvent, activeCallIds: ReadonlySet<string>, earliestStartAt: string | undefined): boolean {
+  if ((event.agentId ?? 'primary') !== 'primary') return false;
+  if ((event.body.type === 'tool.completed' || event.body.type === 'file.written') && event.body.toolCallId && activeCallIds.has(event.body.toolCallId)) return true;
+  if ((event.body.type === 'turn.completed' || (event.body.type === 'agent.state' && event.body.state === 'idle' && !event.body.phase))
+    && (!earliestStartAt || event.at >= earliestStartAt)) return true;
+  return false;
+}
+
+function reconcileAntigravityHook(hook: HookLive, activeCallIds: ReadonlySet<string>, ...sources: (readonly ExtaliaEvent[])[]): boolean {
+  if (hook.app !== 'antigravity' || !activeCallIds.size) return false;
+  const earliest = earliestAntigravityStartAt(activeCallIds, hook.events, ...sources);
+  const kept = hook.events.filter(event => !isPrematureAntigravityHookEvent(event, activeCallIds, earliest));
+  if (kept.length === hook.events.length) return false;
+  hook.events = kept;
+  return true;
 }
 
 /** Retain the latest evidence of quiet actors while a busy sibling fills the activity window. */
@@ -432,6 +539,11 @@ export class Observations {
       if (record.context !== undefined && !isContextUsage(record.context)) delete record.context;
       if (record.output !== undefined && !validOutputWatermark(record.output)) delete record.output;
       if (record.sourceTitle !== undefined && typeof record.sourceTitle !== 'string') delete record.sourceTitle;
+      if (record.userConversation !== true) delete record.userConversation;
+      if (record.suggestionOnly !== undefined && typeof record.suggestionOnly !== 'boolean') delete record.suggestionOnly;
+      if (record.internalEmpty !== undefined && typeof record.internalEmpty !== 'boolean') delete record.internalEmpty;
+      if (record.titleRenamed !== true) delete record.titleRenamed;
+      if (record.lifecycleOnly !== true) delete record.lifecycleOnly;
       if (typeof record.title !== 'string' || typeof record.watching !== 'boolean' || !record.reference || (record.auto !== undefined && typeof record.auto !== 'boolean') ||
         !['locationId', 'sourceId', 'nativeSessionId', 'path'].every(key => typeof record.reference[key as keyof NativeObservationRef] === 'string') ||
         !Number.isFinite(Date.parse(record.createdAt)) || !Number.isFinite(Date.parse(record.lastActiveAt)) ||
@@ -444,7 +556,7 @@ export class Observations {
         if (!decoded.ok) throw new Error('An observed transcript is invalid. Existing data was preserved.');
         snapshot = decoded.value;
       }
-      service.live.set(record.id, { ...(snapshot ? { snapshot } : {}), revision: snapshot ? service.revision(snapshot) : 'empty', status: record.watching ? 'watching' : 'paused' });
+      service.live.set(record.id, { internalSuggestion: record.suggestionOnly ?? (snapshot ? isCodexSuggestionOnlyMessages(record.reference.sourceId, snapshot.messages, record.sourceTitle ?? record.title) : undefined), ...(snapshot ? { snapshot } : {}), revision: snapshot ? service.revision(snapshot) : 'empty', status: record.watching ? 'watching' : 'paused' });
     }
     await service.syncSettings();
     // Observations saved before v0.0.37 get a lead name now, oldest first.
@@ -731,8 +843,39 @@ export class Observations {
     });
   }
 
+  private internalSuggestion(record: ObservationRecord): boolean {
+    if (record.reference.sourceId !== 'codex' || record.userConversation) return false;
+    const live = this.live.get(record.id);
+    const prompts = (live?.hook?.events ?? []).flatMap(event => event.body.type === 'prompt.submitted'
+      && (event.agentId === undefined || event.agentId === 'primary')
+      ? [{ role: 'user', content: event.body.text }] : []);
+    // A real user continuation always wins over an earlier helper classification.
+    if (prompts.some(prompt => !isInjectedContext(prompt.content) && !isCodexSuggestionPrompt(prompt.content))) return false;
+    if (live?.internalSuggestion !== undefined) return live.internalSuggestion;
+    if (record.suggestionOnly !== undefined) return record.suggestionOnly;
+    return isCodexSuggestionOnlyMessages(record.reference.sourceId,
+      [...(live?.snapshot?.messages ?? []), ...prompts], record.sourceTitle ?? record.title);
+  }
+  /** Keep metadata-only automatic hook placeholders recoverable, but out of visible capacity. */
+  private hiddenObservation(record: ObservationRecord): boolean {
+    if (this.internalSuggestion(record)) return true;
+    if (!record.auto || record.titleRenamed || record.userConversation || record.output?.hasOutput) return false;
+    if (!record.lifecycleOnly && !record.internalEmpty && (record.model || record.context)) return false;
+    const live = this.live.get(record.id);
+    const app = (Object.keys(HOOK_SOURCE_IDS) as HookApp[]).find(app => HOOK_SOURCE_IDS[app] === record.reference.sourceId);
+    const placeholder = app && record.title === `${HOOK_APP_LABELS[app]} · ${record.reference.nativeSessionId.slice(0, 24)}`;
+    if (!placeholder && !record.internalEmpty) return false;
+    if (record.internalEmpty && record.sourceTitle !== undefined && record.title !== record.sourceTitle) return false;
+    if (!record.internalEmpty && live?.snapshot?.messages.some(message => (message.role === 'user' || message.role === 'assistant')
+      && message.content.trim() && !isInjectedContext(message.content))) return false;
+    if (live?.steps?.some(step => step.type === 'tool.call' || step.type === 'tool.result' || step.type === 'subagent.spawn'
+      || step.type === 'status' || (step.type === 'prompt' || step.type === 'reply')
+        && (Boolean(step.text.trim() && !isInjectedContext(step.text)) || step.type === 'prompt' && Boolean(step.attachments?.length)))) return false;
+    return !live?.hook?.substantive && !live?.hook?.events.some(event => substantiveObservationBody(event.body))
+      && !currentObservationState(live, record.watching);
+  }
   summaries(): SessionSummary[] {
-    return this.records.map(record => {
+    return this.records.filter(record => !this.hiddenObservation(record)).map(record => {
       const live = this.live.get(record.id)!;
       const channel = live.hook ? 'hook' as const : record.reference.locationId === DASHBOARD_LOCATION_ID ? 'dashboard' as const : 'transcript' as const;
       const model = record.model;
@@ -868,6 +1011,11 @@ export class Observations {
     }
     if (snapshot.messages.length > 5000 || Buffer.byteLength(JSON.stringify(snapshot)) > MAX_SNAPSHOT_BYTES) throw new Error('Live observation is limited to 5000 messages / 5 MB. Import this history instead.');
     const current = this.live.get(record.id)!;
+    const classificationChanged = read.internalSuggestion !== undefined && record.suggestionOnly !== read.internalSuggestion
+      || record.internalEmpty !== read.internalEmpty;
+    if (read.internalSuggestion !== undefined) record.suggestionOnly = read.internalSuggestion;
+    if (read.internalEmpty === undefined) delete record.internalEmpty;
+    else record.internalEmpty = read.internalEmpty;
     const revision = this.revision(snapshot), lastCheckedAt = new Date().toISOString();
     let identityChanged = false;
     if (revision !== current.revision) {
@@ -880,8 +1028,9 @@ export class Observations {
     // Until the user renames it, the title follows the source (a custom title set later, the first typed prompt).
     // Older records follow only when their title is injected context or a hook placeholder.
     const sourceTitle = safeLabel(snapshot.title, 200);
-    const follows = record.sourceTitle !== undefined ? record.title === record.sourceTitle
-      : record.title === sourceTitle || isInjectedContext(record.title) || Object.values(HOOK_APP_LABELS).some(label => record.title.startsWith(`${label} · `));
+    const follows = !record.titleRenamed && (record.sourceTitle !== undefined ? record.title === record.sourceTitle
+      : record.title === sourceTitle || isInjectedContext(record.title)
+        || Object.values(HOOK_APP_LABELS).some(label => record.title === `${label} · ${record.reference.nativeSessionId.slice(0, 24)}`));
     if (sourceTitle && follows && (record.title !== sourceTitle || record.sourceTitle !== sourceTitle)) { record.title = sourceTitle; record.sourceTitle = sourceTitle; identityChanged = true; }
     const steps = this.labelsOnly() ? read.steps.map(step => {
       if (step.type === 'prompt' || step.type === 'tool.result') { const { attachments: _attachments, ...metadata } = step; return metadata; }
@@ -913,10 +1062,58 @@ export class Observations {
     const fresh = introduce ? [events[0]!, ...latestTurn(events).filter(event => event !== events[0])]
       : current.eventIds ? events.filter(event => !current.eventIds!.has(event.id)) : [];
     const latest = this.live.get(record.id)?.hook ?? current.hook;
+    const transcriptAt = events.at(-1)?.at;
+    const activeBgCalls = new Set(read.activeTaskCallIds ?? []);
+    if (latest?.app === 'antigravity' && activeBgCalls.size === 0 && (!latest.lastAt || (transcriptAt && transcriptAt >= latest.lastAt))) {
+      clearAntigravityBackgroundTasks(record.reference.nativeSessionId);
+    }
+    const reconciledHook = activeBgCalls.size > 0 && latest ? reconcileAntigravityHook(latest, activeBgCalls, events) : false;
+    if (reconciledHook && latest) {
+      const latestRemaining = latest.events.at(-1)?.at;
+      if (latestRemaining) latest.lastAt = latestRemaining;
+    }
     // Deduplicate hook reports, but publish newer transcript evidence when a later hook was missed.
     const publishable = latest ? transcriptFallback(fresh, events, latest) : fresh;
-    const transcriptAt = events.at(-1)?.at;
-    const lastEventAt = latest && (!transcriptAt || latest.lastAt > transcriptAt) ? latest.lastAt : transcriptAt;
+    let syntheticEmitted = false;
+    const primaryActivity = current.activity?.get('primary');
+    if (record.watching && current.eventIds && activeBgCalls.size > 0 && latest?.app === 'antigravity'
+      && (reconciledHook || (primaryActivity && (!primaryActivity.running || primaryActivity.terminal)))
+      && !publishable.some(event => (event.agentId ?? 'primary') === 'primary' && event.body.type === 'agent.state' && event.body.state === 'working')) {
+      publishable.push(createEvent({
+        id: `observed-${digest([record.id, 'bg-reconcile', read.activeTaskAt ?? lastCheckedAt, [...activeBgCalls]])}`,
+        at: lastCheckedAt,
+        sessionId: record.id,
+        agentId: 'primary',
+        source: { runtime: record.reference.sourceId, channel: 'transcript', adapter: 'native-transcript' },
+        body: activeWorkingBody(activeBgCalls, [...events, ...latest.events], steps),
+      }));
+      syntheticEmitted = true;
+    }
+    let taskHeartbeatAt = activeBgCalls.size > 0 ? current.taskHeartbeatAt : undefined;
+    if (activeBgCalls.size > 0 && read.activeTaskAt && current.eventIds && record.watching) {
+      const taskMs = Date.parse(read.activeTaskAt);
+      const nowMs = Date.now();
+      if (Number.isFinite(taskMs) && nowMs >= taskMs - 30_000 && nowMs - taskMs <= OBSERVED_ACTIVITY_LIVE_MS) {
+        const primaryAt = Math.max(
+          Date.parse(events.filter(event => (event.agentId ?? 'primary') === 'primary').at(-1)?.at ?? '') || 0,
+          Date.parse(taskHeartbeatAt ?? '') || 0,
+          primaryActivity?.running ? primaryActivity.at : 0,
+        );
+        if (taskMs - primaryAt >= TASK_HEARTBEAT_INTERVAL_MS && !syntheticEmitted && !publishable.some(event => (event.agentId ?? 'primary') === 'primary')) {
+          publishable.push(createEvent({
+            id: `observed-${digest([record.id, 'task-heartbeat', read.activeTaskAt, [...activeBgCalls]])}`,
+            at: read.activeTaskAt,
+            sessionId: record.id,
+            agentId: 'primary',
+            source: { runtime: record.reference.sourceId, channel: 'transcript', adapter: 'native-transcript' },
+            body: activeWorkingBody(activeBgCalls, [...events, ...(latest?.events ?? [])], steps),
+          }));
+          taskHeartbeatAt = read.activeTaskAt;
+          syntheticEmitted = true;
+        }
+      }
+    }
+    const lastEventAt = [transcriptAt, latest?.lastAt, taskHeartbeatAt].filter((value): value is string => Boolean(value)).sort().at(-1);
     const target = !this.labelsOnly() && this.codexQueueTarget(record.id);
     const priorInput = target && current.userInput?.fingerprint === target.sourceFingerprint ? current.userInput.evidence : undefined;
     const requests = new Map((priorInput?.requests ?? []).map(item => [item.callId, item]));
@@ -936,9 +1133,9 @@ export class Observations {
     }
     const userInput = target ? { fingerprint: target.sourceFingerprint, evidence: { requests: [...requests.values()], replies: [...replies.values()] } } : undefined;
     const outputChanged = this.transcriptOutput(record, current.snapshot, snapshot);
-    const changed = outputChanged || identityChanged || revision !== current.revision || eventRevision !== current.eventRevision || current.status !== 'watching' || fresh.length > 0 || lastEventAt !== current.lastEventAt || digest(userInput ?? null) !== digest(current.userInput ?? null);
+    const changed = classificationChanged || read.internalSuggestion !== current.internalSuggestion || outputChanged || identityChanged || reconciledHook || syntheticEmitted || revision !== current.revision || eventRevision !== current.eventRevision || current.status !== 'watching' || fresh.length > 0 || lastEventAt !== current.lastEventAt || digest(userInput ?? null) !== digest(current.userInput ?? null);
     const activity = current.activity;
-    this.live.set(record.id, { ...(activity ? { activity } : {}), ...(userInput ? { userInput } : {}), snapshot, steps, eventRevision, eventIds: new Set(events.map(event => event.id)), ...(lastEventAt ? { lastEventAt } : {}),
+    this.live.set(record.id, { ...(read.internalSuggestion === undefined ? {} : { internalSuggestion: read.internalSuggestion }), ...(activity ? { activity } : {}), ...(userInput ? { userInput } : {}), snapshot, steps, eventRevision, eventIds: new Set(events.map(event => event.id)), ...(lastEventAt ? { lastEventAt } : {}), ...(taskHeartbeatAt ? { taskHeartbeatAt } : {}),
       revision, ...(sourceRevision ? { sourceRevision } : {}), status: 'watching', lastCheckedAt, ...(latest ? { hook: latest } : {}) });
     if (record.watching && current.eventIds) advanceLiveActivity(this.live.get(record.id)!, publishable, Date.now());
     const identities = latest ? this.identities(record, latest, events) : [];
@@ -1038,12 +1235,12 @@ export class Observations {
     return this.serialize(async () => {
       if (!Array.isArray(candidateIds) || !candidateIds.length || candidateIds.length > MAX_OBSERVATIONS) throw new Error(`Select 1–${MAX_OBSERVATIONS} sessions to observe.`);
       const selected = [...new Set(candidateIds)].map(id => this.source.observation(scanId, id));
-      const manual = this.records.filter(record => !record.auto);
+      const manual = this.records.filter(record => !record.auto && !this.hiddenObservation(record));
       if (manual.length + selected.filter(item => !manual.some(record => sameSession(record.reference, item.reference))).length > MAX_OBSERVATIONS) throw new Error(`Observe at most ${MAX_OBSERVATIONS} sessions. Delete an old observation first.`);
       for (const item of selected) {
         if (item.session.messages.length > 5000 || Buffer.byteLength(JSON.stringify(item.session)) > MAX_SNAPSHOT_BYTES) throw new Error('This history is too large for live observation. Import it instead.');
       }
-      for (const { reference, session, steps, model, context } of selected) {
+      for (const { reference, session, steps, model, context, activeTaskAt, activeTaskCallIds } of selected) {
         let record = this.records.find(item => sameSession(item.reference, reference));
         const created = !record;
         if (!record) {
@@ -1056,7 +1253,7 @@ export class Observations {
         record.reference = reference;
         // Picking a session by hand keeps it out of the automatic LRU.
         record.watching = true; delete record.auto;
-        await this.update(record, { session, steps, ...(model ? { model } : {}), ...(context ? { context } : {}) }, undefined, created);
+        await this.update(record, { session, steps, ...(model ? { model } : {}), ...(context ? { context } : {}), ...(activeTaskAt ? { activeTaskAt } : {}), ...(activeTaskCallIds ? { activeTaskCallIds } : {}) }, undefined, created);
       }
       await this.save();
     });
@@ -1068,16 +1265,35 @@ export class Observations {
       const found = this.source.discover(enabled, Date.now() - DISCOVERY_WINDOW_MS, MAX_AUTO_OBSERVATIONS).sort((a, b) => b.updatedAt - a.updatedAt);
       for (const item of found) {
         const key = sourceKey(item.reference);
-        const known = () => this.records.some(record => sourceKey(record.reference) === key || sameSession(record.reference, item.reference));
-        if (known() || (this.settings.ignored[key] ?? -Infinity) >= item.updatedAt || this.ignoredPath(item.projectPath)) continue;
+        const known = () => this.records.find(record => sourceKey(record.reference) === key || sameSession(record.reference, item.reference));
+        const canAttach = (record: ObservationRecord) => record.auto === true && record.watching
+          && record.hook && HOOK_SOURCE_IDS[record.hook.app] === record.reference.sourceId
+          && !record.reference.path && sameSession(record.reference, item.reference);
+        const existing = known();
+        if ((existing && !canAttach(existing)) || (this.settings.ignored[key] ?? -Infinity) >= item.updatedAt || this.ignoredPath(item.projectPath)) continue;
         if (await this.hooks.skip?.(item.reference)) continue;
         // Hooks may have registered the session meanwhile.
-        if (known()) continue;
+        const registered = known();
+        if (registered && !canAttach(registered)) continue;
         let revision: string, read: ObservedRead;
         // A transcript that has no conversation yet is tried again on the next poll.
         try { revision = this.source.observationRevision(item.reference); read = this.source.readObservation(item.reference); } catch { continue; }
         if (read.session.messages.length > 5000 || Buffer.byteLength(JSON.stringify(read.session)) > MAX_SNAPSHOT_BYTES) { this.ignore(key, Number.MAX_SAFE_INTEGER); await this.saveSettings(); continue; }
+        if (read.internalEmpty || (read.internalSuggestion ?? isCodexSuggestionOnlyMessages(item.reference.sourceId, read.session.messages, read.session.title))) continue;
         if (this.ignoredPath(read.session.workspace?.projectLocation)) continue;
+        // An opted-in native location can fill a hook placeholder when its transcript appears later.
+        if (registered) {
+          const previous = structuredClone(registered), previousLive = structuredClone(this.live.get(registered.id));
+          this.invalidateControl(registered); registered.reference = item.reference;
+          try { await this.update(registered, read, revision); }
+          catch (error) {
+            // Failed hydration must leave the pathless record eligible for a later discovery retry.
+            this.records = this.records.map(record => record === registered ? previous : record);
+            if (previousLive) this.live.set(registered.id, previousLive);
+            throw error;
+          }
+          continue;
+        }
         // A continued conversation is the same character: its earlier file takes over or is dropped, no new record.
         const continued = await this.continuation(item.reference, read.session, await this.anchorFor(item.reference));
         if (continued) {
@@ -1127,7 +1343,7 @@ export class Observations {
   /** Retire the least recently active automatic observations beyond the LRU limit. */
   private async trim() {
     const activity = (record: ObservationRecord) => Math.max(Date.parse(record.lastActiveAt), Date.parse(this.live.get(record.id)?.lastEventAt ?? '') || 0);
-    const overflow = this.records.filter(record => record.auto).sort((a, b) => activity(b) - activity(a)).slice(MAX_AUTO_OBSERVATIONS);
+    const overflow = this.records.filter(record => record.auto).sort((a, b) => Number(this.hiddenObservation(a)) - Number(this.hiddenObservation(b)) || activity(b) - activity(a)).slice(MAX_AUTO_OBSERVATIONS);
     for (const record of overflow) await this.retire(record);
   }
   /** `archive` keeps the conversation in History; ignored-folder noise is dropped instead. */
@@ -1272,6 +1488,7 @@ export class Observations {
       const record = this.records.find(item => item.id === id);
       if (!record) throw new Error('That observed session no longer exists.');
       const clean = safeLabel(title, 200); if (!clean) throw new Error('Enter a title.');
+      if (record.title !== clean) record.titleRenamed = true;
       record.title = clean;
       await this.save(); this.notify(record);
     });
@@ -1348,7 +1565,7 @@ export class Observations {
       if (!record && hook.steps.every(step => isMeeting(step.body))) return;
       // Sessions in ignored folders are not observed automatically (a session picked by hand still is).
       if (this.ignoredPath(hook.cwd) && (!record || record.auto)) return;
-      const titleHint = this.labelsOnly() ? undefined : hook.titleHint;
+      const titleHint = this.labelsOnly() || hook.titleHint && isInjectedContext(hook.titleHint) ? undefined : hook.titleHint;
       if (!record) {
         record = {
           id: newSessionId(),
@@ -1360,6 +1577,7 @@ export class Observations {
           ...(hook.cwd ? { projectPath: hook.cwd } : {}),
           auto: true,
           hook: { app: hook.app },
+          lifecycleOnly: true,
         };
         await this.name(record);
         this.records.push(record);
@@ -1369,7 +1587,20 @@ export class Observations {
         record.hook = { app: hook.app };
         record.lastActiveAt = at;
         if (hook.cwd && record.projectPath !== hook.cwd) { this.invalidateControl(record); record.projectPath = hook.cwd; }
-        if (titleHint && !subagentId && record.title.startsWith(`${HOOK_APP_LABELS[hook.app]} · `)) record.title = titleHint;
+        if (titleHint && !subagentId && !record.titleRenamed && record.title === `${HOOK_APP_LABELS[hook.app]} · ${reference.nativeSessionId.slice(0, 24)}`) record.title = titleHint;
+      }
+      if (sourceId === 'codex' && !subagentId && !record.userConversation) {
+        const prompts = hook.steps.flatMap(step => step.body.type === 'prompt.submitted' && step.agentId === 'primary'
+          ? [{ role: 'user', content: step.body.text }] : []);
+        if (prompts.length && isCodexSuggestionOnlyMessages(sourceId, [...(this.live.get(record.id)?.snapshot?.messages ?? []), ...prompts])) record.suggestionOnly = true;
+      }
+      if (!subagentId && hook.steps.some(step => step.body.type === 'prompt.submitted'
+        && (step.agentId === 'primary' || !step.agentId) && substantiveObservationBody(step.body)
+        && (!isInjectedContext(step.body.text) || Boolean(step.body.attachments?.length))
+        && (sourceId !== 'codex' || !isCodexSuggestionPrompt(step.body.text) || Boolean(step.body.attachments?.length)))) {
+        if (titleHint && !record.titleRenamed && this.internalSuggestion(record)) record.title = titleHint;
+        record.userConversation = true;
+        record.suggestionOnly = false;
       }
       if (!subagentId && !CHILD_HOOK_EVENTS.has(hook.event) && (!hook.agentId || hook.agentId === 'primary')) {
         if (hook.model) reportModel(record, safeLabel(hook.model, 120), at);
@@ -1420,6 +1651,32 @@ export class Observations {
               ...(hook.model ? { model: hook.model } : {}),
             },
           }));
+        }
+      }
+      const substantive = ownSteps.some(step => substantiveObservationBody(step.body));
+      if (substantive) delete record.lifecycleOnly;
+      if (substantive
+        || this.labelsOnly() && (hook.event === 'UserPromptSubmit' || hook.event === 'BeforeAgent')) live.hook.substantive = true;
+      if (hook.app === 'antigravity' && (hook.event === 'PostToolUse' || hook.event === 'Stop') && record.reference.path
+        && !events.some(event => event.body.type === 'turn.failed')
+        && events.some(event => event.body.type === 'tool.completed' || event.body.type === 'turn.completed')) {
+        let read: ObservedRead | undefined;
+        try { read = this.source.readObservation(record.reference); } catch { read = undefined; }
+        if (read?.activeTaskCallIds?.length) {
+          const activeBgCalls = new Set(read.activeTaskCallIds);
+          const earliest = earliestAntigravityStartAt(activeBgCalls, live.hook.events, events);
+          const kept = events.filter(event => !isPrematureAntigravityHookEvent(event, activeBgCalls, earliest));
+          const prunedHook = reconcileAntigravityHook(live.hook, activeBgCalls, events);
+          if (kept.length < events.length || prunedHook) {
+            events = [...kept, createEvent({
+              id: `hook-${record.id}-${++this.hookCounter}-bg`,
+              at,
+              sessionId: record.id,
+              agentId: 'primary',
+              source: hookSource(hook.app),
+              body: activeWorkingBody(activeBgCalls, [...live.hook.events, ...events], read.steps),
+            })];
+          }
         }
       }
       if (live.hook.meeting || events.some(event => isMeeting(event.body))) {

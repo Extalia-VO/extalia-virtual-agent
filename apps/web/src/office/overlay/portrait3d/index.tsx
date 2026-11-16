@@ -35,6 +35,6 @@ export function Portrait3D({ fallback, className, ...subject }: Portrait3DProps)
   const ready = readyKey === key;
   return <span className={className ?? 'office-portrait-3d'} aria-hidden="true" style={{ display: 'block', position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}>
     {!ready && fallback}
-    <canvas ref={canvas} width={192} height={224} data-portrait-3d={ready ? 'ready' : 'loading'} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: ready ? 1 : 0, pointerEvents: 'none' }} />
+    <canvas ref={canvas} width={192} height={224} data-portrait-3d={ready ? 'ready' : 'loading'} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: ready ? 1 : 0, pointerEvents: 'none', objectFit: 'contain' }} />
   </span>;
 }

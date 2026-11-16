@@ -75,8 +75,8 @@ describe('screen painters', () => {
 
   it('shows a safe phrase for the work, never the raw command, path, URL or query', () => {
     const command = paint({ ...base, occupant: worker('command', 'pnpm build --watch') });
-    expect(command.strings).toContain('Running a command…');
-    expect(command.strings.some(text => text.includes('pnpm') || text.includes('build'))).toBe(false);
+    expect(command.strings).toContain('Building the project…');
+    expect(command.strings.some(text => text.includes('pnpm') || text.includes('--watch'))).toBe(false);
     const test = paint({ ...base, occupant: worker('command', 'pnpm test') });
     expect(test.strings).toContain('Running tests…');
     const editor = paint({ ...base, occupant: worker('edit', '/Users/someone/src/example/thing.ts') });

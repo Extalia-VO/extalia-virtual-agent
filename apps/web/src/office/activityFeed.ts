@@ -20,6 +20,10 @@ export interface OfficeActivity {
   text: string;
   /** Tool category when `kind` is `tool`. */
   activity?: ActivityKind;
+  /** Exact reported tool identity, retained only to choose a safe activity category. */
+  tool?: string;
+  /** Reported target, retained only for category selection; never world-visible text. */
+  target?: string;
   round?: 1 | 2;
   at: string;
 }
@@ -63,7 +67,8 @@ export function activityFromEvent(event: ExtaliaEvent): OfficeActivity | undefin
       return preview.text ? { ...base, characterId: `${event.sessionId}:primary`, kind: 'prompt', text: activityText(preview.text) } : undefined;
     }
     case 'model.completed': return body.text.trim() ? { ...base, kind: 'reply', text: activityText(body.text) } : undefined;
-    case 'tool.started': return { ...base, kind: 'tool', text: activityText(body.target && !body.label.includes(body.target) ? `${body.label} ${body.target}` : body.label), activity: body.kind };
+    case 'tool.started': return { ...base, kind: 'tool', text: activityText(body.target && !body.label.includes(body.target) ? `${body.label} ${body.target}` : body.label), activity: body.kind,
+      tool: body.tool, ...(body.target ? { target: body.target } : {}) };
     case 'approval.requested': return { ...base, kind: 'approval', text: activityText(body.detail ? `${body.action}: ${body.detail}` : body.action) };
     case 'subagent.spawned': return { ...base, kind: 'delegated', text: activityText(body.label ?? body.role ?? body.subagentId) };
     case 'turn.completed': return { ...base, kind: 'done', text: activityText(body.summary ?? '') };

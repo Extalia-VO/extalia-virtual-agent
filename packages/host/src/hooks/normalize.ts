@@ -323,6 +323,20 @@ export const normalizeCodexHook = (payload: unknown, options?: NormalizeHookOpti
 export const normalizeGeminiHook = (payload: unknown, options?: NormalizeHookOptions) => claudeStyle('gemini', payload, options);
 
 const antigravityPendingTools = new Map<string, Array<{ callId: string; name: string; input: unknown; cwd?: string }>>();
+const antigravityBackgroundTasks = new Map<string, Map<string, Tool>>();
+
+function shortBackgroundTaskKey(taskId: string): string {
+  const parts = taskId.trim().split('/').filter(Boolean);
+  return parts.at(-1) ?? taskId.trim();
+}
+
+export function clearAntigravityBackgroundTasks(sessionId: string): void {
+  antigravityBackgroundTasks.delete(sessionId);
+}
+
+export function hasAntigravityBackgroundTasks(sessionId: string): boolean {
+  return (antigravityBackgroundTasks.get(sessionId)?.size ?? 0) > 0;
+}
 
 /**
  * Antigravity command hooks (`~/.gemini/config/hooks.json`):
@@ -407,9 +421,35 @@ export function normalizeAntigravityHook(raw: unknown, options: NormalizeHookOpt
         const tool = toolOf(rawName, rawInput, effectiveCallId);
         const errText = str(payload.error).trim();
         const response = payload.tool_response ?? payload.tool_output ?? payload.toolOutput;
+        const rawResponseText = str(outputText(response)) || hookOutput(response) || str(response);
+        const statusText = str(payload.status ?? toolCall.status).trim().toUpperCase();
+        const bgTaskMatch = /Tool is running as a background task with task id:\s*([^\s"'`<>]+)/i.exec(rawResponseText);
+        if (!errText && (bgTaskMatch || statusText === 'RUNNING') && rawName !== 'schedule' && rawName !== 'invoke_subagent') {
+          const taskKey = bgTaskMatch?.[1] ? shortBackgroundTaskKey(bgTaskMatch[1]) : (effectiveCallId || rawName);
+          const tasks = antigravityBackgroundTasks.get(sessionId) ?? new Map<string, Tool>();
+          tasks.set(taskKey, tool);
+          antigravityBackgroundTasks.set(sessionId, tasks);
+          while (antigravityBackgroundTasks.size > 200) {
+            const oldest = antigravityBackgroundTasks.keys().next().value;
+            if (oldest !== undefined) antigravityBackgroundTasks.delete(oldest); else break;
+          }
+          add(working(tool));
+          break;
+        }
         const ok = errText || explicitToolFailure(hookOutput(response)) ? false : statedSuccess(response) ?? true;
         const out = options.labelsOnly ? undefined : hookOutput(errText || response);
         add(completed(tool, ok, out));
+        if (ok && rawName === 'manage_task') {
+          const cancelMatch = /Task\s+["']?([^\s"'`<>]+)["']?\s+cancell?ed\b/i.exec(rawResponseText);
+          const canceledKey = cancelMatch?.[1] ? shortBackgroundTaskKey(cancelMatch[1]) : undefined;
+          const tasks = canceledKey ? antigravityBackgroundTasks.get(sessionId) : undefined;
+          const canceledTool = canceledKey && tasks ? tasks.get(canceledKey) : undefined;
+          if (canceledKey && tasks && canceledTool) {
+            tasks.delete(canceledKey);
+            if (tasks.size === 0) antigravityBackgroundTasks.delete(sessionId);
+            add(completed(canceledTool, false, options.labelsOnly ? undefined : safeLabel(`Canceled background task (${canceledKey}).`, 400)));
+          }
+        }
         if (ok && tool.kind === 'edit') {
           for (const file of extractWrittenFiles(rawName, rawInput, response, effectiveCwd)) {
             add({ type: 'file.written', path: file.path, change: file.change, ...(tool.toolCallId ? { toolCallId: tool.toolCallId } : {}) });
@@ -422,11 +462,18 @@ export function normalizeAntigravityHook(raw: unknown, options: NormalizeHookOpt
       const errText = str(payload.error).trim();
       const reasonText = str(payload.terminationReason).trim().toLowerCase();
       if (errText || reasonText === 'error') {
+        antigravityBackgroundTasks.delete(sessionId);
         const error = safeLabel(errText || 'The turn failed.', 300) || 'The turn failed.';
         for (const body of failedTurn(error, stopReasonOf(errText || error))) add(body);
       } else {
-        add({ type: 'turn.completed', ...(model ? { model } : {}) });
-        add({ type: 'agent.state', state: 'idle' });
+        const bgTasks = antigravityBackgroundTasks.get(sessionId);
+        if (bgTasks && bgTasks.size > 0) {
+          const activeTool = [...bgTasks.values()].at(-1)!;
+          add(working(activeTool));
+        } else {
+          add({ type: 'turn.completed', ...(model ? { model } : {}) });
+          add({ type: 'agent.state', state: 'idle' });
+        }
       }
       break;
     }

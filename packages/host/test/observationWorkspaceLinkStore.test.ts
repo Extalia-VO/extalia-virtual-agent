@@ -23,6 +23,8 @@ async function fixture() {
   const observer = await open();
   const hook = (cwd: string) => normalizeClaudeHook({ session_id: 'workspace-link-native', hook_event_name: 'SessionStart', cwd })!;
   await observer.receiveHook(hook(project));
+  expect(observer.summaries()).toEqual([]);
+  await observer.receiveHook(normalizeClaudeHook({ session_id: 'workspace-link-native', hook_event_name: 'UserPromptSubmit', cwd: project, prompt: 'Continue the project work' })!);
   const id = observer.summaries()[0]!.id;
   const link = { workspaceId: 'w_example', projectCanonicalPath: project, root };
   return { root, project, state, source, observer, events, open, hook, id, link, index: path.join(state, 'observations.json') };

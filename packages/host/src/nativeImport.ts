@@ -1,6 +1,6 @@
 import { literalProjectPath, safeLabel, safeText, type ImportMode, type PortableSession } from '@extalia/core';
 import {
-  codexThreadSpawn, codexTurnWorkingDirectory, mergeSubagentSteps, parseAntigravity, parseClaude, parseCodex, parseGemini, parseHermes,
+  codexThreadSpawn, codexTurnWorkingDirectory, isInjectedContext, mergeSubagentSteps, parseAntigravity, parseClaude, parseCodex, parseGemini, parseHermes,
   type CodexThreadSpawn, type NativeParseResult, type NativeSourceId, type ParseContext, type SubagentTranscript, type TranscriptContext, type TranscriptStep,
 } from '@extalia/importers';
 import type { ImportCandidate, ImportDiagnostic, ImportLocation, ImportScan } from '@extalia/platform';
@@ -9,6 +9,7 @@ import { closeSync, existsSync, fstatSync, lstatSync, openSync, readdirSync, rea
 import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path';
 import type * as Sqlite from 'node:sqlite';
 import { resolveAgentLocations } from './agentLocations.js';
+import { isCodexSuggestionOnlyMessages } from './codexSuggestionSessions.js';
 import { parse as parseToml } from 'smol-toml';
 
 /**
@@ -51,7 +52,7 @@ type Kind = 'codex' | 'claude' | 'gemini' | 'antigravity' | 'hermes' | 'binary' 
 interface Location extends ImportLocation { root: string; kind: Kind; sourceId: NativeSourceId | 'antigravity-ide' | 'antigravity-cli' }
 interface FileIdentity { size: number; mtime: number; ino: number }
 /** `titled` is false when the candidate title is only a placeholder; imports then use the first prompt. */
-interface Ref { location: Location; path: string; candidate: ImportCandidate; identity: FileIdentity; titled: boolean; rowFingerprint?: string; spawn?: CodexThreadSpawn }
+interface Ref { location: Location; path: string; candidate: ImportCandidate; identity: FileIdentity; titled: boolean; rowFingerprint?: string; spawn?: CodexThreadSpawn; suggestionOnly?: boolean }
 /** First record of a Codex rollout: its thread id and, for sub-agent threads, how it was spawned. Immutable once written. */
 interface ThreadHeader { fileIdentity: string; id: string; spawn?: CodexThreadSpawn; cwd?: string; startMs?: number }
 interface ParsedSubagent { steps: TranscriptStep[]; model?: string; startedAt?: string }
@@ -257,6 +258,43 @@ function readBoundedBuffer(root: string, path: string, max: number): Buffer {
   }
 }
 
+/** Classify only complete bounded heads; unknown or partial user records keep the session visible. */
+function codexSuggestionHead(head: string, size: number): boolean {
+  const lines = head.split('\n');
+  if (size > HEADER_BYTES || Buffer.byteLength(head, 'utf8') !== size || lines.slice(100).some(line => line.trim())) return false;
+  const messages: { role: string; content: string }[] = [];
+  let title: string | undefined;
+  for (const line of lines.slice(0, 100)) {
+    if (!line.trim()) continue;
+    try {
+      const row = JSON.parse(line) as Row;
+      if (!row || typeof row !== 'object' || Array.isArray(row)) return false;
+      const payload = row.payload as Row | undefined;
+      if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+        if (row.type === 'event_msg' || row.type === 'response_item') return false;
+        continue;
+      }
+      if (row.type === 'session_meta' && typeof payload.title === 'string') title = payload.title;
+      if (row.type === 'event_msg' && payload.type === 'user_message') {
+        if (typeof payload.message !== 'string' || !payload.message.trim()) return false;
+        messages.push({ role: 'user', content: payload.message });
+      } else if (row.type === 'response_item' && payload.type === 'message' && typeof payload.role !== 'string') return false;
+      else if (row.type === 'response_item' && payload.role === 'user') {
+        if (payload.type !== 'message' || !Array.isArray(payload.content) || !payload.content.length) return false;
+        const parts: string[] = [];
+        for (const item of payload.content) {
+          if (!item || typeof item !== 'object' || item.type !== 'input_text' || typeof item.text !== 'string') return false;
+          parts.push(item.text);
+        }
+        const content = parts.join('\n');
+        if (!content.trim()) return false;
+        messages.push({ role: 'user', content });
+      }
+    } catch { return false; }
+  }
+  return isCodexSuggestionOnlyMessages('codex', messages, title);
+}
+
 /** One optional reviewed configuration file; a missing file is distinct from an unsafe one. */
 function resumeSettings(root: string, name: string): { content: string; revision: string } | undefined {
   const file = join(root, name);
@@ -332,7 +370,7 @@ export interface NativeImportOptions {
 }
 
 export interface NativePreview {
-  sessions: { candidateId: string; session: PortableSession; steps?: TranscriptStep[]; model?: string; modelAt?: string; effort?: NativeParseResult['effort']; effortAt?: string; context?: TranscriptContext; userInput?: NativeParseResult['userInput'] }[];
+  sessions: { candidateId: string; session: PortableSession; steps?: TranscriptStep[]; model?: string; modelAt?: string; effort?: NativeParseResult['effort']; effortAt?: string; context?: TranscriptContext; userInput?: NativeParseResult['userInput']; runningTaskIds?: string[]; runningTaskCallIds?: string[] }[];
   diagnostics: ImportDiagnostic[];
 }
 
@@ -363,14 +401,16 @@ export interface NativeHermesControlSource {
  * activity, including the activity of its sub-agents (Claude Code subagent
  * files, Codex threads it spawned), and the lead's latest model.
  */
-export interface ObservedRead { session: PortableSession; steps: TranscriptStep[]; model?: string; modelAt?: string; effort?: NativeParseResult['effort']; effortAt?: string; context?: TranscriptContext; userInput?: NativeParseResult['userInput'] }
+/** Host-only read evidence: internalEmpty requires supported input-only source steps;
+ * internalSuggestion is revision-pinned Codex evidence. False includes inconclusive reads. */
+export interface ObservedRead { internalEmpty?: boolean; internalSuggestion?: boolean; session: PortableSession; steps: TranscriptStep[]; model?: string; modelAt?: string; effort?: NativeParseResult['effort']; effortAt?: string; context?: TranscriptContext; userInput?: NativeParseResult['userInput']; activeTaskAt?: string; activeTaskCallIds?: string[] }
 
 /** A session whose source changed after `since`, found by automatic discovery. */
 export interface DiscoveredSession { reference: NativeObservationRef; updatedAt: number; projectPath?: string }
 
 interface DiscoveryCache {
   dirs: Map<string, { stamp: string; entries: { name: string; dir: boolean }[] }>;
-  files: Map<string, { mtime: number; ino: number; header?: { nativeSessionId: string; projectPath?: string; child?: boolean } }>;
+  files: Map<string, { mtime: number; ino: number; size?: number; header?: { nativeSessionId: string; projectPath?: string; child?: boolean; suggestionOnly?: boolean } }>;
   cursor: number;
   dbStamp?: string;
   dbFound?: { nativeSessionId: string; updatedAt: number }[];
@@ -584,7 +624,7 @@ export class NativeImportService {
     const latest = new Map<string, Ref>();
     const collect = (ref: Ref) => {
       // Codex sub-agent threads belong to the session that spawned them.
-      if (ref.spawn) return;
+      if (ref.spawn || ref.suggestionOnly) return;
       const key = `${ref.location.sourceId}:${ref.location.profile ?? ''}:${ref.candidate.nativeSessionId}`;
       const previous = latest.get(key);
       if (!previous || Date.parse(ref.candidate.updatedAt) > Date.parse(previous.candidate.updatedAt)) latest.set(key, ref);
@@ -694,9 +734,10 @@ export class NativeImportService {
     contained(location.root, location.path);
     const canonical = contained(location.path, path), fileIdentity = identity(canonical);
     const large = fileIdentity.size > MAX_FILE_BYTES;
-    let meta: Row = {}, spawn: CodexThreadSpawn | undefined;
+    let meta: Row = {}, spawn: CodexThreadSpawn | undefined, suggestionOnly = false;
     if (location.kind !== 'binary') {
       const head = readBounded(location.path, path, HEADER_BYTES);
+      if (location.kind === 'codex') suggestionOnly = codexSuggestionHead(head, fileIdentity.size);
       if (location.kind === 'gemini' && path.endsWith('.json')) meta = jsonHeader(head);
       else {
         for (const line of head.split('\n').slice(0, 100)) {
@@ -742,7 +783,7 @@ export class NativeImportService {
       ...(location.note || large ? { note: large ? 'Larger than 25 MB: its latest activity can be observed, but it cannot be imported.' : location.note } : {}),
     };
     if (!same(fileIdentity, identity(contained(location.path, path)))) throw new Error('The session changed during the scan; scan again.');
-    return { location, path, candidate, identity: fileIdentity, titled: Boolean(text(meta.title) ?? text(meta.summary)), ...(spawn ? { spawn } : {}) };
+    return { location, path, candidate, identity: fileIdentity, titled: Boolean(text(meta.title) ?? text(meta.summary)), ...(spawn ? { spawn } : {}), ...(suggestionOnly ? { suggestionOnly } : {}) };
   }
 
   /** Gemini stores sessions by project hash; only verified markers map them to a folder. */
@@ -813,6 +854,7 @@ export class NativeImportService {
   observation(scanId: string, candidateId: string): { reference: NativeObservationRef } & ObservedRead {
     this.threadFileMemo.clear();
     const picked = this.snapshots.get(scanId)?.refs.get(candidateId);
+    if (picked?.location.kind === 'codex' && this.fileRef(picked.location, picked.path).suggestionOnly) throw new Error('This app-generated suggestion session cannot be observed.');
     if (picked?.spawn) {
       // Observing a Codex sub-agent thread observes the session that spawned it.
       const root = this.codexRoot(picked.location, picked.path);
@@ -969,18 +1011,20 @@ export class NativeImportService {
         const info = statSync(path);
         if (!info.isFile()) { cache.files.delete(path); continue; }
         const previous = cache.files.get(path), ino = Number(info.ino);
-        cache.files.set(path, { mtime: info.mtimeMs, ino, ...(previous?.ino === ino && previous.header ? { header: previous.header } : {}) });
+        const stableHeader = previous?.ino === ino && (location.kind !== 'codex' || previous.mtime === info.mtimeMs && previous.size === info.size);
+        cache.files.set(path, { mtime: info.mtimeMs, ino, size: info.size, ...(stableHeader && previous?.header ? { header: previous.header } : {}) });
       } catch { cache.files.delete(path); }
     }
-    const recent = [...cache.files.entries()].filter(([, seen]) => seen.mtime > since).sort((a, b) => b[1].mtime - a[1].mtime).slice(0, limit);
+    const recent = [...cache.files.entries()].filter(([, seen]) => seen.mtime > since).sort((a, b) => b[1].mtime - a[1].mtime).slice(0, location.kind === 'codex' ? MAX_CANDIDATES : limit);
     const result = new Map<string, DiscoveredSession>();
     for (const [path, seen] of recent) {
       if (!seen.header) {
         try {
           const ref = this.fileRef(location, path);
-          seen.header = { nativeSessionId: ref.candidate.nativeSessionId, ...(ref.candidate.projectPath ? { projectPath: ref.candidate.projectPath } : {}), ...(ref.spawn ? { child: true } : {}) };
+          seen.header = { nativeSessionId: ref.candidate.nativeSessionId, ...(ref.candidate.projectPath ? { projectPath: ref.candidate.projectPath } : {}), ...(ref.spawn ? { child: true } : {}), ...(ref.suggestionOnly ? { suggestionOnly: true } : {}) };
         } catch { continue; }
       }
+      if (seen.header.suggestionOnly) continue;
       let reference: NativeObservationRef = { locationId: location.id, sourceId: location.sourceId, nativeSessionId: seen.header.nativeSessionId, path };
       let projectPath = seen.header.projectPath;
       if (seen.header.child) {
@@ -988,12 +1032,15 @@ export class NativeImportService {
         const root = this.codexRoot(location, path);
         if (!root) continue;
         reference = { ...reference, nativeSessionId: root.id, path: root.path };
-        projectPath = this.fileRef(location, root.path).candidate.projectPath ?? projectPath;
+        const rootRef = this.fileRef(location, root.path);
+        if (rootRef.suggestionOnly) continue;
+        projectPath = rootRef.candidate.projectPath ?? projectPath;
       }
       const key = reference.nativeSessionId, previous = result.get(key);
       if (!previous || previous.updatedAt < seen.mtime) result.set(key, { reference, updatedAt: Math.max(seen.mtime, previous?.updatedAt ?? 0), ...(projectPath ? { projectPath } : {}) });
+      if (result.size >= limit) break;
     }
-    return [...result.values()];
+    return [...result.values()].slice(0, limit);
   }
 
   private discoverHermes(location: Location, cache: DiscoveryCache, since: number, limit: number): DiscoveredSession[] {
@@ -1144,7 +1191,7 @@ export class NativeImportService {
           const length = Buffer.byteLength(JSON.stringify(parsed.session));
           if (bytes + length > MAX_PREVIEW_BYTES) { add('The preview is larger than 10 MB; select fewer sessions.'); continue; }
           bytes += length;
-          result.sessions.push({ candidateId: id, session: parsed.session, ...(withSteps && parsed.steps ? { steps: parsed.steps } : {}), ...(withSteps && parsed.model ? { model: parsed.model } : {}), ...(withSteps && parsed.modelAt ? { modelAt: parsed.modelAt } : {}), ...(withSteps && parsed.effort ? { effort: parsed.effort } : {}), ...(withSteps && parsed.effortAt ? { effortAt: parsed.effortAt } : {}), ...(withSteps && parsed.context ? { context: parsed.context } : {}), ...(withSteps && parsed.userInput ? { userInput: parsed.userInput } : {}) });
+          result.sessions.push({ candidateId: id, session: parsed.session, ...(withSteps && parsed.steps ? { steps: parsed.steps } : {}), ...(withSteps && parsed.model ? { model: parsed.model } : {}), ...(withSteps && parsed.modelAt ? { modelAt: parsed.modelAt } : {}), ...(withSteps && parsed.effort ? { effort: parsed.effort } : {}), ...(withSteps && parsed.effortAt ? { effortAt: parsed.effortAt } : {}), ...(withSteps && parsed.context ? { context: parsed.context } : {}), ...(withSteps && parsed.userInput ? { userInput: parsed.userInput } : {}), ...(withSteps && parsed.runningTaskIds?.length ? { runningTaskIds: parsed.runningTaskIds } : {}), ...(withSteps && parsed.runningTaskCallIds?.length ? { runningTaskCallIds: parsed.runningTaskCallIds } : {}) });
         }
       } catch (error) {
         add(error instanceof Error ? error.message : 'Unable to read this session.');
@@ -1210,11 +1257,46 @@ export class NativeImportService {
   }
 
   /** A live read: the lead's steps merged with its sub-agents' steps (a failing sub-agent read never hides the lead). */
-  private observedRead(ref: Ref, entry: { session: PortableSession; steps?: TranscriptStep[]; model?: string; modelAt?: string; effort?: NativeParseResult['effort']; effortAt?: string; context?: TranscriptContext; userInput?: NativeParseResult['userInput'] }): ObservedRead {
+  private observedRead(ref: Ref, entry: { session: PortableSession; steps?: TranscriptStep[]; model?: string; modelAt?: string; effort?: NativeParseResult['effort']; effortAt?: string; context?: TranscriptContext; userInput?: NativeParseResult['userInput']; runningTaskIds?: string[]; runningTaskCallIds?: string[] }): ObservedRead {
     const steps = entry.steps ?? [];
     let subagents: SubagentTranscript[];
     try { subagents = this.subagents(ref, steps, entry.session.startedAt); } catch { subagents = []; }
-    return { session: entry.session, steps: subagents.length ? mergeSubagentSteps(steps, subagents) : steps, ...(entry.model ? { model: entry.model } : {}), ...(entry.modelAt ? { modelAt: entry.modelAt } : {}), ...(entry.effort ? { effort: entry.effort } : {}), ...(entry.effortAt ? { effortAt: entry.effortAt } : {}), ...(entry.context ? { context: entry.context } : {}), ...(entry.userInput ? { userInput: entry.userInput } : {}) };
+    const observedSteps = subagents.length ? mergeSubagentSteps(steps, subagents) : steps;
+    // A successful bounded parse can positively identify input that never became work:
+    // injected context, Claude meta/echo rows, or an empty prompt. Unknown step formats,
+    // assistant/tool output, attachments, errors and active child work remain visible.
+    const internalEmpty = ref.identity.size <= LIVE_FULL_BYTES
+      && entry.steps !== undefined && entry.session.messages.length > 0
+      && entry.session.messages.every(message => message.role === 'user')
+      && observedSteps.every(step => step.type === 'turn.end' || step.type === 'prompt'
+        && !step.attachments?.length && (!step.text.trim() || isInjectedContext(step.text)));
+    const activeTaskAt = this.antigravityActiveTaskAt(ref, entry.runningTaskIds);
+    const activeTaskCallIds = entry.runningTaskCallIds?.length ? entry.runningTaskCallIds : undefined;
+    return { internalEmpty, ...(ref.location.kind === 'codex' ? { internalSuggestion: ref.suggestionOnly === true } : {}), session: entry.session, steps: observedSteps, ...(entry.model ? { model: entry.model } : {}), ...(entry.modelAt ? { modelAt: entry.modelAt } : {}), ...(entry.effort ? { effort: entry.effort } : {}), ...(entry.effortAt ? { effortAt: entry.effortAt } : {}), ...(entry.context ? { context: entry.context } : {}), ...(entry.userInput ? { userInput: entry.userInput } : {}), ...(activeTaskAt ? { activeTaskAt } : {}), ...(activeTaskCallIds ? { activeTaskCallIds } : {}) };
+  }
+
+  private antigravityTasksFolder(transcriptPath: string): string | undefined {
+    const logsDir = dirname(transcriptPath);
+    return basename(logsDir) === 'logs' ? join(dirname(logsDir), 'tasks') : undefined;
+  }
+
+  private antigravityActiveTaskAt(ref: Ref, runningTaskIds: readonly string[] | undefined): string | undefined {
+    if (ref.location.kind !== 'antigravity' || !runningTaskIds?.length) return undefined;
+    const tasksDir = this.antigravityTasksFolder(ref.path);
+    if (!tasksDir || !existsSync(tasksDir)) return undefined;
+    try { contained(ref.location.path, tasksDir); } catch { return undefined; }
+    let latestMs = 0;
+    for (const taskId of runningTaskIds.slice(0, 50)) {
+      if (!/^task-\d+$/.test(taskId)) continue;
+      const logPath = join(tasksDir, `${taskId}.log`);
+      if (!existsSync(logPath)) continue;
+      try {
+        const canonical = contained(ref.location.path, logPath);
+        const info = statSync(canonical);
+        if (info.isFile() && info.mtimeMs > latestMs) latestMs = info.mtimeMs;
+      } catch { /* removed or unreadable meanwhile */ }
+    }
+    return latestMs > 0 ? new Date(latestMs).toISOString() : undefined;
   }
 
   /** Claude Code keeps a session's extras in a folder named after it: `<project>/<sessionId>/`. */
@@ -1244,8 +1326,22 @@ export class NativeImportService {
       return files;
     }
     if (location.kind === 'antigravity') {
+      const files: string[] = [];
       const full = join(dirname(reference.path), 'transcript_full.jsonl');
-      return existsSync(full) ? [full] : [];
+      if (existsSync(full)) files.push(full);
+      const tasksDir = this.antigravityTasksFolder(reference.path);
+      if (tasksDir && existsSync(tasksDir)) {
+        try {
+          contained(location.path, tasksDir);
+          const taskLogs = readdirSync(tasksDir)
+            .map(name => ({ name, match: /^task-(\d+)\.log$/.exec(name) }))
+            .filter((entry): entry is { name: string; match: RegExpExecArray } => entry.match !== null)
+            .sort((a, b) => Number(b.match[1]) - Number(a.match[1]))
+            .slice(0, MAX_SUBAGENTS * 4);
+          for (const entry of taskLogs) files.push(join(tasksDir, entry.name));
+        } catch { /* outside history root */ }
+      }
+      return files;
     }
     return [];
   }

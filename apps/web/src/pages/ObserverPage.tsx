@@ -2,6 +2,7 @@ import { sourceLabel, type PortableSession } from '@extalia/core';
 import { ObservedInputCards } from '../observe/ObservedInputCards';
 import { useObservedInputs } from '../observe/ObservedInputProvider';
 import { useObservedRead } from '../observe/useObservedRead';
+import { useObserveScroll } from '../observe/useObserveScroll';
 import type { AgentHostApi, HostState, SessionSummary } from '@extalia/platform';
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent } from 'react';
 import { SessionList } from '../chat/SessionList';
@@ -22,7 +23,8 @@ import { Icon } from '../ui/Icon';
 import { MessageFileProvider } from '../chat/MessageFilePreview';
 import { useSessionEvents } from '../chat/useSessionEvents';
 import { PromptSuggestions } from '../chat/PromptSuggestions';
-import { projectTranscript } from '../chat/transcript';
+import { projectTranscript, type WorkerItem } from '../chat/transcript';
+import { ObservedSubagentList, ObservedSubagentPreview, observedSubagentRows } from '../observe/ObservedSubagents';
 import { TranscriptView } from '../chat/TranscriptView';
 import { ConversationTabs } from '../chat/ChangedFilesView';
 import { projectChangedFiles } from '../chat/changedFiles';
@@ -44,6 +46,15 @@ import { OBSERVE_SECTIONS, observeTabForKey, type ObserveSection } from '../obse
 const noSubscription = () => () => undefined;
 const emptyControlView: ObservedSessionControlView = { phase: 'loading', draft: '', selected: '', busy: false };
 const getEmptyControlView = () => emptyControlView;
+const inspectorWideQuery = '(min-width: 1101px)';
+const inspectorWideSnapshot = () => typeof window === 'undefined' || typeof window.matchMedia !== 'function' || window.matchMedia(inspectorWideQuery).matches;
+const inspectorServerSnapshot = () => true;
+const subscribeInspectorWidth = (listener: () => void) => {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return () => undefined;
+  const media = window.matchMedia(inspectorWideQuery);
+  media.addEventListener('change', listener);
+  return () => media.removeEventListener('change', listener);
+};
 
 function AddObservedSessions({ t, language, agents, onWatched }: {
   t: Messages; language: string; agents: AgentHostApi; onWatched: (state: HostState, selectedId?: string) => void;
@@ -92,6 +103,7 @@ export function ObserverPage({ t, language, agents, state, initialSessionId, onS
   onOpenImport?: () => void;
 }) {
   const scope = useOperationScope(agents);
+  const inspectorWide = useSyncExternalStore(subscribeInspectorWidth, inspectorWideSnapshot, inspectorServerSnapshot);
   const sessions = state.sessions.filter(item => item.control === 'observed');
   const inputContext = useObservedInputs();
   const [section, setSection] = useState<ObserveSection>('sessions');
@@ -99,8 +111,10 @@ export function ObserverPage({ t, language, agents, state, initialSessionId, onS
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<ObserveSessionFilter>('all');
   const [mobileList, setMobileList] = useState(false);
-  const [toolsOpen, setToolsOpen] = useState(false);
-  const [toolsSeen, setToolsSeen] = useState<Set<string>>(() => new Set());
+  const [inspector, setInspector] = useState<{ scope: typeof scope; sessionId: string; open: boolean; view: 'tools' | 'subagent'; workerId?: string }>();
+  const [toolsHistory, setToolsHistory] = useState<{ scope: typeof scope; ids: Set<string> }>(() => ({ scope, ids: new Set() }));
+  const inspectorClose = useRef<HTMLButtonElement>(null);
+  const inspectorReturnFocus = useRef<HTMLElement | null>(null);
   const transcriptRegion = useRef<HTMLDivElement>(null);
   const followScroll = useRef({ sessionId: '', pinned: true });
   const [jumpSession, setJumpSession] = useState<string>();
@@ -114,15 +128,23 @@ export function ObserverPage({ t, language, agents, state, initialSessionId, onS
   };
   const [chosen, setChosen] = useState<string | undefined>(initialSessionId);
   const selected = sessions.find(item => item.id === chosen) ?? sessions[0];
+  // Adopt the fallback once; activity sorting must not select a different conversation.
+  if (selected && chosen !== selected.id) setChosen(selected.id);
   const selectedId = selected ? String(selected.id) : undefined;
+  const inspectorState = inspector?.scope === scope && inspector.sessionId === selectedId ? inspector : undefined;
+  const toolsOpen = inspectorState?.open ?? false;
+  const toolsSeen = toolsHistory.scope === scope ? toolsHistory.ids : new Set<string>();
   const selectedOutputRevision = selected?.observation?.outputRevision;
   const selectedProjectPath = selected?.observation?.projectPath ? String(selected.observation.projectPath) : undefined;
   const [loaded, setLoaded] = useState<{ scope: typeof scope; id: string; session?: PortableSession; outputRevision?: string; error?: string }>();
   const [operation, setOperation] = useState<{ scope: typeof scope; busy: boolean; error?: string }>({ scope, busy: false });
   const busy = operation.scope === scope && operation.busy;
   const error = operation.scope === scope ? operation.error : undefined;
-  const { events, error: eventError } = useSessionEvents(agents, selectedId);
+  const { events, error: eventError, loading: eventsLoading } = useSessionEvents(agents, selectedId);
   const transcript = useMemo(() => projectTranscript(events), [events]);
+  const subagents = useMemo(() => observedSubagentRows(transcript), [transcript]);
+  const selectedWorker = subagents.find(row => row.worker.id === inspectorState?.workerId)?.worker;
+  const childVisible = inspectorState?.view === 'subagent' && !!selectedWorker;
   const changedFiles = useMemo(() => projectChangedFiles(events, selectedProjectPath), [events, selectedProjectPath]);
   const previewAttachment = useMemo(() => selectedId ? attachmentPreviewLoader(agents, selectedId) : undefined, [agents, selectedId]);
 
@@ -159,33 +181,36 @@ export function ObserverPage({ t, language, agents, state, initialSessionId, onS
   const project = selected ? observeProject(selected, state.workspaces) : undefined;
   const memoryWorkspace = selected ? state.workspaces.find(workspace => workspace.id === selected.workspaceId) : undefined;
   const memoryScopeKey = JSON.stringify([state.profile?.id, memoryWorkspace?.profileId, memoryWorkspace?.projectLocation, memoryWorkspace?.additionalProjectLocations, memoryWorkspace?.permissions, memoryWorkspace?.crossWorkspaceAccess]);
-  const contentKey = transcript.length ? transcript.at(-1)!.id : content?.session?.messages.at(-1)?.index.toString() ?? '';
-  useLayoutEffect(() => {
-    const panel = transcriptRegion.current?.querySelector<HTMLElement>(':scope > .conversation-panel');
-    if (!panel || !selectedId) return;
-    if (followScroll.current.sessionId !== selectedId) followScroll.current = { sessionId: selectedId, pinned: true };
-    if (contentKey && panel.clientHeight && followScroll.current.pinned) panel.scrollTop = panel.scrollHeight;
-  }, [selectedId, contentKey, toolsOpen, section]);
-  useEffect(() => {
-    const panel = transcriptRegion.current?.querySelector<HTMLElement>(':scope > .conversation-panel');
-    if (!panel || !selectedId) return;
-    const onScroll = () => {
-      if (panel.hidden || !panel.clientHeight) return;
-      const pinned = panel.scrollHeight - panel.scrollTop - panel.clientHeight < 100;
-      followScroll.current.pinned = pinned;
+  useLayoutEffect(() => { followScroll.current = { sessionId: selectedId ?? '', pinned: true }; }, [agents, selectedId]);
+  const viewport = useObserveScroll({ region: transcriptRegion, selector: ':scope > .conversation-panel', owner: agents,
+    sessionKey: selectedId ?? '', contentReady: !eventsLoading && !eventError,
+    onPinnedChange: pinned => {
+      followScroll.current = { sessionId: selectedId ?? '', pinned };
       setJumpSession(pinned ? undefined : selectedId);
-    };
-    panel.addEventListener('scroll', onScroll, { passive: true });
-    return () => { panel.removeEventListener('scroll', onScroll); };
-  }, [selectedId]);
+    },
+  });
 
   const latestAssistant = content?.session?.messages.slice().reverse().find(message => message.role === 'assistant')?.content;
   const renderedAssistant = transcript.length ? transcript.slice().reverse().find(item => item.kind === 'assistant')?.text : latestAssistant;
   useObservedRead({ agents, sessionId: selectedId, revision: selectedOutputRevision, loadedRevision: content?.outputRevision,
-    unread: observation?.unreadOutput, latestAssistant, renderedAssistant, active: section === 'sessions', viewKey: JSON.stringify([mobileList, toolsOpen]), region: transcriptRegion, follow: followScroll });
+    unread: observation?.unreadOutput, latestAssistant, renderedAssistant, active: section === 'sessions' && !mobileList && (inspectorWide || !toolsOpen), viewKey: JSON.stringify([mobileList, toolsOpen, inspectorWide]), region: transcriptRegion, follow: followScroll });
 
-  const openTools = () => { if (selectedId) setToolsSeen(current => new Set(current).add(selectedId)); setToolsOpen(true); };
-  const choose = (id: string) => { setChosen(id); setMobileList(false); setToolsOpen(false); };
+  const closeInspector = () => { setInspector(current => current && ({ ...current, open: false })); inspectorReturnFocus.current?.focus({ preventScroll: true }); };
+  const openTools = () => {
+    if (!selectedId) return;
+    if (!toolsOpen && typeof document !== 'undefined' && document.activeElement instanceof HTMLElement) inspectorReturnFocus.current = document.activeElement;
+    setToolsHistory(current => ({ scope, ids: new Set(current.scope === scope ? current.ids : []).add(selectedId) }));
+    setInspector({ scope, sessionId: selectedId, open: true, view: 'tools', workerId: inspectorState?.workerId });
+    setMobileList(false);
+  };
+  const openWorker = (worker: WorkerItem) => {
+    if (!selectedId) return;
+    if (!toolsOpen && typeof document !== 'undefined' && document.activeElement instanceof HTMLElement) inspectorReturnFocus.current = document.activeElement;
+    setInspector({ scope, sessionId: selectedId, open: true, view: 'subagent', workerId: worker.id });
+    setMobileList(false);
+  };
+  useEffect(() => { if (toolsOpen && !inspectorWide) inspectorClose.current?.focus({ preventScroll: true }); }, [toolsOpen, inspectorWide]);
+  const choose = (id: string) => { setChosen(id); setMobileList(false); setInspector(undefined); setJumpSession(undefined); };
   const nativeControls = selected && <div className="observe-native-tools">
     {selected.observation?.sourceId === 'codex' && <>
       <details className="observed-codex-entry"><summary>{t.observedCodexPrompt.settings}</summary><ObservedCodexQueueControls key={selected.id} t={t} agents={agents} session={selected} settingsOnly /></details>
@@ -208,13 +233,12 @@ export function ObserverPage({ t, language, agents, state, initialSessionId, onS
             <div><dt>{t.observer.status}</dt><dd>{observation && t.observer[observation.status]}</dd></div>
             {observation?.lastCheckedAt && <div><dt>{t.observer.lastUpdated}</dt><dd><time dateTime={observation.lastCheckedAt}>{new Intl.DateTimeFormat(language, { timeStyle: 'medium' }).format(new Date(observation.lastCheckedAt))}</time></dd></div>}
           </dl></div>;
-  const conversation = selected && <MessageFileProvider key={selected.id} t={t} agents={agents} workspaces={state.workspaces} workspaceId={selected.workspaceId} projectPath={observation?.projectPath}>
-    <ConversationTabs t={t} language={language} files={changedFiles}>
-      {transcript.length ? <TranscriptView t={t} items={transcript} language={language} onDecide={async () => false} previewAttachment={previewAttachment} />
-        : content?.session ? <LibraryTranscript t={t} messages={content.session.messages} />
+  const conversation = selected && <ConversationTabs key={selected.id} t={t} language={language} files={changedFiles}
+    wrapContent={children => <MessageFileProvider t={t} agents={agents} workspaces={state.workspaces} workspaceId={selected.workspaceId} projectPath={observation?.projectPath}>{children}</MessageFileProvider>}>
+      {transcript.length ? <TranscriptView t={t} items={transcript} language={language} onDecide={async () => false} approvalsEnabled={false} previewAttachment={previewAttachment} onOpenWorker={openWorker} selectedWorkerId={childVisible ? selectedWorker.id : undefined} />
+        : eventError ? null : content?.session ? <LibraryTranscript t={t} messages={content.session.messages} latest />
           : content?.error ? <p className="form-error" role="alert">{content.error}</p> : <p className="muted observe-loading" role="status">{t.common.loading}</p>}
-    </ConversationTabs>
-  </MessageFileProvider>;
+  </ConversationTabs>;
   return <div className="page observe-page">
     <header className="observe-page-header">
       <div className="observe-page-heading"><h1>{t.observer.title}</h1><span className="badge">{sessions.length}</span></div>
@@ -259,10 +283,10 @@ export function ObserverPage({ t, language, agents, state, initialSessionId, onS
               <div className="observe-session-actions">
                 <button type="button" className="icon-button small" disabled={busy} aria-label={observation?.watching ? t.observer.pause : t.observer.resume} title={observation?.watching ? t.observer.pause : t.observer.resume} onClick={() => { void run(() => agents.setObservation(selected.id, !observation?.watching)).catch(() => undefined); }}><Icon name={observation?.watching ? 'stop' : 'refresh'} /></button>
                 {agents.previewHandover || content?.session?.messages.length ? <ContinueInExtalia compact t={t} agents={agents} state={state} source={{ kind: 'observed', id: selected.id }} {...(observation?.projectPath ? { projectPath: observation.projectPath } : {})} onContinued={onContinued} onOpenSettings={onOpenSettings} onState={onState} /> : null}
-                <button type="button" className="icon-button small observe-tools-toggle" aria-label={t.characterConsole.tools} title={t.characterConsole.tools} aria-expanded={toolsOpen} aria-controls={`${tabsId}-tools`} onClick={openTools}><Icon name="settings" /></button>
+                <button type="button" className="icon-button small observe-tools-toggle" aria-label={t.characterConsole.tools} title={t.characterConsole.tools} aria-expanded={inspectorWide || toolsOpen} aria-controls={`${tabsId}-tools`} onClick={openTools}><Icon name="settings" /></button>
               </div>
             </header>
-            <div className="observe-transcript-region" ref={transcriptRegion}>{eventError && <p className="observe-activity-error note small" role="alert">{t.observer.activityUnavailable}</p>}{conversation}{jumpSession === selected.id && <button type="button" className="button small observe-jump-latest" onClick={() => { const panel = transcriptRegion.current?.querySelector<HTMLElement>(':scope > .conversation-panel'); if (panel) panel.scrollTop = panel.scrollHeight; followScroll.current.pinned = true; setJumpSession(undefined); }}>{t.observer.latestMessages}<Icon name="chevron" /></button>}</div>
+            <div className="observe-transcript-region" ref={transcriptRegion}>{eventError && <p className="observe-activity-error note small" role="alert">{t.observer.activityUnavailable}</p>}{conversation}{jumpSession === selected.id && <button type="button" className="button small observe-jump-latest" onClick={() => { viewport.jumpToLatest(); followScroll.current.pinned = true; setJumpSession(undefined); }}>{t.observer.latestMessages}<Icon name="chevron" /></button>}</div>
             <footer className="observe-composer-region">
               {observation?.error && <p role="alert" className="form-error">{observation.error}</p>}
               <ObservedInputCards t={t} sessionId={selected.id} />
@@ -272,15 +296,23 @@ export function ObserverPage({ t, language, agents, state, initialSessionId, onS
             </footer>
           </>}
         </section>
-        {selected && <aside className="observe-tools-panel" id={`${tabsId}-tools`} aria-label={t.characterConsole.tools} hidden={!toolsOpen}>
-          <header className="observe-tools-heading"><h2>{t.characterConsole.tools}</h2><button type="button" className="icon-button small" aria-label={t.observer.closeTools} onClick={() => setToolsOpen(false)}><Icon name="close" /></button></header>
-          {sessionFacts}
-          {memoryWorkspace && !memoryWorkspace.providerProfileId && <p className="muted small">{t.observer.captureOnly}</p>}
-          {toolsSeen.has(selected.id) && <ObservedMemoryPanel agents={agents} session={selected} scopeKey={memoryScopeKey} t={t.observedMemory} disabled={busy} />}
-          {toolsSeen.has(selected.id) && (controlHub ? <ObservedSessionTools key={`tools:${selected.id}`} t={t} agents={agents} session={selected} disabled={busy} nativeControls={nativeControls} /> : nativeControls)}
-          <p className="muted small observe-tools-note"><Icon name="shield" />{t.observer.note}</p>
-        </aside>}
-        {selected && !toolsOpen && <aside className="observe-facts-rail" aria-label={t.observer.sessionDetails}>{sessionFacts}</aside>}
+        {selected && <MessageFileProvider key={`inspector:${selected.id}`} t={t} agents={agents} workspaces={state.workspaces} workspaceId={selected.workspaceId} projectPath={observation?.projectPath}>
+          <aside className="observe-tools-panel observe-inspector" id={`${tabsId}-tools`} aria-label={t.observer.inspector} onKeyDown={event => { if (event.key === 'Escape' && toolsOpen) { closeInspector(); } }}>
+            <header className="observe-tools-heading"><h2>{t.observer.inspector}</h2><button ref={inspectorClose} type="button" className="icon-button small observe-inspector-close" aria-label={t.observer.closeInspector} onClick={closeInspector}><Icon name="close" /></button></header>
+            <div className="observe-inspector-tabs" role="group" aria-label={t.observer.inspector}>
+              <button type="button" aria-pressed={!childVisible} onClick={openTools}><Icon name="settings" />{t.characterConsole.tools}</button>
+              {!!subagents.length && <button type="button" aria-pressed={childVisible} onClick={() => { const worker = selectedWorker ?? subagents.find(({ worker }) => worker.status === 'running')?.worker ?? subagents[0]?.worker; if (worker) openWorker(worker); }}><Icon name="users" />{t.observer.subagents}<span className="badge">{subagents.length}</span></button>}
+            </div>
+            <ObservedSubagentList t={t} rows={subagents} selectedWorkerId={childVisible ? selectedWorker.id : undefined} onOpenWorker={openWorker} />
+            {childVisible ? <ObservedSubagentPreview t={t} language={language} worker={selectedWorker} onOpenWorker={openWorker} previewAttachment={previewAttachment} /> : <div className="observe-inspector-tools">
+              {sessionFacts}
+              {memoryWorkspace && !memoryWorkspace.providerProfileId && <p className="muted small">{t.observer.captureOnly}</p>}
+              {toolsSeen.has(selected.id) && <ObservedMemoryPanel agents={agents} session={selected} scopeKey={memoryScopeKey} t={t.observedMemory} disabled={busy} />}
+              {toolsSeen.has(selected.id) && (controlHub ? <ObservedSessionTools key={`tools:${selected.id}`} t={t} agents={agents} session={selected} disabled={busy} nativeControls={nativeControls} /> : nativeControls)}
+              <p className="muted small observe-tools-note"><Icon name="shield" />{t.observer.note}</p>
+            </div>}
+          </aside>
+        </MessageFileProvider>}
       </div>
     </div>
     <div className="observe-panel observe-pairing-panel" role="tabpanel" id={`${tabsId}-pairing-panel`} aria-labelledby={`${tabsId}-pairing-tab`} hidden={section !== 'pairing'} tabIndex={0}>

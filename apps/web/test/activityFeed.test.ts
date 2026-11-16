@@ -12,7 +12,7 @@ const event = (body: EventBody, options: { agentId?: string; channel?: 'stream' 
 describe('office activity feed', () => {
   it('turns reported events into short activities for the right character', () => {
     expect(activityFromEvent(event({ type: 'prompt.submitted', text: 'Fix **the** login\n\nplease', via: 'extalia' }))).toMatchObject({ characterId: 's1:primary', kind: 'prompt', text: 'Fix the login please' });
-    expect(activityFromEvent(event({ type: 'tool.started', tool: 'write_file', kind: 'edit', label: 'Editing', target: 'src/a.ts' }))).toMatchObject({ kind: 'tool', text: 'Editing src/a.ts', activity: 'edit' });
+    expect(activityFromEvent(event({ type: 'tool.started', tool: 'write_file', kind: 'edit', label: 'Editing', target: 'src/a.ts' }))).toMatchObject({ kind: 'tool', text: 'Editing src/a.ts', activity: 'edit', tool: 'write_file', target: 'src/a.ts' });
     expect(activityFromEvent(event({ type: 'subagent.spawned', subagentId: 'w1', label: 'Review tests' }))).toMatchObject({ characterId: 's1:w1', kind: 'delegated', text: 'Review tests' });
     expect(activityFromEvent(event({ type: 'model.completed', text: 'Done.' }, { agentId: 'w1' }))).toMatchObject({ characterId: 's1:w1', kind: 'reply' });
     expect(activityFromEvent(event({ type: 'approval.requested', approvalId: 'a', action: 'Run npm test' }))).toMatchObject({ kind: 'approval', text: 'Run npm test' });
@@ -23,6 +23,19 @@ describe('office activity feed', () => {
     expect(activityFromEvent(event({ type: 'agent.state', state: 'working' }))).toBeUndefined();
     expect(activityFromEvent(event({ type: 'model.completed', text: '  ' }))).toBeUndefined();
     expect(activityFromEvent(event({ type: 'prompt.submitted', text: 'old', via: 'native' }, { channel: 'import' }))).toBeUndefined();
+  });
+
+  it('retains precise reported actions while displaying only catalog phrases', () => {
+    const write = activityFromEvent(event({ type: 'tool.started', tool: 'write_file', kind: 'edit', label: 'Writing secret-data.txt', target: 'secret-data.txt' }))!;
+    expect(semanticBubble(write, MESSAGES.en)).toBe('Writing a file…');
+    const read = activityFromEvent(event({ type: 'tool.started', tool: 'read_file', kind: 'read', label: 'Reading', target: 'rm old.txt' }))!;
+    expect(semanticBubble(read, MESSAGES.en)).toBe('Reading a file…');
+    const command = activityFromEvent(event({ type: 'tool.started', tool: 'run_command', kind: 'command', label: 'Terminal', target: 'cp a.txt b.txt' }))!;
+    expect(semanticBubble(command, MESSAGES.id)).toBe('Menyalin berkas…');
+    for (const item of [write, read, command]) {
+      expect(semanticBubble(item, MESSAGES.en)).not.toContain(item.target);
+      expect(semanticBubble(item, MESSAGES.en)).not.toContain(item.tool);
+    }
   });
 
   it('shortens long text at a word and keeps the latest line per character', () => {

@@ -299,7 +299,7 @@ export function statedSuccess(output: unknown, depth = 0, seen = new Set<object>
     return nestedStatus;
   }
   if (typeof value !== 'string') return undefined;
-  const match = /(?:^|\n)(?:Exit code:|Process exited with code)\s*(-?\d+)/.exec(value);
+  const match = /(?:^|\n)[ \t]*(?:Exit code:|(?:The\s+)?(?:Process|Command) exited with code)\s*(-?\d+)/i.exec(value);
   return match ? Number(match[1]) === 0 : undefined;
 }
 
