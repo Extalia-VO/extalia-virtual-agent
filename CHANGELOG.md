@@ -16,6 +16,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.353] - 2026-11-16
+
+- Refresh the GitHub and npm README previews with current-UI animated WebP demos
+  of AI team planning, learning meetings, Chat subagents and skill use, and
+  multi-project Observe handovers. Replace the campus hero with a live-traffic
+  daylight-to-night-and-back tour. Demonstration content is explicitly simulated.
+
 ## [0.4.352] - 2026-11-16
 
 - Separate bounded Python interpreter startup from the continuity verifier’s

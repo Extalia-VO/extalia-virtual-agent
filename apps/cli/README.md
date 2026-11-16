@@ -19,7 +19,7 @@ computer. The `extalia` command starts a local Bridge that serves the Extalia we
 UI in your browser and runs or observes agents locally with your project files
 and your model connections.
 
-![Extalia campus camera tour from front-right to front-left and back, with moving traffic](https://raw.githubusercontent.com/Extalia-VO/extalia-virtual-agent/main/docs/images/campus-traffic.webp)
+![Extalia campus camera tour with moving traffic and a daylight, dusk and night cycle](https://raw.githubusercontent.com/Extalia-VO/extalia-virtual-agent/main/docs/images/campus-traffic.webp)
 
 ## Install and run
 
@@ -73,6 +73,23 @@ lead agent. The Office makes that activity visible as the work happens:
 
 ![Animated demo of team delegation and live progress in the Extalia 3D virtual office](https://raw.githubusercontent.com/Extalia-VO/extalia-virtual-agent/main/docs/images/extalia-deligating-teams.webp)
 
+## Plan an orchestration team with AI
+
+Describe the goal, choose the allowed models, and ask AI to propose a team.
+Review each member’s role, task, scope and model order before saving it for the
+conversation or workspace. This preview uses a simulated AI planning response.
+
+![Choose models, request an AI team plan, review worker responsibilities and save the team](https://raw.githubusercontent.com/Extalia-VO/extalia-virtual-agent/main/docs/images/team-planning.webp)
+
+## Follow subagents and skill use in Chat
+
+Keep the lead conversation and worker progress together. Open **Skills &
+knowledge** to inspect each worker’s resource flow, recorded accesses and
+supporting evidence, then filter the diagram by agent. The activity in this
+preview is simulated.
+
+![Chat with active subagents and the Skills and knowledge resource-use diagram](https://raw.githubusercontent.com/Extalia-VO/extalia-virtual-agent/main/docs/images/chat-subagents-skills.webp)
+
 ## Choose how agents work
 
 | Mode | What Extalia does | Boundary |
@@ -87,14 +104,15 @@ Finding an installed CLI or receiving a hook does not prove control
 capabilities. See [runtime adapters](https://github.com/Extalia-VO/extalia-virtual-agent/blob/main/docs/architecture/runtime-adapters.md)
 and [observed replies](https://github.com/Extalia-VO/extalia-virtual-agent/blob/main/docs/getting-started/observed-replies.md).
 
-### Follow work across projects
+### Follow projects and review a handover
 
-Bring supported outside agents into one Observe view. Switch between projects,
-read their conversations and inspect tool activity while the source apps keep
-working. The preview below uses demonstration projects and simulated activity
-from Codex, Antigravity and Claude Code.
+Follow sample projects across **Codex, Claude Code, Gemini CLI and Antigravity**,
+inspect a working subagent, then choose a handover destination and review the
+exact context packet. The final receipt distinguishes a queued delivery from
+confirmation that the destination consumed it. All source activity and handover
+responses in this preview are simulated.
 
-![Observe: working agents across demonstration projects](https://raw.githubusercontent.com/Extalia-VO/extalia-virtual-agent/main/docs/images/observe-session.webp)
+![Observe multiple projects and agent apps, inspect a subagent, and review a handover to Gemini CLI](https://raw.githubusercontent.com/Extalia-VO/extalia-virtual-agent/main/docs/images/observe-session.webp)
 
 ### Connect an outside agent
 
@@ -113,6 +131,16 @@ startup. Source-app restart or hook approval may still be required. See
 [connection safety and verification](https://github.com/Extalia-VO/extalia-virtual-agent/blob/main/docs/architecture/agent-app-connections.md).
 
 ## Skills, Knowledge and memory
+
+### Learn from completed work
+
+When automatic learning is enabled for a vault profile, eligible idle periods
+can lead to a team discussion that improves project Knowledge. The preview
+follows a simulated countdown, a meeting in the Office, and a saved Knowledge
+receipt. Generated skill candidates retain their separate review and activation
+workflow.
+
+![Automatic learning countdown, a team knowledge-review meeting, and saved meeting notes](https://raw.githubusercontent.com/Extalia-VO/extalia-virtual-agent/main/docs/images/learning-meeting.webp)
 
 ### Browse your Grimoire
 
