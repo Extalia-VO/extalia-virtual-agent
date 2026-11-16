@@ -390,6 +390,10 @@ for example when one runs out of quota.
 - Candidate v0.4.352 restricts the project-Knowledge inventory constant and
   blocked-name helper to Unix, matching their only caller. Windows retains its
   existing unsupported-platform refusal; strict Clippy warnings stay enabled.
+- The continuity verifier separates a five-second trusted interpreter startup
+  phase from its unchanged two-second candidate budget and fifteen-second outer
+  deadline. Twenty-three focused tests preserve independent predicates, exact
+  output and CLI identity; candidates are not retried.
 - Ten focused project-Knowledge tests, strict workspace Clippy and formatting
   pass locally. Cross-platform CI and publication remain tracked separately in
   [release issue #119](https://github.com/Extalia-VO/extalia-virtual-agent/issues/119).

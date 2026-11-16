@@ -18,6 +18,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [0.4.352] - 2026-11-16
 
+- Separate bounded Python interpreter startup from the continuity verifier’s
+  unchanged candidate-execution deadline, preserving strict output/oracle checks
+  and CLI module identity under Windows CI contention.
+
 - Compile project-Knowledge inventory helpers only on Unix, matching their
   supported implementation and preserving strict Windows warning checks.
 
