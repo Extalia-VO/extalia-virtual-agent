@@ -372,8 +372,8 @@ importers:
   packages/runtime:
     dependencies:
       '@anthropic-ai/sdk':
-        specifier: ~0.134.0
-        version: 0.134.0(zod@4.6.5)
+        specifier: ~1.8.0
+        version: 1.8.0(zod@4.6.5)
       '@extalia/core':
         specifier: workspace:*
         version: link:../core
@@ -383,8 +383,8 @@ importers:
 
 packages:
 
-  '@anthropic-ai/sdk@0.134.0':
-    resolution: {integrity: sha512-j0DNXXKUKkr3kKyVR/I3pPWVv93g7vgHjgGYgh9uCXv5IKoXZPWmTwXKiVq/SZSbhBaD3KmtKhIszzt8dBnzog==}
+  '@anthropic-ai/sdk@1.8.0':
+    resolution: {integrity: sha512-yDOArk2+Qpd/djEKmZjrv7JZ+pn5iBHARJ9PAdvfhGf4H5wNqTgY/2K0/yDKdQdm8G8hrNQchMlBAHpPK7yBfg==}
     hasBin: true
     peerDependencies:
       zod: ^3.25.0 || ^4.0.0
@@ -3136,7 +3136,7 @@ packages:
 
 snapshots:
 
-  '@anthropic-ai/sdk@0.134.0(zod@4.6.5)':
+  '@anthropic-ai/sdk@1.8.0(zod@4.6.5)':
     dependencies:
       '@opentelemetry/api': 1.9.1
       json-schema-to-ts: 3.1.1
