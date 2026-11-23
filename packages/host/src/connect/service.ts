@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { mkdir, readdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import type {
@@ -33,7 +33,11 @@ import { commitConfigWrites, type ConfigWrite } from './configTransaction.js';
 import {
   inspectInterruptedOperation, recoverInterruptedOperation, withConnectOperation, type ConnectOperation, type RecoveryAction, type RecoveryReport,
 } from './operationJournal.js';
-import { FORWARDER_SOURCE, forwarderPath, forwarderStatus, installForwarder } from './forwarder.js';
+import {
+  FORWARDER_SOURCE, FORWARD_LAUNCHER_SOURCE, forwarderPath, forwarderStatus, forwardLauncherPath, forwardLauncherStatus,
+  installForwarder, installForwardLauncher, nodePathFile, readRecordedNodePath, writeRecordedNodePath,
+} from './forwarder.js';
+import { preferStableNodePath } from './nodeRuntime.js';
 import {
   GEMINI_EVENTS, existingGeminiCommand, geminiCommand, inspectGeminiSettings, planGeminiSettings, removeGeminiEntries, type GeminiDesired,
 } from './gemini.js';
@@ -186,7 +190,10 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
   const rpcFactory = ctx.codexRpc ?? spawnCodexAppServer;
   const connectDirectory = path.join(ctx.extaliaHome, 'connect');
   const manifestFile = path.join(connectDirectory, 'manifest.json');
+  const isPosix = ctx.platform !== 'win32';
   const forwarder = forwarderPath(ctx.extaliaHome);
+  const forwardLauncher = forwardLauncherPath(ctx.extaliaHome);
+  const recordedNodeFile = nodePathFile(ctx.extaliaHome);
   const targetChanged = async (record: { resolvedTarget?: string }, file: string, target: string) => {
     // Resolve directory aliases (for example system temp-directory aliases) for
     // old records, while refusing an unrecorded file symlink target.
@@ -267,17 +274,52 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
       if (await nodeValid(resolvedNodePath)) return resolvedNodePath;
       resolvedNodePath = undefined;
       const candidate = ctx.nodePath ?? await ctx.resolveNodePath?.().catch(() => undefined);
-      if (await nodeValid(candidate)) resolvedNodePath = candidate;
+      if (await nodeValid(candidate)) resolvedNodePath = await preferStableNodePath(candidate!, { platform: ctx.platform });
       return resolvedNodePath;
     })().finally(() => { pendingNodeLookup = undefined; })));
   }
   const nodePrerequisite = (app: AgentAppId) => `${LABELS[app]} command hooks need a standalone Node.js installation. Install Node.js 22 or newer, then refresh or connect again. Existing hooks can still be disconnected.`;
-  async function hookCommand(app: Exclude<AgentAppId, 'hermes'>, existing: string | undefined, lookup: NodeLookup): Promise<string | undefined> {
-    if (await commandValid(existing, app)) return existing;
-    const node = await lookup();
+  async function legacyCommandNode(command: string | undefined, app: Exclude<AgentAppId, 'hermes'>): Promise<string | undefined> {
+    if (!command) return undefined;
+    const args = splitCommand(command);
+    const [node, script, source] = args;
+    if (args.length !== 3 || source !== app || !node || !script || !path.isAbsolute(script)) return undefined;
+    if (path.resolve(script) !== path.resolve(forwarder)) return undefined;
     if (!await nodeValid(node)) return undefined;
+    return preferStableNodePath(node, { platform: ctx.platform });
+  }
+  function isCurrentLauncherCommand(command: string | undefined, app: Exclude<AgentAppId, 'hermes'>): boolean {
+    if (!isPosix || !command) return false;
+    const args = splitCommand(command);
+    const [launcher, source] = args;
+    return Boolean(args.length === 2 && source === app && launcher && path.isAbsolute(launcher) && path.resolve(launcher) === path.resolve(forwardLauncher));
+  }
+  async function validRecordedNode(): Promise<string | undefined> {
+    if (!isPosix) return undefined;
+    const recorded = await readRecordedNodePath(ctx.extaliaHome);
+    if (!await nodeValid(recorded)) return undefined;
+    return preferStableNodePath(recorded!, { platform: ctx.platform });
+  }
+  async function resolveHookTarget(
+    app: Exclude<AgentAppId, 'hermes'>,
+    existing: string | undefined,
+    lookup: NodeLookup,
+  ): Promise<{ command: string; node: string; isLegacyExisting: boolean } | undefined> {
     const build = { codex: codexCommand, claude: claudeCommand, gemini: geminiCommand, antigravity: antigravityCommand }[app];
-    return build(node!, forwarder, ctx.platform);
+    if (!isPosix) {
+      const legacy = await legacyCommandNode(existing, app);
+      if (legacy && existing) return { command: existing, node: legacy, isLegacyExisting: false };
+      const node = await lookup();
+      if (!await nodeValid(node)) return undefined;
+      return { command: build(node!, forwarder, ctx.platform), node: node!, isLegacyExisting: false };
+    }
+    const discovered = await lookup();
+    const validDiscovered = await nodeValid(discovered) ? discovered! : undefined;
+    const recorded = isCurrentLauncherCommand(existing, app) ? await validRecordedNode() : undefined;
+    const legacy = await legacyCommandNode(existing, app);
+    const node = validDiscovered ?? recorded ?? legacy;
+    if (!node) return undefined;
+    return { command: build(node, forwardLauncher, ctx.platform), node, isLegacyExisting: Boolean(legacy) };
   }
 
   async function detect(app: AgentAppId, selectedFile = configPath(app)): Promise<{ installed: boolean; bin?: string; version?: string; verified?: boolean; launchProblem?: string }> {
@@ -311,13 +353,6 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
     const version = bin && !launchProblem ? parseVersion(await run(bin, ['--version'], { env, timeoutMs: 8000 }), app) : undefined;
     const rule = VERIFIED_VERSIONS[app];
     return { installed: Boolean(bin) || configDirExists, ...(bin && !launchProblem ? { bin } : {}), ...(launchProblem ? { launchProblem } : {}), ...(version ? { version, verified: rule.pattern.test(version) } : {}) };
-  }
-
-  async function commandValid(command: string | undefined, app: Exclude<AgentAppId, 'hermes'>): Promise<boolean> {
-    if (!command) return false;
-    const args = splitCommand(command);
-    const [node, script, source] = args;
-    return Boolean(args.length === 3 && source === app && node && script && path.resolve(script) === path.resolve(forwarder) && path.isAbsolute(script) && (await nodeValid(node)));
   }
 
   async function resolvePort(options: AgentAppConnectOptions, existing: number | undefined): Promise<{ port: number; hostRunning: boolean }> {
@@ -411,29 +446,56 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
         fwd = await forwarderStatus(ctx.extaliaHome);
       } catch { /* reported below if still outdated */ }
     }
+    let launcher: 'current' | 'outdated' | 'missing' = isPosix ? await forwardLauncherStatus(ctx.extaliaHome) : 'current';
+    if (isPosix && launcher === 'outdated') {
+      try {
+        await installForwardLauncher(ctx.extaliaHome);
+        launcher = await forwardLauncherStatus(ctx.extaliaHome);
+      } catch { /* reported below if still outdated */ }
+    }
+    if (isPosix && app !== 'hermes' && launcher === 'current') {
+      const fresh = await lookup();
+      const recorded = await validRecordedNode();
+      if (fresh && (!recorded || recorded !== (await readRecordedNodePath(ctx.extaliaHome)))) {
+        try { await writeRecordedNodePath(ctx.extaliaHome, fresh); } catch { /* best-effort hint refresh */ }
+      }
+    }
     // Hooks connected before the data folder moved still run the old forwarder, which now passes events on.
     const migrated = await readMigrationMarker(ctx.extaliaHome);
     const legacyForwarder = migrated ? path.resolve(forwarderPath(migrated.from)) : undefined;
+    const legacyLauncher = migrated ? path.resolve(forwardLauncherPath(migrated.from)) : undefined;
     let legacyHooks = false;
     const noteLegacy = (command: string | undefined) => {
-      const script = command ? splitCommand(command)[1] : undefined;
-      if (legacyForwarder && script && path.resolve(script) === legacyForwarder) legacyHooks = true;
+      if (!command || !migrated) return;
+      const args = splitCommand(command);
+      const script = args.length === 2 ? args[0] : args[1];
+      if (!script) return;
+      const resolved = path.resolve(script);
+      if ((legacyForwarder && resolved === legacyForwarder) || (legacyLauncher && resolved === legacyLauncher)) legacyHooks = true;
     };
+    let usesCurrentLauncher = false;
 
     try {
       if (app === 'claude') {
         const existing = existingClaudeEntries(text, file);
         noteLegacy(existing.command);
+        usesCurrentLauncher = isCurrentLauncherCommand(existing.command, 'claude');
         const port = (await resolvePort({}, existing.port)).port;
-        const availableCommand = await hookCommand('claude', existing.command, lookup);
-        base.nodeStatus = availableCommand ? 'ready' : 'missing';
-        if (!availableCommand) base.warnings.push(nodePrerequisite(app));
-        const command = availableCommand ?? '';
+        const targetHook = await resolveHookTarget('claude', existing.command, lookup);
+        base.nodeStatus = targetHook ? 'ready' : 'missing';
+        if (!targetHook) base.warnings.push(nodePrerequisite(app));
+        const command = targetHook?.command ?? '';
         const inspected = inspectClaudeSettings(text, file, { port: base.hostRunning ? port : undefined, token: token ?? '', command });
         const ours = CLAUDE_EVENTS.length - inspected.missing.length;
         base.events = CLAUDE_EVENTS.filter(event => !inspected.missing.includes(event));
         base.state = ours === 0 ? 'not-connected' : inspected.missing.length ? 'partial' : inspected.stale.length || !token ? 'stale' : 'connected';
-        if (base.state === 'stale') base.warnings.push(token ? 'The hooks use an old token, port or Node path. Connect again to update them.' : 'The ingest token is missing. Connect again to create it.');
+        if (base.state === 'stale') {
+          base.warnings.push(!token
+            ? 'The ingest token is missing. Connect again to create it.'
+            : targetHook?.isLegacyExisting && inspected.stale.length === 1 && inspected.stale[0] === 'SessionStart'
+              ? 'The hooks use a direct Node path instead of the resilient Extalia launcher. Connect again to upgrade them.'
+              : 'The hooks use an old token, port or Node path. Connect again to update them.');
+        }
         if (base.state === 'partial') base.warnings.push(`Some hooks are missing (${inspected.missing.join(', ')}). Connect again to repair them.`);
         if (inspected.disableAllHooks) base.warnings.push('Claude Code settings have disableAllHooks set, so no hooks run.');
         if (inspected.allowManagedHooksOnly) base.warnings.push('Claude Code settings allow managed hooks only, so Extalia hooks will not run.');
@@ -442,28 +504,42 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
       } else if (app === 'gemini') {
         const existing = existingGeminiCommand(text, file);
         noteLegacy(existing);
-        const availableCommand = await hookCommand('gemini', existing, lookup);
-        base.nodeStatus = availableCommand ? 'ready' : 'missing';
-        if (!availableCommand) base.warnings.push(nodePrerequisite(app));
-        const command = availableCommand ?? '';
+        usesCurrentLauncher = isCurrentLauncherCommand(existing, 'gemini');
+        const targetHook = await resolveHookTarget('gemini', existing, lookup);
+        base.nodeStatus = targetHook ? 'ready' : 'missing';
+        if (!targetHook) base.warnings.push(nodePrerequisite(app));
+        const command = targetHook?.command ?? '';
         const inspected = inspectGeminiSettings(text, file, { command });
         const ours = GEMINI_EVENTS.length - inspected.missing.length;
         base.events = GEMINI_EVENTS.filter(event => !inspected.missing.includes(event));
         base.state = ours === 0 ? 'not-connected' : inspected.missing.length ? 'partial' : inspected.stale.length || !token ? 'stale' : 'connected';
-        if (base.state === 'stale') base.warnings.push(token ? 'The hooks point to a Node binary or forwarder that is missing or moved. Connect again to update them.' : 'The ingest token is missing. Connect again to create it.');
+        if (base.state === 'stale') {
+          base.warnings.push(!token
+            ? 'The ingest token is missing. Connect again to create it.'
+            : targetHook?.isLegacyExisting
+              ? 'The hooks use a direct Node path instead of the resilient Extalia launcher. Connect again to upgrade them.'
+              : 'The hooks point to a Node binary or forwarder that is missing or moved. Connect again to update them.');
+        }
         if (base.state === 'partial') base.warnings.push(`Some hooks are missing (${inspected.missing.join(', ')}). Connect again to repair them.`);
       } else if (app === 'antigravity') {
         const existing = existingAntigravityCommand(text, file);
         noteLegacy(existing);
-        const availableCommand = await hookCommand('antigravity', existing, lookup);
-        base.nodeStatus = availableCommand ? 'ready' : 'missing';
-        if (!availableCommand) base.warnings.push(nodePrerequisite(app));
-        const command = availableCommand ?? '';
+        usesCurrentLauncher = isCurrentLauncherCommand(existing, 'antigravity');
+        const targetHook = await resolveHookTarget('antigravity', existing, lookup);
+        base.nodeStatus = targetHook ? 'ready' : 'missing';
+        if (!targetHook) base.warnings.push(nodePrerequisite(app));
+        const command = targetHook?.command ?? '';
         const inspected = inspectAntigravityHooks(text, file, { command });
         const ours = ANTIGRAVITY_EVENTS.length - inspected.missing.length;
         base.events = ANTIGRAVITY_EVENTS.filter(event => !inspected.missing.includes(event));
         base.state = ours === 0 ? 'not-connected' : inspected.missing.length ? 'partial' : inspected.stale.length || !token ? 'stale' : 'connected';
-        if (base.state === 'stale') base.warnings.push(token ? 'The hooks point to a Node binary or forwarder that is missing or moved. Connect again to update them.' : 'The ingest token is missing. Connect again to create it.');
+        if (base.state === 'stale') {
+          base.warnings.push(!token
+            ? 'The ingest token is missing. Connect again to create it.'
+            : targetHook?.isLegacyExisting
+              ? 'The hooks use a direct Node path instead of the resilient Extalia launcher. Connect again to upgrade them.'
+              : 'The hooks point to a Node binary or forwarder that is missing or moved. Connect again to update them.');
+        }
         if (base.state === 'partial') base.warnings.push(`Some hooks are missing (${inspected.missing.join(', ')}). Connect again to repair them.`);
       } else if (app === 'hermes') {
         let existingPort: number | undefined;
@@ -498,15 +574,22 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
       } else {
         const existing = existingCodexCommand(text, file);
         noteLegacy(existing);
-        const availableCommand = await hookCommand('codex', existing, lookup);
-        base.nodeStatus = availableCommand ? 'ready' : 'missing';
-        if (!availableCommand) base.warnings.push(nodePrerequisite(app));
-        const command = availableCommand ?? '';
+        usesCurrentLauncher = isCurrentLauncherCommand(existing, 'codex');
+        const targetHook = await resolveHookTarget('codex', existing, lookup);
+        base.nodeStatus = targetHook ? 'ready' : 'missing';
+        if (!targetHook) base.warnings.push(nodePrerequisite(app));
+        const command = targetHook?.command ?? '';
         const inspected = inspectCodexConfig(text, file, { command });
         const ours = CODEX_EVENTS.length - inspected.missing.length;
         base.events = CODEX_EVENTS.filter(event => !inspected.missing.includes(event));
         base.state = ours === 0 ? 'not-connected' : inspected.missing.length ? 'partial' : inspected.stale.length || !token ? 'stale' : 'connected';
-        if (base.state === 'stale') base.warnings.push('The hooks point to a Node binary or forwarder that is missing or moved. Connect again to update them.');
+        if (base.state === 'stale') {
+          base.warnings.push(!token
+            ? 'The ingest token is missing. Connect again to create it.'
+            : targetHook?.isLegacyExisting
+              ? 'The hooks use a direct Node path instead of the resilient Extalia launcher. Connect again to upgrade them.'
+              : 'The hooks point to a Node binary or forwarder that is missing or moved. Connect again to update them.');
+        }
         if (base.state === 'partial') base.warnings.push(`Some hooks are missing (${inspected.missing.join(', ')}). Connect again to repair them.`);
         if (ours) {
           const trust = await codexTrust(detected.bin);
@@ -519,9 +602,15 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
       base.warnings.push(error instanceof Error ? error.message : 'The configuration could not be read.');
       base.state = 'not-connected';
     }
-    if (base.state !== 'not-connected' && app !== 'hermes' && fwd !== 'current') {
-      base.state = 'stale';
-      base.warnings.push(fwd === 'missing' ? 'The Extalia forwarder script is missing. Connect again to reinstall it.' : 'The Extalia forwarder script is out of date. Connect again to update it.');
+    if (base.state !== 'not-connected' && app !== 'hermes') {
+      if (fwd !== 'current') {
+        base.state = 'stale';
+        base.warnings.push(fwd === 'missing' ? 'The Extalia forwarder script is missing. Connect again to reinstall it.' : 'The Extalia forwarder script is out of date. Connect again to update it.');
+      }
+      if (isPosix && launcher !== 'current' && usesCurrentLauncher) {
+        base.state = 'stale';
+        base.warnings.push(launcher === 'missing' ? 'The Extalia hook launcher script is missing. Connect again to reinstall it.' : 'The Extalia hook launcher script is out of date. Connect again to update it.');
+      }
     }
     if (legacyHooks && migrated && base.state !== 'not-connected') {
       base.warnings.unshift(`Extalia moved its data folder to ${ctx.extaliaHome}. These hooks still run the forwarder in the previous folder (${migrated.from}), which passes events on for now. Run \`extalia connect ${app}\` (or Connect again) to point them to the new folder.`);
@@ -554,6 +643,7 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
     extraProfiles?: ExtraProfilePlan[];
     file: string;
     token?: string;
+    nodePath?: string;
     needsWrite: boolean;
   }
 
@@ -589,11 +679,14 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
 
     const before = await readTextSafe(file);
     let selectedCommand: string | undefined;
+    let selectedNode: string | undefined;
     if (app !== 'hermes') {
       const existing = app === 'claude' ? existingClaudeEntries(before, file).command
         : app === 'gemini' ? existingGeminiCommand(before, file)
           : app === 'antigravity' ? existingAntigravityCommand(before, file) : existingCodexCommand(before, file);
-      selectedCommand = await hookCommand(app, existing, lookup);
+      const targetHook = await resolveHookTarget(app, existing, lookup);
+      selectedCommand = targetHook?.command;
+      selectedNode = targetHook?.node;
       if (!selectedCommand) {
         warnings.push(nodePrerequisite(app));
         base.nodeStatus = 'missing';
@@ -602,6 +695,8 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
     }
     if (!detected.installed) warnings.push(`${label} was not found on PATH or in ${displayPath(path.dirname(file), ctx.homeDirectory)}. Hooks are written anyway and work once ${label} is installed.`);
     const fwd = await forwarderStatus(ctx.extaliaHome);
+    const launcher = isPosix && app !== 'hermes' ? await forwardLauncherStatus(ctx.extaliaHome) : 'current';
+    const currentRecordedNode = isPosix && app !== 'hermes' ? await readRecordedNodePath(ctx.extaliaHome) : undefined;
     const existingToken = await readToken(ctx.extaliaHome);
     const tokenForPlan = real?.token ?? (options.rotate ? NEW_TOKEN : existingToken ?? NEW_TOKEN);
     const tokenChanges = !existingToken || Boolean(options.rotate);
@@ -687,11 +782,14 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
     const diff = diffs.join('\n');
     const fileChanges = after !== (before ?? '') || before === undefined || extraProfiles.some(extra => extra.needsWrite);
     const needsForwarder = app !== 'hermes' && fwd !== 'current';
+    const needsLauncher = isPosix && app !== 'hermes' && launcher !== 'current';
+    const needsNodePath = isPosix && app !== 'hermes' && Boolean(selectedNode) && currentRecordedNode !== selectedNode;
     base.events = events;
     base.diff = diff;
-    base.changes = fileChanges || needsForwarder || tokenChanges;
+    base.changes = fileChanges || needsForwarder || needsLauncher || needsNodePath || tokenChanges;
     if (requestedOptions.port !== undefined && targets[app] !== base.port) base.changes = true;
     if (needsForwarder) warnings.push(`The forwarder script ${fwd === 'missing' ? 'will be installed' : 'will be updated'} at ${displayPath(forwarder, ctx.homeDirectory)}.`);
+    if (needsLauncher) warnings.push(`The hook launcher ${launcher === 'missing' ? 'will be installed' : 'will be updated'} at ${displayPath(forwardLauncher, ctx.homeDirectory)}.`);
     if (!existingToken) warnings.push('A new ingest token will be created (kept only on this computer).');
     if (options.rotate && existingToken) warnings.push(app === 'claude' || app === 'hermes'
       ? 'The ingest token will be replaced; hooks of other connected apps that store the token (Claude Code, Hermes) must be connected again.'
@@ -701,7 +799,7 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
       after: display(after).replaceAll(NEW_TOKEN, MASK),
       profiles: await Promise.all(extraProfiles.map(async extra => ({ file: extra.file, target: await writableTarget(extra.file), before: extra.before === undefined ? null : sha256(extra.before), after: display(extra.after).replaceAll(NEW_TOKEN, MASK) }))),
       port: base.port, rotate: Boolean(requestedOptions.rotate), token: existingToken ? sha256(existingToken) : null,
-      forwarder: fwd, targets,
+      forwarder: fwd, ...(isPosix && app !== 'hermes' ? { launcher, nodePath: selectedNode ?? null, recordedNode: currentRecordedNode ?? null } : {}), targets,
     }));
     return {
       plan: base,
@@ -711,6 +809,7 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
       ...(extraProfiles.length ? { extraProfiles } : {}),
       file,
       ...(real ? { token: real.token } : {}),
+      ...(selectedNode ? { nodePath: selectedNode } : {}),
       needsWrite: fileChanges,
     };
   }
@@ -835,13 +934,27 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
     };
     await mkdir(path.join(ctx.extaliaHome, 'hooks'), { recursive: true, mode: 0o700 });
     await addOwnedWrite(tokenFile(ctx.extaliaHome), token);
-    if (app !== 'hermes') await addOwnedWrite(forwarder, FORWARDER_SOURCE, 0o755);
+    if (app !== 'hermes') {
+      await addOwnedWrite(forwarder, FORWARDER_SOURCE, 0o755);
+      if (isPosix) {
+        await addOwnedWrite(forwardLauncher, FORWARD_LAUNCHER_SOURCE, 0o755);
+        if (real.nodePath) await addOwnedWrite(recordedNodeFile, `${real.nodePath}\n`, 0o600);
+      }
+    }
     if (options.port !== undefined) await addOwnedWrite(hookTargetsFile(ctx.extaliaHome), `${JSON.stringify({ ...await readHookTargets(ctx.extaliaHome), [app]: options.port }, null, 2)}\n`);
-    changed ||= writes.length > 0;
+    const launcherModeFix = isPosix && app !== 'hermes' && process.platform !== 'win32'
+      && (await forwardLauncherStatus(ctx.extaliaHome)) === 'outdated'
+      && (await readTextSafe(forwardLauncher)) === FORWARD_LAUNCHER_SOURCE;
+    changed ||= writes.length > 0 || launcherModeFix;
     if (changed && manifest.apps[app]) manifest.apps[app]!.updatedAt = now().toISOString();
     if (changed) await addOwnedWrite(manifestFile, `${JSON.stringify(manifest, null, 2)}\n`);
     if (await readTextSafe(manifestFile) !== manifestBefore) throw new ConnectError('The connection manifest changed. Review a new preview before applying.');
     await commitConfigWrites(writes, undefined, journal, ` Review it with \`${recoverCommand()}\`.`);
+    if (isPosix && app !== 'hermes' && process.platform !== 'win32') {
+      await chmod(forwarder, 0o755).catch(() => undefined);
+      await chmod(forwardLauncher, 0o755).catch(() => undefined);
+      if (real.nodePath) await chmod(recordedNodeFile, 0o600).catch(() => undefined);
+    }
 
     let trust: { status: AgentAppTrustStatus; trusted: number; total: number } = { status: 'not-applicable', trusted: 0, total: 0 };
     if (app === 'codex') {

@@ -24,6 +24,9 @@ export interface CodexDesired {
 }
 
 export function codexCommand(nodePath: string, forwarderPath: string, platform: string): string {
+  if (platform !== 'win32' && (!nodePath || /(?:^|[\\/])forward\.sh$/.test(forwarderPath))) {
+    return `${quoteArgument(forwarderPath, platform)} codex`;
+  }
   return `${quoteArgument(nodePath, platform)} ${quoteArgument(forwarderPath, platform)} codex`;
 }
 
@@ -32,7 +35,7 @@ export function codexEventKey(event: string): string {
   return event.replace(/([a-z])([A-Z])/g, '$1_$2').toLowerCase();
 }
 
-export const isExtaliaCodexCommand = (command: unknown): boolean => typeof command === 'string' && /forward\.mjs['"]?\s+codex\s*$/.test(command);
+export const isExtaliaCodexCommand = (command: unknown): boolean => typeof command === 'string' && /forward\.(?:mjs|sh)['"]?\s+codex\s*$/.test(command);
 
 const tomlString = (value: string) => JSON.stringify(value);
 

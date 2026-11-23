@@ -29,6 +29,9 @@ type Json = Record<string, unknown>;
 const isObject = (value: unknown): value is Json => typeof value === 'object' && value !== null && !Array.isArray(value);
 
 export function claudeCommand(nodePath: string, forwarderPath: string, platform: string): string {
+  if (platform !== 'win32' && (!nodePath || /(?:^|[\\/])forward\.sh$/.test(forwarderPath))) {
+    return `${quoteArgument(forwarderPath, platform)} claude`;
+  }
   return `${quoteArgument(nodePath, platform)} ${quoteArgument(forwarderPath, platform)} claude`;
 }
 
@@ -50,7 +53,7 @@ export function isExtaliaClaudeHook(hook: unknown): boolean {
       return ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname) && url.pathname === CLAUDE_HOOK_PATH;
     } catch { return false; }
   }
-  return hook.type === 'command' && typeof hook.command === 'string' && /forward\.mjs['"]?\s+claude\s*$/.test(hook.command);
+  return hook.type === 'command' && typeof hook.command === 'string' && /forward\.(?:mjs|sh)['"]?\s+claude\s*$/.test(hook.command);
 }
 
 function parseSettings(text: string | undefined, file: string): Json {

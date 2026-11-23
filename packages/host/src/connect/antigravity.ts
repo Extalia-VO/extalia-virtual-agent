@@ -40,6 +40,9 @@ const isObject = (value: unknown): value is Json => typeof value === 'object' &&
 const isGroupedEvent = (event: string): boolean => (ANTIGRAVITY_GROUPED_EVENTS as readonly string[]).includes(event);
 
 export function antigravityCommand(nodePath: string, forwarderPath: string, platform: string): string {
+  if (platform !== 'win32' && (!nodePath || /(?:^|[\\/])forward\.sh$/.test(forwarderPath))) {
+    return `${quoteArgument(forwarderPath, platform)} antigravity`;
+  }
   return `${quoteArgument(nodePath, platform)} ${quoteArgument(forwarderPath, platform)} antigravity`;
 }
 
@@ -50,7 +53,7 @@ function desiredHook(desired: AntigravityDesired, event: string): Json {
 /** Whether a hook entry in `~/.gemini/config/hooks.json` was added by Extalia. */
 export function isExtaliaAntigravityHook(hook: unknown): boolean {
   if (!isObject(hook)) return false;
-  return hook.type === 'command' && typeof hook.command === 'string' && /forward\.mjs['"]?\s+antigravity(?:\s+\w+)?\s*$/.test(hook.command);
+  return hook.type === 'command' && typeof hook.command === 'string' && /forward\.(?:mjs|sh)['"]?\s+antigravity(?:\s+\w+)?\s*$/.test(hook.command);
 }
 
 /** Strip a trailing event argument from a full hook command so `commandValid` can inspect `<node> <forward.mjs> antigravity`. */

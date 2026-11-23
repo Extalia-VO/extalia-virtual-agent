@@ -1,5 +1,5 @@
 import { createInterface } from 'node:readline/promises';
-import { awaitObservedReply, isObservedReplyRequest, ConnectError, createConnectService, runMcpStdioServer, type ConnectService, type McpServerOptions, type ObservedReplyRequest } from '@extalia/host';
+import { awaitObservedReply, isObservedReplyRequest, ConnectError, createConnectService, resolveNodePath, runMcpStdioServer, type ConnectService, type McpServerOptions, type ObservedReplyRequest } from '@extalia/host';
 import { resolveDataDirectory, type AgentAppConnectOptions, type AgentAppId } from '@extalia/platform';
 import type { CliHost } from './cli';
 
@@ -105,12 +105,20 @@ export async function defaultPrompt(question: string): Promise<boolean> {
 async function resolveService(host: CliHost): Promise<ConnectService> {
   if (host.connectService) return host.connectService();
   const extaliaHome = resolveDataDirectory({ platform: host.platform, env: host.env, homeDirectory: host.homeDirectory });
+  const nodePath = await resolveNodePath({
+    execPath: process.execPath,
+    electron: Boolean(process.versions.electron),
+    env: host.env,
+    platform: host.platform,
+    homeDirectory: host.homeDirectory,
+  });
   return createConnectService({
     platform: host.platform,
     env: host.env,
     homeDirectory: host.homeDirectory,
     extaliaHome,
-    nodePath: process.execPath,
+    ...(nodePath ? { nodePath } : {}),
+    ...(process.versions.electron ? { electronPath: process.execPath } : {}),
   });
 }
 

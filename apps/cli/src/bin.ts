@@ -3,7 +3,7 @@ import { access, readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createAgentHost, createConnectService, migrateLegacyDataDirectory } from '@extalia/host';
+import { createAgentHost, createConnectService, migrateLegacyDataDirectory, resolveNodePath } from '@extalia/host';
 import { resolveDataDirectory } from '@extalia/platform';
 import { run } from './cli';
 import { defaultPrompt } from './connect';
@@ -49,12 +49,20 @@ const code = await run(process.argv.slice(2), {
       await migrateLegacyDataDirectory({ target: dataDirectory, platform: process.platform, env: process.env, homeDirectory })
         .catch((error: unknown) => err(`Could not copy data from the previous Extalia folder: ${error instanceof Error ? error.message : String(error)}`));
     }
+    const nodePath = await resolveNodePath({
+      execPath: process.execPath,
+      electron: Boolean(process.versions.electron),
+      env: process.env,
+      platform: process.platform,
+      homeDirectory,
+    });
     return createConnectService({
       platform: process.platform,
       env: process.env,
       homeDirectory,
       extaliaHome: dataDirectory,
-      nodePath: process.execPath,
+      ...(nodePath ? { nodePath } : {}),
+      ...(process.versions.electron ? { electronPath: process.execPath } : {}),
     });
   },
   prompt: defaultPrompt,

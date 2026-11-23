@@ -2,7 +2,7 @@ import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { resolveNodePath, type NodeRuntimeOptions } from '../src/connect/nodeRuntime.js';
+import { preferStableNodePath, resolveNodePath, type NodeRuntimeOptions } from '../src/connect/nodeRuntime.js';
 import { isExecutable } from '../src/connect/util.js';
 
 describe('Node discovery for GUI hook commands', () => {
@@ -106,5 +106,40 @@ describe('Node discovery for GUI hook commands', () => {
     await mkdir(directory);
     await symlink(execPath, path.join(directory, 'node'));
     expect(await resolveNodePath(options({ execPath, env: { PATH: directory } }))).toBeUndefined();
+  });
+
+  it.skipIf(process.platform === 'win32')('prefers stable Homebrew symlinks over ephemeral Cellar paths when realpaths match', async () => {
+    const brewRoot = path.join(root, 'opt', 'homebrew');
+    const cellarNode = await node(path.join(brewRoot, 'Cellar', 'node', '24.1.0', 'bin', 'node'));
+    const stableBin = path.join(brewRoot, 'bin', 'node');
+    await mkdir(path.dirname(stableBin), { recursive: true });
+    await symlink(path.relative(path.dirname(stableBin), cellarNode), stableBin);
+
+    expect(await preferStableNodePath(cellarNode, { platform: 'darwin' })).toBe(stableBin);
+    expect(await resolveNodePath(options({ electron: false, execPath: cellarNode }))).toBe(stableBin);
+    expect(await resolveNodePath(options({ electron: true, env: { PATH: path.dirname(cellarNode) } }))).toBe(stableBin);
+
+    // Intel / Linuxbrew /usr/local/Cellar layout.
+    const localRoot = path.join(root, 'usr', 'local');
+    const localCellar = await node(path.join(localRoot, 'Cellar', 'node', '24.2.0', 'bin', 'node'));
+    const localStable = path.join(localRoot, 'bin', 'node');
+    await mkdir(path.dirname(localStable), { recursive: true });
+    await symlink(path.relative(path.dirname(localStable), localCellar), localStable);
+    expect(await preferStableNodePath(localCellar, { platform: 'darwin' })).toBe(localStable);
+
+    // Keg-only versioned formula (node@22) falls back to <prefix>/opt/node@22/bin/node when <prefix>/bin/node points elsewhere.
+    const kegCellar = await node(path.join(brewRoot, 'Cellar', 'node@22', '22.14.0', 'bin', 'node'));
+    const kegStable = path.join(brewRoot, 'opt', 'node@22', 'bin', 'node');
+    await mkdir(path.dirname(kegStable), { recursive: true });
+    await symlink(path.relative(path.dirname(kegStable), kegCellar), kegStable);
+    expect(await preferStableNodePath(kegCellar, { platform: 'darwin' })).toBe(kegStable);
+
+    // Never rewrites to a symlink that points to a different binary.
+    const otherCellar = await node(path.join(brewRoot, 'Cellar', 'node', '24.9.0', 'bin', 'node'));
+    expect(await preferStableNodePath(otherCellar, { platform: 'darwin' })).toBe(otherCellar);
+
+    // Electron rejection remains intact even for a Homebrew Cellar path.
+    expect(await resolveNodePath(options({ electron: true, execPath: cellarNode, env: { PATH: path.dirname(cellarNode) } }))).toBeUndefined();
+    expect(await preferStableNodePath(cellarNode, { platform: 'win32' })).toBe(cellarNode);
   });
 });
