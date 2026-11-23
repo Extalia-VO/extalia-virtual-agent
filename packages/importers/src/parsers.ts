@@ -882,3 +882,370 @@ export function parseAntigravity(text: string, context: ParseContext): NativePar
   return finish(context, sessionId, drafts, diagnostics, { path: projectPath, start: startAt, parser: 'antigravity-jsonl', ...(model ? { model } : {}), ...(runningTaskIds.length ? { runningTaskIds } : {}), ...(runningTaskCallIds.length ? { runningTaskCallIds } : {}) }, steps);
 }
 
+/** A child conversation spawned by Antigravity `swarm(action: 'add')` or `invoke_subagent`. */
+export interface AntigravitySubagentSpawn {
+  subagentId: string;
+  label?: string;
+  role?: string;
+  model?: string;
+  at?: string;
+}
+
+const ANTIGRAVITY_SUBAGENT_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/;
+const MAX_JSON_EXTRACT_BYTES = 512 * 1024;
+const MAX_JSON_EXTRACT_VALUES = 64;
+const MAX_JSON_EXTRACT_ATTEMPTS = 64;
+
+function firstText(...values: unknown[]): string {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return '';
+}
+
+function cleanAntigravityModel(value: unknown): string | undefined {
+  const cleaned = unquoteArg(value);
+  return cleaned && !/^(?:none|auto)$/i.test(cleaned) ? safeLabel(cleaned, 120) || undefined : undefined;
+}
+
+function extractAntigravityArgs(rawArgs: unknown): RecordValue {
+  if (typeof rawArgs === 'string') {
+    try { return obj(JSON.parse(rawArgs)); } catch { return {}; }
+  }
+  return obj(rawArgs);
+}
+
+function argText(args: RecordValue, ...keys: string[]): string {
+  for (const key of keys) {
+    const value = unquoteArg(args[key]);
+    if (value) return value;
+  }
+  return '';
+}
+
+/** Scan a bounded string for balanced JSON objects or arrays, tolerating leading `Created At:` / `Completed At:` lines. */
+function scanJsonValuesFromText(rawText: string): unknown[] {
+  const text = rawText.length > MAX_JSON_EXTRACT_BYTES ? rawText.slice(0, MAX_JSON_EXTRACT_BYTES) : rawText;
+  const trimmed = text.trim();
+  if (!trimmed) return [];
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+    try {
+      const parsed: unknown = JSON.parse(trimmed);
+      if (parsed && typeof parsed === 'object') return [parsed];
+    } catch { /* fall through to balanced scan */ }
+  }
+  // Fast path: strip leading metadata lines (e.g. `Created At: ...`, `Completed At: ...`) before a JSON body.
+  const firstJsonLine = text.search(/(?:^|\r?\n)[ \t]*[[{]/);
+  if (firstJsonLine >= 0) {
+    const startOffset = text[firstJsonLine] === '\r' || text[firstJsonLine] === '\n' ? firstJsonLine + 1 : firstJsonLine;
+    const candidate = text.slice(startOffset).trim();
+    if (candidate.startsWith('{') || candidate.startsWith('[')) {
+      try {
+        const parsed: unknown = JSON.parse(candidate);
+        if (parsed && typeof parsed === 'object') return [parsed];
+      } catch { /* fall through to balanced scan */ }
+    }
+  }
+  const results: unknown[] = [];
+  let cursor = 0;
+  let attempts = 0;
+  while (cursor < text.length && results.length < MAX_JSON_EXTRACT_VALUES && attempts < MAX_JSON_EXTRACT_ATTEMPTS) {
+    let start = -1;
+    for (let i = cursor; i < text.length; i++) {
+      if (text[i] === '{' || text[i] === '[') { start = i; break; }
+    }
+    if (start < 0) break;
+    attempts++;
+    const stack: string[] = [text[start] === '{' ? '}' : ']'];
+    let inString = false;
+    let escaped = false;
+    let end = -1;
+    let mismatch = false;
+    for (let i = start + 1; i < text.length; i++) {
+      const ch = text[i]!;
+      if (inString) {
+        if (escaped) escaped = false;
+        else if (ch === '\\') escaped = true;
+        else if (ch === '"') inString = false;
+        continue;
+      }
+      if (ch === '"') { inString = true; continue; }
+      if (ch === '{') stack.push('}');
+      else if (ch === '[') stack.push(']');
+      else if (ch === '}' || ch === ']') {
+        if (stack.at(-1) !== ch) { mismatch = true; break; }
+        stack.pop();
+        if (stack.length === 0) { end = i; break; }
+      }
+    }
+    if (!mismatch && end > start) {
+      try {
+        const parsed: unknown = JSON.parse(text.slice(start, end + 1));
+        if (parsed && typeof parsed === 'object') {
+          results.push(parsed);
+          cursor = end + 1;
+          continue;
+        }
+      } catch { /* not valid JSON; try next opening token */ }
+    }
+    cursor = start + 1;
+  }
+  return results;
+}
+
+/**
+ * Safely extract parsed JSON objects/arrays from Antigravity tool responses, including strings
+ * prefixed with `Created At:` / `Completed At:` lines and wrapped `{ output | content | result }` envelopes.
+ */
+export function extractAntigravityJsonValues(raw: unknown): unknown[] {
+  const results: unknown[] = [];
+  const seen = new Set<object>();
+  const visit = (value: unknown, depth: number) => {
+    if (depth > 3 || value === null || value === undefined || results.length >= MAX_JSON_EXTRACT_VALUES) return;
+    if (typeof value === 'string') {
+      for (const parsed of scanJsonValuesFromText(value)) {
+        if (results.length < MAX_JSON_EXTRACT_VALUES) results.push(parsed);
+      }
+      return;
+    }
+    if (typeof value !== 'object') return;
+    if (seen.has(value)) return;
+    seen.add(value);
+    results.push(value);
+    if (Array.isArray(value)) {
+      for (const item of value.slice(0, MAX_JSON_EXTRACT_VALUES)) {
+        if (typeof item === 'string') visit(item, depth + 1);
+      }
+      return;
+    }
+    const record = value as RecordValue;
+    for (const key of ['output', 'content', 'result', 'llmContent', 'returnDisplay', 'response']) {
+      if (record[key] !== undefined && record[key] !== value) visit(record[key], depth + 1);
+    }
+  };
+  visit(raw, 0);
+  return results;
+}
+
+function collectTextFragments(raw: unknown, depth = 0, seen = new Set<object>()): string[] {
+  if (depth > 3 || raw === null || raw === undefined) return [];
+  if (typeof raw === 'string') return [raw];
+  if (typeof raw !== 'object') return [];
+  if (seen.has(raw)) return [];
+  seen.add(raw);
+  if (Array.isArray(raw)) return raw.slice(0, 64).flatMap(item => collectTextFragments(item, depth + 1, seen));
+  const record = raw as RecordValue;
+  const out: string[] = [];
+  for (const key of ['output', 'content', 'result', 'llmContent', 'returnDisplay', 'response', 'message']) {
+    if (record[key] !== undefined) out.push(...collectTextFragments(record[key], depth + 1, seen));
+  }
+  return out;
+}
+
+function isErrorEntry(item: RecordValue, outerStatus?: string): boolean {
+  const status = str(item.status || outerStatus).trim().toLowerCase();
+  if (status === 'error' || status === 'failed' || status === 'failure' || status === 'rejected') return true;
+  return item.error !== undefined && item.error !== null && item.error !== false && item.error !== '';
+}
+
+/**
+ * Extract spawned worker conversations from an Antigravity `swarm(action: 'add')` call + response.
+ * Supports single objects and batch arrays (`workers`, `added`, `members`, `results`, `spawned`, or top-level arrays),
+ * as well as leading `Created At:` / `Completed At:` response headers.
+ */
+export function extractAntigravitySwarmSpawns(rawArgs: unknown, response: unknown, parentSessionId?: string): AntigravitySubagentSpawn[] {
+  const args = extractAntigravityArgs(rawArgs);
+  const action = argText(args, 'action', 'Action').toLowerCase();
+  if (action && action !== 'add') return [];
+
+  const argsName = safeLabel(argText(args, 'name', 'Name'), 120);
+  const argsModel = cleanAntigravityModel(argText(args, 'model', 'Model'));
+  const spawns: AntigravitySubagentSpawn[] = [];
+  const seen = new Set<string>();
+
+  const candidates: Array<{ item: RecordValue; outerStatus: string; batchSize: number; index: number }> = [];
+  for (const value of extractAntigravityJsonValues(response)) {
+    if (Array.isArray(value)) {
+      const items = value.map(obj).filter(item => Object.keys(item).length > 0);
+      items.forEach((item, index) => candidates.push({ item, outerStatus: '', batchSize: items.length, index }));
+      continue;
+    }
+    const record = obj(value);
+    const outerStatus = str(record.status).trim().toLowerCase();
+    let matchedBatch = false;
+    for (const key of ['workers', 'added', 'members', 'results', 'spawned']) {
+      if (Array.isArray(record[key])) {
+        matchedBatch = true;
+        const items = (record[key] as unknown[]).map(obj).filter(item => Object.keys(item).length > 0);
+        items.forEach((item, index) => candidates.push({ item, outerStatus, batchSize: items.length, index }));
+      }
+    }
+    if (!matchedBatch && (typeof record.conversation_id === 'string' || typeof record.conversationId === 'string')) {
+      candidates.push({ item: record, outerStatus, batchSize: 1, index: 0 });
+    }
+  }
+
+  for (const { item, outerStatus, batchSize, index } of candidates) {
+    if (spawns.length >= 100) break;
+    if (isErrorEntry(item, outerStatus)) continue;
+    const itemStatus = str(item.status || outerStatus).trim().toLowerCase();
+    // Without PreToolUse args we require an explicit `added` status so `swarm(action: 'status')` never fabricates spawns.
+    if (!action && itemStatus !== 'added') continue;
+    const childId = firstText(item.conversation_id, item.conversationId);
+    if (!childId || !ANTIGRAVITY_SUBAGENT_ID.test(childId) || childId === parentSessionId || seen.has(childId)) continue;
+    seen.add(childId);
+    const fallbackName = argsName ? (batchSize > 1 ? `${argsName}-${index + 1}` : argsName) : '';
+    const workerName = safeLabel(firstText(item.name, item.worker_name, item.workerName, item.member, fallbackName), 120);
+    const model = cleanAntigravityModel(firstText(item.model_display_name, item.modelDisplayName, item.model)) ?? argsModel;
+    spawns.push({
+      subagentId: childId,
+      ...(workerName ? { label: workerName, role: workerName } : {}),
+      ...(model ? { model } : {}),
+    });
+  }
+  return spawns;
+}
+
+/**
+ * Extract spawned subagent conversations from an Antigravity `invoke_subagent` call + response.
+ * Supports JSON payloads (with or without `Created At:` / `Completed At:` headers) and plain-text `conversationId: <id>` responses.
+ */
+export function extractAntigravityInvokeSpawns(rawArgs: unknown, response: unknown, parentSessionId?: string): AntigravitySubagentSpawn[] {
+  const args = extractAntigravityArgs(rawArgs);
+  const argsRole = safeLabel(argText(args, 'Role', 'role'), 120);
+  const argsType = safeLabel(argText(args, 'TypeName', 'typeName', 'type_name'), 120);
+  const argsModel = cleanAntigravityModel(argText(args, 'Model', 'model'));
+  const argSubagents = Array.isArray(args.Subagents) ? args.Subagents.map(obj) : [];
+
+  const spawns: AntigravitySubagentSpawn[] = [];
+  const seen = new Set<string>();
+
+  const candidates: Array<{ item: RecordValue; outerStatus: string; index: number }> = [];
+  for (const value of extractAntigravityJsonValues(response)) {
+    if (Array.isArray(value)) {
+      value.map(obj).filter(item => Object.keys(item).length > 0).forEach((item, index) => candidates.push({ item, outerStatus: '', index }));
+      continue;
+    }
+    const record = obj(value);
+    const outerStatus = str(record.status).trim().toLowerCase();
+    let matchedBatch = false;
+    for (const key of ['subagents', 'Subagents', 'workers', 'results']) {
+      if (Array.isArray(record[key])) {
+        matchedBatch = true;
+        (record[key] as unknown[]).map(obj).filter(item => Object.keys(item).length > 0).forEach((item, index) => candidates.push({ item, outerStatus, index }));
+      }
+    }
+    if (!matchedBatch && (typeof record.conversationId === 'string' || typeof record.conversation_id === 'string')) {
+      candidates.push({ item: record, outerStatus, index: 0 });
+    }
+  }
+
+  for (const { item, outerStatus, index } of candidates) {
+    if (spawns.length >= 100) break;
+    if (isErrorEntry(item, outerStatus)) continue;
+    const childId = firstText(item.conversationId, item.conversation_id);
+    if (!childId || !ANTIGRAVITY_SUBAGENT_ID.test(childId) || childId === parentSessionId || seen.has(childId)) continue;
+    seen.add(childId);
+    const argSub = argSubagents[index] ?? {};
+    const effectiveRole = argsRole || safeLabel(argText(argSub, 'Role', 'role'), 120) || safeLabel(firstText(item.Role, item.role, item.label, item.name), 120);
+    const effectiveType = argsType || safeLabel(argText(argSub, 'TypeName', 'typeName', 'type_name'), 120) || safeLabel(firstText(item.TypeName, item.typeName, item.type_name), 120);
+    const label = effectiveRole || effectiveType || undefined;
+    const role = effectiveType || effectiveRole || undefined;
+    const model = cleanAntigravityModel(firstText(item.model_display_name, item.modelDisplayName, item.model))
+      ?? cleanAntigravityModel(argText(argSub, 'Model', 'model'))
+      ?? argsModel;
+    spawns.push({
+      subagentId: childId,
+      ...(label ? { label } : {}),
+      ...(role ? { role } : {}),
+      ...(model ? { model } : {}),
+    });
+  }
+
+  if (spawns.length === 0) {
+    const fragments = collectTextFragments(response);
+    const pattern = /(?<![A-Za-z0-9_-])(?:conversation_id|conversationId|conversation\s+id)\s*[:=]\s*["']?([A-Za-z0-9][A-Za-z0-9._:-]{0,159})["']?/gi;
+    for (const fragment of fragments) {
+      if (explicitToolFailure(fragment)) continue;
+      let match: RegExpExecArray | null;
+      pattern.lastIndex = 0;
+      while ((match = pattern.exec(fragment)) !== null && spawns.length < 100) {
+        const childId = match[1]?.trim() ?? '';
+        if (!childId || !ANTIGRAVITY_SUBAGENT_ID.test(childId) || childId === parentSessionId || seen.has(childId)) continue;
+        seen.add(childId);
+        const label = argsRole || argsType || undefined;
+        const role = argsType || argsRole || undefined;
+        spawns.push({
+          subagentId: childId,
+          ...(label ? { label } : {}),
+          ...(role ? { role } : {}),
+          ...(argsModel ? { model: argsModel } : {}),
+        });
+      }
+    }
+  }
+  return spawns;
+}
+
+/**
+ * Scan an Antigravity JSONL transcript for `swarm(action: 'add')` and `invoke_subagent`
+ * tool calls paired with their following `GENERIC`/`TOOL_RESPONSE` rows.
+ */
+export function extractAntigravityTranscriptSpawns(text: string, parentSessionId?: string): AntigravitySubagentSpawn[] {
+  const spawnsById = new Map<string, AntigravitySubagentSpawn>();
+  const lines = text.split(/\r?\n/);
+  let pendingCalls: Array<{ tool: string; args: unknown; at?: string }> = [];
+  let processed = 0;
+
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    if (++processed > MAX_RECORDS) break;
+    let row: RecordValue;
+    try {
+      const parsed: unknown = JSON.parse(line);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) continue;
+      row = parsed as RecordValue;
+    } catch { continue; }
+    const type = str(row.type);
+    const rowAt = stepTime(row.created_at ?? row.timestamp);
+
+    if (type === 'USER_INPUT') {
+      pendingCalls = [];
+    } else if (type === 'SYSTEM_MESSAGE') {
+      const rawContent = Array.isArray(row.content) ? row.content.map(item => str(item)).join('\n') : str(row.content);
+      if (/Extalia Prompt/.test(rawContent)) pendingCalls = [];
+    } else if (type === 'PLANNER_RESPONSE') {
+      pendingCalls = [];
+      for (const call of list(row.tool_calls).map(obj)) {
+        const rawTool = str(call.name).replace(/^default_api:/, '');
+        if (!rawTool) continue;
+        pendingCalls.push({ tool: rawTool, args: call.args ?? call.arguments, ...(rowAt ? { at: rowAt } : {}) });
+      }
+    } else if ((type === 'GENERIC' || type === 'TOOL_RESPONSE') && pendingCalls.length > 0) {
+      const items = Array.isArray(row.content) ? row.content.map(item => str(item)) : [str(row.content)];
+      for (const itemText of items) {
+        const call = pendingCalls.shift();
+        if (!call) break;
+        if (row.status === 'ERROR') continue;
+        const extracted = call.tool === 'swarm'
+          ? extractAntigravitySwarmSpawns(call.args, itemText, parentSessionId)
+          : call.tool === 'invoke_subagent'
+            ? extractAntigravityInvokeSpawns(call.args, itemText, parentSessionId)
+            : [];
+        for (const spawn of extracted) {
+          const existing = spawnsById.get(spawn.subagentId);
+          const at = existing?.at ?? rowAt ?? call.at;
+          spawnsById.set(spawn.subagentId, {
+            subagentId: spawn.subagentId,
+            ...((existing?.label ?? spawn.label) ? { label: existing?.label ?? spawn.label } : {}),
+            ...((existing?.role ?? spawn.role) ? { role: existing?.role ?? spawn.role } : {}),
+            ...((existing?.model ?? spawn.model) ? { model: existing?.model ?? spawn.model } : {}),
+            ...(at ? { at } : {}),
+          });
+        }
+      }
+    }
+  }
+  return [...spawnsById.values()];
+}
+

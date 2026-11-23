@@ -214,6 +214,47 @@ describe('Codex sub-agent threads', () => {
   });
 });
 
+describe('Antigravity sub-agent conversations', () => {
+  it('folds legacy standalone Antigravity child records into their root orchestrator on refresh', async () => {
+    const f = await homes();
+    const brain = path.join(f.home, '.gemini', 'antigravity', 'brain');
+    const writeAgy = async (convId: string, content: string) => {
+      const logs = path.join(brain, convId, '.system_generated', 'logs');
+      await mkdir(logs, { recursive: true });
+      const file = path.join(logs, 'transcript.jsonl');
+      await writeFile(file, content);
+      return file;
+    };
+    const rootFile = await writeAgy('agy-legacy-root',
+      line({ step_index: 1, type: 'USER_INPUT', source: 'USER_EXPLICIT', status: 'DONE', created_at: stamp(0), content: '<USER_REQUEST>\nOrchestrate example\n</USER_REQUEST>' }) +
+      line({ step_index: 2, type: 'PLANNER_RESPONSE', source: 'MODEL', status: 'DONE', created_at: stamp(500), content: '', tool_calls: [{ name: 'default_api:swarm', args: JSON.stringify({ action: 'add', name: 'worker-1' }) }] }) +
+      line({ step_index: 3, type: 'GENERIC', source: 'SYSTEM', status: 'DONE', created_at: stamp(700), content: `Created At: 2026-10-15T12:00:00+00:00\nCompleted At: 2026-10-15T12:00:01+00:00\n${JSON.stringify({ status: 'added', name: 'worker-1', model_display_name: 'Gemini 4 Example', conversation_id: 'agy-legacy-child' })}` }));
+    const childFile = await writeAgy('agy-legacy-child',
+      line({ step_index: 1, type: 'PLANNER_RESPONSE', source: 'MODEL', status: 'DONE', created_at: stamp(1000), content: '', tool_calls: [{ name: 'default_api:read_file', args: JSON.stringify({ Path: '/projects/example/src/demo.ts' }) }] }) +
+      line({ step_index: 2, type: 'GENERIC', source: 'SYSTEM', status: 'DONE', created_at: stamp(1200), content: 'export const ok = true;' }));
+
+    const location = f.source.locations().find(item => item.sourceId === 'antigravity')!;
+    expect(f.source.rootReference({ locationId: location.id, sourceId: 'antigravity', nativeSessionId: 'agy-legacy-child', path: childFile }))
+      .toMatchObject({ nativeSessionId: 'agy-legacy-root', path: rootFile, subagentId: 'agy-legacy-child', parentAgentId: 'primary', subagentLabel: 'worker-1', subagentRole: 'worker-1', subagentModel: 'Gemini 4 Example' });
+
+    await mkdir(f.state, { recursive: true });
+    await writeFile(path.join(f.state, 'observations.json'), JSON.stringify([{
+      id: 's_agylegacy1', title: 'Antigravity · agy-legacy-child', watching: true, createdAt: stamp(0), lastActiveAt: stamp(0),
+      reference: { locationId: location.id, sourceId: 'antigravity', nativeSessionId: 'agy-legacy-child', path: childFile },
+    }]));
+    const observer = await Observations.create(f.state, f.source, () => undefined, 60_000, { homeDirectory: f.home });
+    try {
+      const [summary] = observer.summaries();
+      expect(summary).toMatchObject({ id: 's_agylegacy1', title: 'Orchestrate example', observation: { status: 'watching', nativeSessionId: 'agy-legacy-root' } });
+      expect(spawned(observer.events('s_agylegacy1')).map(event => [event.agentId, event.body])).toEqual([
+        ['primary', { type: 'subagent.spawned', subagentId: 'agy-legacy-child', label: 'worker-1', role: 'worker-1', model: 'Gemini 4 Example' }],
+      ]);
+      const saved = JSON.parse(await readFile(path.join(f.state, 'observations.json'), 'utf8')) as { reference: { path: string; nativeSessionId: string } }[];
+      expect(saved[0]?.reference).toEqual({ locationId: location.id, sourceId: 'antigravity', nativeSessionId: 'agy-legacy-root', path: rootFile });
+    } finally { await observer.close(); }
+  });
+});
+
 describe('ignored folders', () => {
   it('skips claude-mem helper sessions by default in auto-watch and hooks, and retires matching automatic observations', async () => {
     const f = await homes();

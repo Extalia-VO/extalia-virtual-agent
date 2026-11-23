@@ -1,7 +1,9 @@
 import { literalProjectPath, safeLabel, safeText, type ImportMode, type PortableSession } from '@extalia/core';
 import {
-  codexThreadSpawn, codexTurnWorkingDirectory, isInjectedContext, mergeSubagentSteps, parseAntigravity, parseClaude, parseCodex, parseGemini, parseHermes,
-  type CodexThreadSpawn, type NativeParseResult, type NativeSourceId, type ParseContext, type SubagentTranscript, type TranscriptContext, type TranscriptStep,
+  codexThreadSpawn, codexTurnWorkingDirectory, extractAntigravityTranscriptSpawns, isInjectedContext, mergeSubagentSteps,
+  parseAntigravity, parseClaude, parseCodex, parseGemini, parseHermes,
+  type AntigravitySubagentSpawn, type CodexThreadSpawn, type NativeParseResult, type NativeSourceId, type ParseContext,
+  type SubagentTranscript, type TranscriptContext, type TranscriptStep,
 } from '@extalia/importers';
 import type { ImportCandidate, ImportDiagnostic, ImportLocation, ImportScan } from '@extalia/platform';
 import { createHash, randomUUID } from 'node:crypto';
@@ -55,6 +57,12 @@ interface FileIdentity { size: number; mtime: number; ino: number }
 interface Ref { location: Location; path: string; candidate: ImportCandidate; identity: FileIdentity; titled: boolean; rowFingerprint?: string; spawn?: CodexThreadSpawn; suggestionOnly?: boolean }
 /** First record of a Codex rollout: its thread id and, for sub-agent threads, how it was spawned. Immutable once written. */
 interface ThreadHeader { fileIdentity: string; id: string; spawn?: CodexThreadSpawn; cwd?: string; startMs?: number }
+interface AntigravityTranscriptSpawns { stamp: string; convId: string; spawns: AntigravitySubagentSpawn[] }
+interface AntigravityGraph {
+  pathById: Map<string, string>;
+  childrenByParent: Map<string, AntigravitySubagentSpawn[]>;
+  parentByChild: Map<string, { parentId: string; edge: AntigravitySubagentSpawn }>;
+}
 interface ParsedSubagent { steps: TranscriptStep[]; model?: string; startedAt?: string }
 interface Budget { files: number; limit: number; truncated: boolean }
 
@@ -377,6 +385,15 @@ export interface NativePreview {
 /** Host-only reference pinned by a selected preview. Never accepted as a UI argument. */
 export interface NativeObservationRef { locationId: string; sourceId: string; nativeSessionId: string; path: string }
 
+/** Resolved root session reference for a sub-agent transcript or conversation. */
+export interface RootObservationRef extends NativeObservationRef {
+  subagentId?: string;
+  parentAgentId?: string;
+  subagentLabel?: string;
+  subagentRole?: string;
+  subagentModel?: string;
+}
+
 /** Private source authority for an explicitly reviewed official CLI resume. */
 export interface NativeCliResumeSource {
   family: 'codex' | 'claude' | 'gemini'; sourceId: string; nativeSessionId: string;
@@ -424,6 +441,8 @@ export class NativeImportService {
   private readonly threadHeaders = new Map<string, ThreadHeader>();
   private readonly codexDirectories = new Map<string, { stamp: string; value?: { cwd: string; at: string; recent: boolean } }>();
   private readonly threadFileMemo = new Map<string, { at: number; files: string[] }>();
+  private readonly antigravitySpawns = new Map<string, AntigravityTranscriptSpawns>();
+  private readonly antigravityGraphMemo = new Map<string, AntigravityGraph>();
   private readonly subagentReads = new Map<string, { stamp: string; value: ParsedSubagent }>();
   private readonly lineCounts = new Map<string, { ino: number; position: number; lines: number }>();
   private threadNames?: { stamp: string; names: Map<string, string> };
@@ -615,6 +634,8 @@ export class NativeImportService {
 
   scan(locationIds?: readonly string[]): ImportScan {
     if (locationIds && (locationIds.length > 200 || locationIds.some(id => typeof id !== 'string'))) throw new Error('Invalid location selection.');
+    this.threadFileMemo.clear();
+    this.antigravityGraphMemo.clear();
     this.prune();
     const all = this.knownLocations();
     if (locationIds?.some(id => !all.some(location => location.id === id || location.sourceId === id))) throw new Error('Unknown history location.');
@@ -623,8 +644,9 @@ export class NativeImportService {
     const diagnostic = (location: Location, message: string) => { if (result.diagnostics.length < 100) result.diagnostics.push({ locationId: location.id, message }); };
     const latest = new Map<string, Ref>();
     const collect = (ref: Ref) => {
-      // Codex sub-agent threads belong to the session that spawned them.
+      // Codex and Antigravity sub-agent conversations belong to the session that spawned them.
       if (ref.spawn || ref.suggestionOnly) return;
+      if (ref.location.kind === 'antigravity' && this.antigravityRoot(ref.location, ref.candidate.nativeSessionId)) return;
       const key = `${ref.location.sourceId}:${ref.location.profile ?? ''}:${ref.candidate.nativeSessionId}`;
       const previous = latest.get(key);
       if (!previous || Date.parse(ref.candidate.updatedAt) > Date.parse(previous.candidate.updatedAt)) latest.set(key, ref);
@@ -853,6 +875,7 @@ export class NativeImportService {
 
   observation(scanId: string, candidateId: string): { reference: NativeObservationRef } & ObservedRead {
     this.threadFileMemo.clear();
+    this.antigravityGraphMemo.clear();
     const picked = this.snapshots.get(scanId)?.refs.get(candidateId);
     if (picked?.location.kind === 'codex' && this.fileRef(picked.location, picked.path).suggestionOnly) throw new Error('This app-generated suggestion session cannot be observed.');
     if (picked?.spawn) {
@@ -863,6 +886,14 @@ export class NativeImportService {
       const reference = { locationId: picked.location.id, sourceId: picked.location.sourceId, nativeSessionId: root.id, path: root.path };
       return { reference, ...this.readObservation(reference) };
     }
+    if (picked?.location.kind === 'antigravity') {
+      const root = this.antigravityRoot(picked.location, picked.candidate.nativeSessionId);
+      if (root) {
+        this.observationLocations.set(picked.location.id, picked.location);
+        const reference = { locationId: picked.location.id, sourceId: picked.location.sourceId, nativeSessionId: root.rootId, path: root.rootPath };
+        return { reference, ...this.readObservation(reference) };
+      }
+    }
     const preview = this.preview(scanId, [candidateId], 'linked', true);
     const entry = preview.sessions[0];
     const ref = this.snapshots.get(scanId)?.refs.get(candidateId);
@@ -872,19 +903,45 @@ export class NativeImportService {
   }
 
   /**
-   * The session a Codex sub-agent thread belongs to (its root thread), with the
-   * sub-agent's thread id; any other reference is returned unchanged. Metadata only.
+   * The session a Codex sub-agent thread or Antigravity child conversation belongs to (its root),
+   * with the sub-agent's id, immediate parent agent id, and spawn metadata; any other reference is returned unchanged.
    */
-  rootReference(reference: NativeObservationRef): NativeObservationRef & { subagentId?: string } {
+  rootReference(reference: NativeObservationRef): RootObservationRef {
     this.threadFileMemo.clear();
+    this.antigravityGraphMemo.clear();
     try {
+      if (reference.sourceId === 'antigravity') {
+        const location = reference.path
+          ? this.observationLocation(reference)
+          : this.knownLocations().find(item => item.kind === 'antigravity' && item.available && item.supported);
+        if (!location || location.kind !== 'antigravity') return reference;
+        this.observationLocations.set(location.id, location);
+        const convId = reference.path ? basename(join(reference.path, '..', '..', '..')) : reference.nativeSessionId;
+        if (!convId) return reference;
+        const root = this.antigravityRoot(location, convId);
+        if (!root) return reference;
+        return {
+          locationId: location.id, sourceId: location.sourceId, nativeSessionId: root.rootId, path: root.rootPath,
+          subagentId: convId, parentAgentId: root.parentAgentId,
+          ...(root.edge.label ? { subagentLabel: root.edge.label } : {}),
+          ...(root.edge.role ? { subagentRole: root.edge.role } : {}),
+          ...(root.edge.model ? { subagentModel: root.edge.model } : {}),
+        };
+      }
       if (!reference.path) return reference;
       const location = this.observationLocation(reference);
       if (location.kind !== 'codex') return reference;
       const header = this.codexHeader(location, reference.path);
       if (!header?.spawn) return reference;
       const root = this.codexRoot(location, reference.path);
-      return root ? { locationId: reference.locationId, sourceId: reference.sourceId, nativeSessionId: root.id, path: root.path, subagentId: header.id } : reference;
+      if (!root) return reference;
+      const parentAgentId = header.spawn.parentThreadId === root.id ? 'primary' : header.spawn.parentThreadId;
+      return {
+        locationId: reference.locationId, sourceId: reference.sourceId, nativeSessionId: root.id, path: root.path,
+        subagentId: header.id, parentAgentId,
+        ...(header.spawn.nickname ? { subagentLabel: header.spawn.nickname } : {}),
+        ...(header.spawn.role ? { subagentRole: header.spawn.role } : {}),
+      };
     } catch { return reference; }
   }
 
@@ -929,6 +986,7 @@ export class NativeImportService {
    */
   discover(locationIds: readonly string[], since: number, limit = 24): DiscoveredSession[] {
     this.threadFileMemo.clear();
+    this.antigravityGraphMemo.clear();
     const found: DiscoveredSession[] = [];
     const locations = this.knownLocations();
     for (const locationId of locationIds) {
@@ -1015,7 +1073,7 @@ export class NativeImportService {
         cache.files.set(path, { mtime: info.mtimeMs, ino, size: info.size, ...(stableHeader && previous?.header ? { header: previous.header } : {}) });
       } catch { cache.files.delete(path); }
     }
-    const recent = [...cache.files.entries()].filter(([, seen]) => seen.mtime > since).sort((a, b) => b[1].mtime - a[1].mtime).slice(0, location.kind === 'codex' ? MAX_CANDIDATES : limit);
+    const recent = [...cache.files.entries()].filter(([, seen]) => seen.mtime > since).sort((a, b) => b[1].mtime - a[1].mtime).slice(0, location.kind === 'codex' || location.kind === 'antigravity' ? MAX_CANDIDATES : limit);
     const result = new Map<string, DiscoveredSession>();
     for (const [path, seen] of recent) {
       if (!seen.header) {
@@ -1035,6 +1093,15 @@ export class NativeImportService {
         const rootRef = this.fileRef(location, root.path);
         if (rootRef.suggestionOnly) continue;
         projectPath = rootRef.candidate.projectPath ?? projectPath;
+      } else if (location.kind === 'antigravity') {
+        const root = this.antigravityRoot(location, seen.header.nativeSessionId);
+        if (root) {
+          reference = { ...reference, nativeSessionId: root.rootId, path: root.rootPath };
+          try {
+            const rootRef = this.fileRef(location, root.rootPath);
+            projectPath = rootRef.candidate.projectPath ?? projectPath;
+          } catch { /* keep child projectPath fallback */ }
+        }
       }
       const key = reference.nativeSessionId, previous = result.get(key);
       if (!previous || previous.updatedAt < seen.mtime) result.set(key, { reference, updatedAt: Math.max(seen.mtime, previous?.updatedAt ?? 0), ...(projectPath ? { projectPath } : {}) });
@@ -1088,6 +1155,7 @@ export class NativeImportService {
   /** Metadata only. WAL changes invalidate Hermes snapshots even when its session row stays unchanged. */
   observationRevision(reference: NativeObservationRef): string {
     this.threadFileMemo.clear();
+    this.antigravityGraphMemo.clear();
     const location = this.observationLocation(reference);
     const root = location.kind === 'hermes' ? location.root : location.path;
     const stamp = (path: string) => {
@@ -1110,6 +1178,7 @@ export class NativeImportService {
 
   readObservation(reference: NativeObservationRef): ObservedRead {
     this.threadFileMemo.clear();
+    this.antigravityGraphMemo.clear();
     const location = this.observationLocation(reference);
     let ref: Ref;
     if (location.kind === 'hermes') {
@@ -1329,6 +1398,12 @@ export class NativeImportService {
       const files: string[] = [];
       const full = join(dirname(reference.path), 'transcript_full.jsonl');
       if (existsSync(full)) files.push(full);
+      for (const desc of this.antigravityDescendants(location, reference.nativeSessionId)) {
+        if (!desc.path) continue;
+        files.push(desc.path);
+        const descFull = join(dirname(desc.path), 'transcript_full.jsonl');
+        if (existsSync(descFull)) files.push(descFull);
+      }
       const tasksDir = this.antigravityTasksFolder(reference.path);
       if (tasksDir && existsSync(tasksDir)) {
         try {
@@ -1499,6 +1574,124 @@ export class NativeImportService {
     return found.sort((a, b) => this.rolloutStart(a.path, a.header) - this.rolloutStart(b.path, b.header) || a.path.localeCompare(b.path)).slice(-MAX_SUBAGENTS);
   }
 
+  /** Transcript files of an Antigravity brain location; one listing serves all lookups of one call. */
+  private antigravityFiles(location: Location): string[] {
+    const memo = this.threadFileMemo.get(location.id);
+    if (memo) return memo.files;
+    let cache = this.threadListings.get(location.id);
+    if (!cache) { cache = { dirs: new Map(), files: new Map(), cursor: 0 }; this.threadListings.set(location.id, cache); }
+    const files = this.candidateFiles(location, cache);
+    this.threadFileMemo.set(location.id, { at: Date.now(), files });
+    return files;
+  }
+
+  /** Spawn edges (`swarm(action: 'add')` / `invoke_subagent`) of one Antigravity transcript, stat-cached. */
+  private antigravityTranscriptSpawns(location: Location, path: string): AntigravityTranscriptSpawns | undefined {
+    let canonical: string;
+    try { canonical = contained(location.path, path); } catch { return undefined; }
+    const cached = this.antigravitySpawns.get(canonical);
+    try {
+      const info = statSync(canonical, { bigint: true });
+      if (!info.isFile()) return undefined;
+      const fullPath = join(dirname(canonical), 'transcript_full.jsonl');
+      let fullStamp = '';
+      if (existsSync(fullPath)) {
+        try {
+          const fullCanonical = contained(location.path, fullPath);
+          const fullInfo = statSync(fullCanonical, { bigint: true });
+          if (fullInfo.isFile()) fullStamp = `|${fullInfo.dev}:${fullInfo.ino}:${fullInfo.size}:${fullInfo.mtimeNs}`;
+        } catch { /* ignore unsafe sidecar */ }
+      }
+      const stamp = `${info.dev}:${info.ino}:${info.size}:${info.mtimeNs}:${info.ctimeNs}${fullStamp}`;
+      if (cached?.stamp === stamp) return cached;
+      const convId = basename(join(canonical, '..', '..', '..'));
+      if (!convId) return undefined;
+      const raw = readBounded(location.path, canonical, MAX_FILE_BYTES);
+      let spawns: AntigravitySubagentSpawn[] = [];
+      if (raw.includes('swarm') || raw.includes('invoke_subagent') || raw.includes('conversation_id') || raw.includes('conversationId')) {
+        const content = raw.includes('"truncated_fields"') || raw.includes('<truncated ')
+          ? hydrateAntigravityTranscript(location.path, canonical, raw)
+          : raw;
+        spawns = extractAntigravityTranscriptSpawns(content, convId);
+      }
+      const entry: AntigravityTranscriptSpawns = { stamp, convId, spawns };
+      this.antigravitySpawns.delete(canonical);
+      this.antigravitySpawns.set(canonical, entry);
+      if (this.antigravitySpawns.size > MAX_FILES) this.antigravitySpawns.delete(this.antigravitySpawns.keys().next().value!);
+      return entry;
+    } catch { return cached; }
+  }
+
+  /** Parent-child spawn graph across an Antigravity location, memoized per top-level call. */
+  private antigravityGraph(location: Location): AntigravityGraph {
+    const memo = this.antigravityGraphMemo.get(location.id);
+    if (memo) return memo;
+    const pathById = new Map<string, string>();
+    const childrenByParent = new Map<string, AntigravitySubagentSpawn[]>();
+    const parentByChild = new Map<string, { parentId: string; edge: AntigravitySubagentSpawn }>();
+    for (const file of this.antigravityFiles(location)) {
+      const convId = basename(join(file, '..', '..', '..'));
+      if (!convId) continue;
+      pathById.set(convId, file);
+      const parsed = this.antigravityTranscriptSpawns(location, file);
+      if (!parsed?.spawns.length) continue;
+      for (const edge of parsed.spawns) {
+        if (!edge.subagentId || edge.subagentId === convId) continue;
+        const list = childrenByParent.get(convId) ?? [];
+        if (!list.some(item => item.subagentId === edge.subagentId)) list.push(edge);
+        childrenByParent.set(convId, list);
+        if (!parentByChild.has(edge.subagentId)) parentByChild.set(edge.subagentId, { parentId: convId, edge });
+      }
+    }
+    const graph: AntigravityGraph = { pathById, childrenByParent, parentByChild };
+    this.antigravityGraphMemo.set(location.id, graph);
+    return graph;
+  }
+
+  /** Root conversation (started by the user) of a spawned Antigravity child conversation. */
+  private antigravityRoot(location: Location, convId: string): { rootId: string; rootPath: string; parentAgentId: string; edge: AntigravitySubagentSpawn } | undefined {
+    const graph = this.antigravityGraph(location);
+    const first = graph.parentByChild.get(convId);
+    if (!first) return undefined;
+    const visited = new Set<string>([convId]);
+    let currentId = first.parentId;
+    for (let depth = 0; depth < 8; depth++) {
+      if (visited.has(currentId)) return undefined;
+      visited.add(currentId);
+      const next = graph.parentByChild.get(currentId);
+      if (!next) break;
+      currentId = next.parentId;
+    }
+    if (graph.parentByChild.has(currentId)) return undefined;
+    const rootPath = graph.pathById.get(currentId);
+    if (!rootPath) return undefined;
+    const parentAgentId = first.parentId === currentId ? 'primary' : first.parentId;
+    return { rootId: currentId, rootPath, parentAgentId, edge: first.edge };
+  }
+
+  /** Child conversations spawned by an Antigravity conversation (BFS depth <= 8, cycle-guarded, oldest first). */
+  private antigravityDescendants(location: Location, rootId: string): { id: string; parentId: string; path?: string; edge: AntigravitySubagentSpawn }[] {
+    const graph = this.antigravityGraph(location);
+    const found: { id: string; parentId: string; path?: string; edge: AntigravitySubagentSpawn }[] = [];
+    const seen = new Set<string>([rootId]);
+    for (let queue = [rootId], depth = 0; queue.length && depth < 8; depth++) {
+      const next: string[] = [];
+      for (const parent of queue) {
+        for (const edge of graph.childrenByParent.get(parent) ?? []) {
+          if (seen.has(edge.subagentId)) continue;
+          seen.add(edge.subagentId);
+          const childPath = graph.pathById.get(edge.subagentId);
+          found.push({ id: edge.subagentId, parentId: parent, ...(childPath ? { path: childPath } : {}), edge });
+          next.push(edge.subagentId);
+        }
+      }
+      queue = next;
+    }
+    return found
+      .sort((a, b) => (a.edge.at ?? '').localeCompare(b.edge.at ?? '') || a.id.localeCompare(b.id))
+      .slice(-MAX_SUBAGENTS);
+  }
+
   /**
    * A sub-agent transcript, parsed again only when its file changed. A file that
    * cannot be read right now (it is being written) keeps its previous read.
@@ -1506,11 +1699,24 @@ export class NativeImportService {
   private subagentRead(location: Location, path: string, nativeSessionId: string): ParsedSubagent | undefined {
     const cached = this.subagentReads.get(path);
     try {
-      const info = identity(contained(location.path, path)), stamp = `${info.ino}:${info.size}:${info.mtime}`;
+      const canonical = contained(location.path, path), info = identity(canonical);
+      let fullStamp = '';
+      if (location.kind === 'antigravity') {
+        const fullPath = join(dirname(canonical), 'transcript_full.jsonl');
+        if (existsSync(fullPath)) {
+          try {
+            const fullInfo = identity(contained(location.path, fullPath));
+            fullStamp = `|${fullInfo.ino}:${fullInfo.size}:${fullInfo.mtime}`;
+          } catch { /* ignore */ }
+        }
+      }
+      const stamp = `${info.ino}:${info.size}:${info.mtime}${fullStamp}`;
       if (cached?.stamp === stamp) return cached.value;
       const context = { sourceId: location.sourceId as NativeSourceId, nativeSessionId, exportedAt: new Date(this.now()).toISOString(), importMode: 'linked' as const };
       const parsed = info.size > LIVE_FULL_BYTES ? this.parseWindow(location, path, info, context, true)
-        : (content => location.kind === 'codex' ? parseCodex(content, context) : parseClaude(content, context))(readBounded(location.path, path, MAX_FILE_BYTES));
+        : (content => location.kind === 'codex' ? parseCodex(content, context)
+          : location.kind === 'antigravity' ? parseAntigravity(hydrateAntigravityTranscript(location.path, path, content), context)
+          : parseClaude(content, context))(readBounded(location.path, path, MAX_FILE_BYTES));
       const value: ParsedSubagent = { steps: parsed.steps ?? [], ...(parsed.model ? { model: parsed.model } : {}), ...(parsed.session ? { startedAt: parsed.session.startedAt } : {}) };
       this.subagentReads.delete(path);
       this.subagentReads.set(path, { stamp, value });
@@ -1539,6 +1745,23 @@ export class NativeImportService {
           ...(header.spawn.nickname ? { label: header.spawn.nickname } : {}), ...(header.spawn.role ? { role: header.spawn.role } : {}),
           ...(read?.model ? { model: read.model } : {}),
           ...(read?.startedAt ? { at: read.startedAt } : start !== undefined ? { at: new Date(start).toISOString() } : {}),
+          steps: read?.steps ?? [],
+        });
+      }
+      return result;
+    }
+    if (location.kind === 'antigravity') {
+      for (const { id, parentId, path, edge } of this.antigravityDescendants(location, ref.candidate.nativeSessionId)) {
+        const read = path ? this.subagentRead(location, path, id) : undefined;
+        const model = read?.model ?? edge.model;
+        const at = edge.at ?? read?.startedAt;
+        result.push({
+          id,
+          ...(parentId !== ref.candidate.nativeSessionId ? { parentId } : {}),
+          ...(edge.label ? { label: edge.label } : {}),
+          ...(edge.role ? { role: edge.role } : {}),
+          ...(model ? { model } : {}),
+          ...(at ? { at } : {}),
           steps: read?.steps ?? [],
         });
       }

@@ -142,5 +142,15 @@ describe('classifyTool', () => {
     const { classifyTool } = await import('../src/index.js');
     expect(['Bash', 'exec_command', 'Read', 'Grep', 'apply_patch', 'WebFetch', 'web_search', 'Task', 'update_plan', 'skill_manage', 'skill_view'].map(name => classifyTool(name).kind))
       .toEqual(['command', 'command', 'read', 'search', 'edit', 'web', 'web', 'delegate', 'tool', 'knowledge', 'knowledge']);
+    expect(['swarm', 'run_workflow', 'delegate_to_agent', 'codebase_investigator', 'invoke_subagent'].map(name => classifyTool(name)))
+      .toEqual([
+        { kind: 'delegate', label: 'Delegating via swarm' },
+        { kind: 'delegate', label: 'Delegating via run_workflow' },
+        { kind: 'delegate', label: 'Delegating via delegate_to_agent' },
+        { kind: 'delegate', label: 'Delegating via codebase_investigator' },
+        { kind: 'delegate', label: 'Delegating via invoke_subagent' },
+      ]);
+    expect(classifyTool('run_command').kind).toBe('command');
+    expect(classifyTool('swarm_wait').kind).toBe('tool');
   });
 });

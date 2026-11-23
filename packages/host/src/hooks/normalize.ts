@@ -1,5 +1,8 @@
 import { EFFORTS, literalProjectPath, safeLabel, safeText, stopReasonOf, type Effort, type StopReason } from '@extalia/core';
-import { commandHead, explicitToolFailure, extractWrittenFiles, outputText, statedSuccess, stepOutput, toolHints } from '@extalia/importers';
+import {
+  commandHead, explicitToolFailure, extractAntigravityInvokeSpawns, extractAntigravityJsonValues, extractAntigravitySwarmSpawns,
+  extractWrittenFiles, outputText, statedSuccess, stepOutput, toolHints,
+} from '@extalia/importers';
 import { AGENT_APP_IDS, type AgentAppId } from '@extalia/platform';
 import { createEvent, type AgentPhase, type EventBody, type EventSource, type ExtaliaEvent } from '@extalia/protocol';
 import { describeToolCall, toolStateBody } from '../transcriptEvents.js';
@@ -31,6 +34,13 @@ export const hookSource = (app: HookApp): EventSource => ({ runtime: app, channe
 
 export interface HookStep { body: EventBody; agentId: string }
 
+export interface NormalizedSubagentSpawn {
+  subagentId: string;
+  label?: string;
+  role?: string;
+  model?: string;
+}
+
 export interface NormalizeHookOptions {
   /** Drop prompt/reply/tool output and meeting content, keeping activity and meeting presence only. */
   labelsOnly?: boolean;
@@ -40,6 +50,8 @@ export interface NormalizedHook {
   app: HookApp;
   /** Native session id (single line, at most 200 characters). */
   sessionId: string;
+  /** Explicit parent native session/conversation id when reported by a child hook payload. */
+  parentSessionId?: string;
   /** Native hook event name as reported (bounded label). */
   event: string;
   /** The app reports a new or resumed session. */
@@ -62,6 +74,8 @@ export interface NormalizedHook {
   /** First line of the prompt, redacted, for the title of a new session. */
   titleHint?: string;
   steps: HookStep[];
+  /** Child conversations spawned by this hook event, for linking subsequent child hooks into the parent tree. */
+  subagentSpawns?: NormalizedSubagentSpawn[];
   /** Ephemeral lead suggestions; never projected as protocol events or saved. */
   followupPrompts?: string[];
 }
@@ -79,7 +93,7 @@ const first = (...values: unknown[]): string => { for (const value of values) if
 /** Only explicit transport fields are settings; free text and nested tool data are never inspected. */
 function reportedSettings(payload: Row): Pick<NormalizedHook, 'effort' | 'effortReported' | 'agentId'> {
   const key = ['effort', 'reasoning_effort', 'effortLevel'].find(field => Object.hasOwn(payload, field));
-  const agentId = id(payload.agent_id, AGENT_ID);
+  const agentId = id(payload.agent_id ?? payload.agentId, AGENT_ID);
   const effort = key === undefined ? undefined : payload[key];
   return { ...(agentId ? { agentId } : {}), ...(key !== undefined ? { effortReported: true } : {}),
     ...((EFFORTS as readonly unknown[]).includes(effort) ? { effort: effort as Effort } : {}) };
@@ -119,7 +133,8 @@ function reportEventInput(tool: string, input: unknown, envelope: Row): unknown 
 function sourceMcpReport(tool: string, input: unknown, payload: Row, sessionId: string, options: NormalizeHookOptions) {
   if (tool === 'report_followups') {
     const fields = obj(input);
-    if (payload.agent_id !== undefined && payload.agent_id !== 'primary' || fields.session_id !== undefined && fields.session_id !== sessionId) return undefined;
+    const actorId = payload.agent_id ?? payload.agentId;
+    if (actorId !== undefined && actorId !== 'primary' || fields.session_id !== undefined && fields.session_id !== sessionId) return undefined;
   }
   return normalizeMcpReport(tool, input, options);
 }
@@ -184,7 +199,88 @@ function notificationKind(type: string, message: string): 'approval' | 'idle' | 
 /** The first line of a prompt, for titles. */
 const titleOf = (prompt: string) => safeLabel(prompt.trim().split(/\r?\n/)[0] ?? '', 60) || undefined;
 
-const claudeStylePendingTools = new Map<string, { name: string; input: unknown; cwd?: string }>();
+interface GeminiPendingDelegate {
+  subagentId: string;
+  label?: string;
+  role?: string;
+  model?: string;
+}
+
+const claudeStylePendingTools = new Map<string, { name: string; input: unknown; cwd?: string; geminiDelegate?: GeminiPendingDelegate }>();
+const geminiPendingDelegates = new Map<string, GeminiPendingDelegate[]>();
+const geminiDelegateCounters = new Map<string, number>();
+
+const GEMINI_DELEGATE_TOOLS = new Set([
+  'delegate_to_agent',
+  'codebase_investigator',
+  'generalist',
+  'cli_help',
+  'invoke_subagent',
+  'swarm',
+  'spawn_agent',
+]);
+
+function isGeminiDelegateTool(rawName: string): boolean {
+  const normalized = rawName.trim().toLowerCase().replace(/^(?:default_api:|functions\.)/, '');
+  return Boolean(normalized) && (GEMINI_DELEGATE_TOOLS.has(normalized) || /^delegate_/.test(normalized));
+}
+
+function geminiDelegateMeta(toolName: string, input: unknown): { label?: string; role?: string; model?: string; explicitId?: string } {
+  const parsed = typeof input === 'string' ? (() => { try { return obj(JSON.parse(input)); } catch { return {}; } })() : obj(input);
+  const rawRole = first(parsed.agent_name, parsed.agentName, parsed.agent, parsed.name, parsed.Role, parsed.subagent_type, parsed.subagentType, parsed.role, toolName);
+  const role = safeLabel(rawRole, 80) || undefined;
+  const label = safeLabel(first(parsed.label, rawRole), 80) || undefined;
+  const rawModel = first(parsed.model, parsed.Model);
+  const model = rawModel && !/^(?:none|auto)$/i.test(rawModel.trim()) ? safeLabel(rawModel, 120) || undefined : undefined;
+  const explicitId = id(parsed.subagent_id ?? parsed.subagentId ?? parsed.agent_id ?? parsed.agentId, AGENT_ID);
+  return { ...(label ? { label } : {}), ...(role ? { role } : {}), ...(model ? { model } : {}), ...(explicitId ? { explicitId } : {}) };
+}
+
+function geminiAsyncChildSession(response: unknown, parentSessionId: string): NormalizedSubagentSpawn | undefined {
+  for (const value of extractAntigravityJsonValues(response)) {
+    if (Array.isArray(value)) continue;
+    const rec = obj(value);
+    const childId = id(rec.session_id ?? rec.sessionId ?? rec.conversation_id ?? rec.conversationId ?? rec.child_session_id ?? rec.childSessionId, SESSION_ID);
+    if (!childId || childId === parentSessionId || !AGENT_ID.test(childId)) continue;
+    const label = safeLabel(first(rec.agent_name, rec.agentName, rec.label, rec.name, rec.role), 80) || undefined;
+    const role = safeLabel(first(rec.agent_type, rec.agentType, rec.role, rec.agent_name, rec.agentName), 80) || undefined;
+    const rawModel = first(rec.model_display_name, rec.modelDisplayName, rec.model);
+    const model = rawModel && !/^(?:none|auto)$/i.test(rawModel.trim()) ? safeLabel(rawModel, 120) || undefined : undefined;
+    return { subagentId: childId, ...(label ? { label } : {}), ...(role ? { role } : {}), ...(model ? { model } : {}) };
+  }
+  return undefined;
+}
+
+function pushGeminiPendingDelegate(sessionId: string, toolName: string, entry: GeminiPendingDelegate): void {
+  const key = `${sessionId}:${toolName.trim().toLowerCase()}`;
+  const queue = geminiPendingDelegates.get(key) ?? [];
+  queue.push(entry);
+  if (queue.length > 50) queue.shift();
+  geminiPendingDelegates.set(key, queue);
+  while (geminiPendingDelegates.size > 200) {
+    const oldest = geminiPendingDelegates.keys().next().value;
+    if (oldest !== undefined) geminiPendingDelegates.delete(oldest); else break;
+  }
+}
+
+function shiftGeminiPendingDelegate(sessionId: string, toolName: string): GeminiPendingDelegate | undefined {
+  const key = `${sessionId}:${toolName.trim().toLowerCase()}`;
+  const queue = geminiPendingDelegates.get(key);
+  const entry = queue?.shift();
+  if (queue && queue.length === 0) geminiPendingDelegates.delete(key);
+  return entry;
+}
+
+function nextGeminiDelegateSeq(sessionId: string): number {
+  const next = (geminiDelegateCounters.get(sessionId) ?? 0) + 1;
+  geminiDelegateCounters.delete(sessionId);
+  geminiDelegateCounters.set(sessionId, next);
+  while (geminiDelegateCounters.size > 200) {
+    const oldest = geminiDelegateCounters.keys().next().value;
+    if (oldest !== undefined) geminiDelegateCounters.delete(oldest); else break;
+  }
+  return next;
+}
 
 /** Event-name families shared by Claude Code, Codex and Gemini CLI. */
 const START = new Set(['SessionStart']);
@@ -201,23 +297,32 @@ const END = new Set(['SessionEnd']);
 /** Shared normalizer for Claude-style payloads (Claude Code, Codex, Gemini CLI). */
 function claudeStyle(app: HookApp, raw: unknown, options: NormalizeHookOptions = {}): NormalizedHook | undefined {
   const payload = obj(raw);
-  const sessionId = id(payload.session_id ?? payload.sessionId, SESSION_ID);
+  const sessionId = id(payload.session_id ?? payload.sessionId ?? payload.conversationId ?? payload.conversation_id, SESSION_ID);
   if (!sessionId) return undefined;
   const event = safeLabel(payload.hook_event_name ?? payload.hookEventName, 80);
   const cwd = pathField(payload.cwd);
   const transcriptPath = pathField(payload.transcript_path ?? payload.transcriptPath);
   const model = safeLabel(typeof payload.model === 'string' ? payload.model : str(obj(payload.model).id) || str(obj(payload.model).display_name), 120) || undefined;
-  // Claude Code marks hooks fired inside a sub-agent with its `agent_id`.
-  const inner = id(payload.agent_id, AGENT_ID);
+  // Claude Code / Gemini CLI mark hooks fired inside a sub-agent with `agent_id` / `agentId`.
+  const inner = id(payload.agent_id ?? payload.agentId, AGENT_ID);
+  const explicitSubagentId = id(payload.subagent_id ?? payload.subagentId, AGENT_ID);
+  const parentSessionIdRaw = id(payload.parent_session_id ?? payload.parentSessionId ?? payload.parent_conversation_id ?? payload.parentConversationId, SESSION_ID);
+  const parentSessionId = parentSessionIdRaw && parentSessionIdRaw !== sessionId ? parentSessionIdRaw : undefined;
   const agentId = inner ?? 'primary';
   const steps: HookStep[] = [];
+  const subagentSpawns: NormalizedSubagentSpawn[] = [];
   let followupPrompts: string[] | undefined;
   const add = (body: EventBody, agent = agentId) => steps.push({ body, agentId: agent });
   let titleHint: string | undefined;
 
+  const toolNameField = payload.tool_name ?? payload.toolName;
+  const toolInputField = payload.tool_input ?? payload.toolInput;
+  const toolCallIdField = payload.tool_use_id ?? payload.tool_call_id ?? payload.toolUseId ?? payload.toolCallId;
+  const toolResponseField = payload.tool_response ?? payload.toolResponse ?? payload.tool_output ?? payload.toolOutput;
+
   const mcpEventTool = mcpReportToolName(event);
   if (mcpEventTool) {
-    const report = sourceMcpReport(mcpEventTool, reportEventInput(mcpEventTool, payload.tool_input ?? payload, payload), payload, sessionId, options);
+    const report = sourceMcpReport(mcpEventTool, reportEventInput(mcpEventTool, toolInputField ?? payload, payload), payload, sessionId, options);
     if (report) { steps.push(...report.steps); followupPrompts = report.followupPrompts; }
   } else if (START.has(event)) {
     add({ type: 'session.started', control: 'observed', ...(model ? { model } : {}), ...(cwd ? { cwd } : {}) }, 'primary');
@@ -235,49 +340,111 @@ function claudeStyle(app: HookApp, raw: unknown, options: NormalizeHookOptions =
     }
     add({ type: 'agent.state', state: 'thinking' });
   } else if (PRE_TOOL.has(event)) {
-    const mcpTool = mcpReportToolName(payload.tool_name);
+    const mcpTool = mcpReportToolName(toolNameField);
     if (mcpTool) {
-      const report = sourceMcpReport(mcpTool, payload.tool_input, payload, sessionId, options);
+      const report = sourceMcpReport(mcpTool, toolInputField, payload, sessionId, options);
       if (report) { steps.push(...report.steps); followupPrompts = report.followupPrompts; }
     } else {
-      const rawCallId = id(payload.tool_use_id ?? payload.tool_call_id, AGENT_ID);
-      if (payload.tool_name !== undefined || payload.tool_input !== undefined) {
+      const rawCallId = id(toolCallIdField, AGENT_ID);
+      const rawToolName = str(toolNameField);
+      let geminiDelegate: GeminiPendingDelegate | undefined;
+      if (app === 'gemini' && isGeminiDelegateTool(rawToolName)) {
+        const meta = geminiDelegateMeta(rawToolName, toolInputField);
+        const roleSlug = (meta.role ?? rawToolName).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48) || 'worker';
+        const candidateId = (explicitSubagentId && explicitSubagentId !== agentId ? explicitSubagentId : undefined)
+          ?? (meta.explicitId && meta.explicitId !== agentId ? meta.explicitId : undefined)
+          ?? (rawCallId && rawCallId !== agentId ? rawCallId : undefined)
+          ?? `gemini-sub-${roleSlug}-${nextGeminiDelegateSeq(sessionId)}`;
+        geminiDelegate = {
+          subagentId: candidateId,
+          ...(meta.label ? { label: meta.label } : {}),
+          ...(meta.role ? { role: meta.role } : {}),
+          ...(meta.model ? { model: meta.model } : {}),
+        };
+        if (!rawCallId) pushGeminiPendingDelegate(sessionId, rawToolName, geminiDelegate);
+      }
+      if (toolNameField !== undefined || toolInputField !== undefined) {
         claudeStylePendingTools.set(`${app}:${sessionId}:${rawCallId ?? 'last'}`, {
-          name: str(payload.tool_name),
-          input: payload.tool_input,
+          name: rawToolName,
+          input: toolInputField,
           ...(cwd ? { cwd } : {}),
+          ...(geminiDelegate ? { geminiDelegate } : {}),
         });
         while (claudeStylePendingTools.size > 400) {
           const oldest = claudeStylePendingTools.keys().next().value;
           if (oldest !== undefined) claudeStylePendingTools.delete(oldest); else break;
         }
       }
-      const tool = toolOf(payload.tool_name, payload.tool_input, rawCallId);
+      const tool = toolOf(toolNameField, toolInputField, rawCallId);
       add(working(tool));
       add(started(tool));
+      if (geminiDelegate) {
+        add({
+          type: 'subagent.spawned',
+          subagentId: geminiDelegate.subagentId,
+          ...(geminiDelegate.label ? { label: geminiDelegate.label } : {}),
+          ...(geminiDelegate.role ? { role: geminiDelegate.role } : {}),
+          ...(geminiDelegate.model ? { model: geminiDelegate.model } : {}),
+        });
+        add({
+          type: 'subagent.state',
+          subagentId: geminiDelegate.subagentId,
+          state: 'working',
+          ...(geminiDelegate.label ? { summary: `Running ${geminiDelegate.label}` } : {}),
+        });
+      }
     }
   } else if (POST_TOOL.has(event)) {
-    const rawCallId = id(payload.tool_use_id ?? payload.tool_call_id, AGENT_ID);
+    const rawCallId = id(toolCallIdField, AGENT_ID);
     const pendingKey = `${app}:${sessionId}:${rawCallId ?? 'last'}`;
     const cached = claudeStylePendingTools.get(pendingKey);
     claudeStylePendingTools.delete(pendingKey);
-    const effectiveToolName = first(payload.tool_name, cached?.name);
-    const effectiveToolInput = payload.tool_input ?? cached?.input;
+    const effectiveToolName = first(toolNameField, cached?.name);
+    const effectiveToolInput = toolInputField ?? cached?.input;
     const effectiveCwd = cwd ?? cached?.cwd;
     const mcpTool = mcpReportToolName(effectiveToolName);
     if (!mcpTool) {
       const tool = toolOf(effectiveToolName, effectiveToolInput, rawCallId);
-      const response = payload.tool_response ?? payload.tool_output;
+      const response = toolResponseField;
       const failed = event === 'PostToolUseFailure' || Boolean(obj(response).error) || obj(response).interrupted === true || explicitToolFailure(hookOutput(response));
       const ok = failed ? false : statedSuccess(response) ?? true;
       const out = options.labelsOnly ? undefined : hookOutput(event === 'PostToolUseFailure' ? first(payload.error, response) || response : response);
       add(completed(tool, ok, out));
       if (ok && tool.kind === 'edit') for (const file of extractWrittenFiles(effectiveToolName, effectiveToolInput, response, effectiveCwd)) add({ type: 'file.written', path: file.path, change: file.change, ...(tool.toolCallId ? { toolCallId: tool.toolCallId } : {}) });
+      if (app === 'gemini' && isGeminiDelegateTool(effectiveToolName)) {
+        const pendingDelegate = cached?.geminiDelegate ?? (!rawCallId ? shiftGeminiPendingDelegate(sessionId, effectiveToolName) : undefined);
+        const meta = geminiDelegateMeta(effectiveToolName, effectiveToolInput);
+        const label = pendingDelegate?.label ?? meta.label;
+        const role = pendingDelegate?.role ?? meta.role;
+        const subModel = pendingDelegate?.model ?? meta.model;
+        const syncSubagentId = pendingDelegate?.subagentId
+          ?? (explicitSubagentId && explicitSubagentId !== agentId ? explicitSubagentId : undefined)
+          ?? (meta.explicitId && meta.explicitId !== agentId ? meta.explicitId : undefined)
+          ?? (rawCallId && rawCallId !== agentId ? rawCallId : undefined);
+        const asyncChild = ok ? geminiAsyncChildSession(response, sessionId) : undefined;
+        if (asyncChild) {
+          const spawn: NormalizedSubagentSpawn = {
+            subagentId: asyncChild.subagentId,
+            ...((asyncChild.label ?? label) ? { label: asyncChild.label ?? label } : {}),
+            ...((asyncChild.role ?? role) ? { role: asyncChild.role ?? role } : {}),
+            ...((asyncChild.model ?? subModel) ? { model: asyncChild.model ?? subModel } : {}),
+          };
+          subagentSpawns.push(spawn);
+          if (syncSubagentId && syncSubagentId !== spawn.subagentId) {
+            add({ type: 'subagent.state', subagentId: syncSubagentId, state: 'offline' });
+            add({ type: 'subagent.spawned', ...spawn });
+          } else if (!syncSubagentId) {
+            add({ type: 'subagent.spawned', ...spawn });
+          }
+        } else if (syncSubagentId) {
+          add({ type: 'subagent.state', subagentId: syncSubagentId, state: 'offline' });
+        }
+      }
       // Claude Code: the user pressed Esc while the tool ran.
       if (event === 'PostToolUseFailure' && payload.is_interrupt === true) add(stopped('interrupted', undefined, 'interrupted'));
     }
   } else if (event === 'PermissionRequest') {
-    const tool = payload.tool_name !== undefined ? toolOf(payload.tool_name, payload.tool_input, payload.tool_use_id) : undefined;
+    const tool = toolNameField !== undefined ? toolOf(toolNameField, toolInputField, toolCallIdField) : undefined;
     add(waiting(tool ? `Waiting for approval: ${tool.label}` : 'Waiting for approval', 'approval', tool));
   } else if (event === 'Notification') {
     const type = str(payload.notification_type).toLowerCase(), message = str(payload.message);
@@ -293,11 +460,12 @@ function claudeStyle(app: HookApp, raw: unknown, options: NormalizeHookOptions =
     const error = safeLabel(first(detail, payload.error, payload.reason), 300) || 'The turn failed.';
     for (const body of failedTurn(error, stopReasonOf(detail || (code ? '' : error), code))) add(body);
   } else if (event === 'SubagentStart') {
-    const subagentId = inner ?? id(payload.subagent_id, AGENT_ID);
-    const role = safeLabel(first(payload.agent_type, payload.subagent_type), 80);
-    if (subagentId) add({ type: 'subagent.spawned', subagentId, ...(role ? { role, label: role } : {}) }, 'primary');
+    const subagentId = inner ?? explicitSubagentId;
+    const role = safeLabel(first(payload.agent_type, payload.agentType, payload.subagent_type, payload.subagentType), 80);
+    const label = safeLabel(first(payload.agent_name, payload.agentName, role), 80);
+    if (subagentId) add({ type: 'subagent.spawned', subagentId, ...(role ? { role } : {}), ...(label ? { label } : {}) }, 'primary');
   } else if (event === 'SubagentStop') {
-    const subagentId = inner ?? id(payload.subagent_id, AGENT_ID);
+    const subagentId = inner ?? explicitSubagentId;
     if (subagentId) add({ type: 'subagent.state', subagentId, state: 'offline' }, 'primary');
   } else if (STOP.has(event)) {
     const reply = first(payload.last_assistant_message, payload.prompt_response);
@@ -309,9 +477,10 @@ function claudeStyle(app: HookApp, raw: unknown, options: NormalizeHookOptions =
     add({ type: 'session.ended', ...(reason ? { reason } : {}) }, 'primary');
     add({ type: 'agent.state', state: 'offline' }, 'primary');
   }
-  const agentType = inner ? safeLabel(first(payload.agent_type, payload.subagent_type), 80) : '';
+  const agentType = inner ? safeLabel(first(payload.agent_type, payload.agentType, payload.subagent_type, payload.subagentType, payload.agent_name, payload.agentName), 80) : '';
   return {
-    app, sessionId, ...reportedSettings(payload), event: event || 'unknown', starts: START.has(event), ends: END.has(event), steps, ...(followupPrompts ? { followupPrompts } : {}), ...(agentType ? { agentType } : {}),
+    app, sessionId, ...(parentSessionId ? { parentSessionId } : {}), ...reportedSettings(payload), event: event || 'unknown', starts: START.has(event), ends: END.has(event), steps,
+    ...(subagentSpawns.length ? { subagentSpawns } : {}), ...(followupPrompts ? { followupPrompts } : {}), ...(agentType ? { agentType } : {}),
     ...(cwd ? { cwd } : {}), ...(transcriptPath ? { transcriptPath } : {}), ...(model ? { model } : {}), ...(titleHint ? { titleHint } : {}),
   };
 }
@@ -322,8 +491,87 @@ export const normalizeCodexHook = (payload: unknown, options?: NormalizeHookOpti
 /** Gemini CLI: SessionStart/End, BeforeAgent/AfterAgent, BeforeTool/AfterTool, Notification. */
 export const normalizeGeminiHook = (payload: unknown, options?: NormalizeHookOptions) => claudeStyle('gemini', payload, options);
 
-const antigravityPendingTools = new Map<string, Array<{ callId: string; name: string; input: unknown; cwd?: string }>>();
+const antigravityPendingTools = new Map<string, Array<{ callId?: string; name: string; input: unknown; cwd?: string }>>();
 const antigravityBackgroundTasks = new Map<string, Map<string, Tool>>();
+const antigravitySwarmWorkers = new Map<string, Map<string, string>>();
+const antigravityTrackedChildren = new Map<string, Set<string>>();
+
+function unquoteAntigravityArg(value: unknown): string {
+  const text = str(value).trim();
+  if (text.startsWith('"') && text.endsWith('"')) {
+    try { const parsed: unknown = JSON.parse(text); if (typeof parsed === 'string') return parsed.trim(); } catch { /* keep raw */ }
+  }
+  return text;
+}
+
+function parseAntigravityArgs(raw: unknown): Row {
+  if (typeof raw === 'string') {
+    try { return obj(JSON.parse(raw)); } catch { return {}; }
+  }
+  return obj(raw);
+}
+
+function rememberAntigravityChild(sessionId: string, childId: string, workerName?: string): void {
+  const children = antigravityTrackedChildren.get(sessionId) ?? new Set<string>();
+  children.add(childId);
+  while (children.size > 100) {
+    const oldest = children.values().next().value;
+    if (oldest !== undefined) children.delete(oldest); else break;
+  }
+  antigravityTrackedChildren.delete(sessionId);
+  antigravityTrackedChildren.set(sessionId, children);
+  while (antigravityTrackedChildren.size > 200) {
+    const oldest = antigravityTrackedChildren.keys().next().value;
+    if (oldest !== undefined) antigravityTrackedChildren.delete(oldest); else break;
+  }
+  if (workerName) {
+    const workers = antigravitySwarmWorkers.get(sessionId) ?? new Map<string, string>();
+    workers.delete(workerName);
+    workers.set(workerName, childId);
+    while (workers.size > 100) {
+      const oldest = workers.keys().next().value;
+      if (oldest !== undefined) workers.delete(oldest); else break;
+    }
+    antigravitySwarmWorkers.delete(sessionId);
+    antigravitySwarmWorkers.set(sessionId, workers);
+    while (antigravitySwarmWorkers.size > 200) {
+      const oldest = antigravitySwarmWorkers.keys().next().value;
+      if (oldest !== undefined) antigravitySwarmWorkers.delete(oldest); else break;
+    }
+  }
+}
+
+function forgetAntigravityChild(sessionId: string, childId: string): void {
+  const children = antigravityTrackedChildren.get(sessionId);
+  if (children) {
+    children.delete(childId);
+    if (children.size === 0) antigravityTrackedChildren.delete(sessionId);
+  }
+  const workers = antigravitySwarmWorkers.get(sessionId);
+  if (workers) {
+    for (const [name, tracked] of [...workers.entries()]) {
+      if (tracked === childId) workers.delete(name);
+    }
+    if (workers.size === 0) antigravitySwarmWorkers.delete(sessionId);
+  }
+}
+
+function extractAntigravityIdList(raw: unknown, excludeId: string): string[] {
+  let value = raw;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (trimmed.startsWith('[')) {
+      try { value = JSON.parse(trimmed); } catch { /* plain text */ }
+    }
+  }
+  const items = Array.isArray(value) ? value : value !== undefined && value !== null ? [value] : [];
+  const out: string[] = [];
+  for (const item of items.slice(0, 100)) {
+    const clean = id(unquoteAntigravityArg(item), AGENT_ID);
+    if (clean && clean !== excludeId && !out.includes(clean)) out.push(clean);
+  }
+  return out;
+}
 
 function shortBackgroundTaskKey(taskId: string): string {
   const parts = taskId.trim().split('/').filter(Boolean);
@@ -348,7 +596,7 @@ export function hasAntigravityBackgroundTasks(sessionId: string): boolean {
  */
 export function normalizeAntigravityHook(raw: unknown, options: NormalizeHookOptions = {}): NormalizedHook | undefined {
   const payload = obj(raw);
-  const sessionId = id(payload.session_id ?? payload.sessionId ?? payload.conversationId, SESSION_ID);
+  const sessionId = id(payload.session_id ?? payload.sessionId ?? payload.conversationId ?? payload.conversation_id, SESSION_ID);
   if (!sessionId) return undefined;
   const event = safeLabel(payload.hook_event_name ?? payload.hookEventName, 80);
   const workspaces = Array.isArray(payload.workspacePaths) ? payload.workspacePaths : [];
@@ -359,19 +607,25 @@ export function normalizeAntigravityHook(raw: unknown, options: NormalizeHookOpt
   const model = rawModel && rawModel.toLowerCase() !== 'none' && rawModel.toLowerCase() !== 'auto'
     ? safeLabel(rawModel, 120) || undefined
     : undefined;
+  const inner = id(payload.agent_id ?? payload.agentId, AGENT_ID);
+  const agentId = inner ?? 'primary';
+  const parentSessionIdRaw = id(payload.parentConversationId ?? payload.parent_conversation_id ?? payload.parentSessionId ?? payload.parent_session_id, SESSION_ID);
+  const parentSessionId = parentSessionIdRaw && parentSessionIdRaw !== sessionId ? parentSessionIdRaw : undefined;
+  const agentType = inner ? safeLabel(first(payload.agent_type, payload.agentType, payload.subagent_type, payload.subagentType, payload.agent_name, payload.agentName), 80) : '';
   const steps: HookStep[] = [];
+  const subagentSpawns: NormalizedSubagentSpawn[] = [];
   let followupPrompts: string[] | undefined;
-  const add = (body: EventBody) => steps.push({ body, agentId: 'primary' });
+  const add = (body: EventBody, agent = agentId) => steps.push({ body, agentId: agent });
   const stepIdx = typeof payload.stepIdx === 'number' && Number.isInteger(payload.stepIdx) && payload.stepIdx >= 0 ? payload.stepIdx : undefined;
-  const callId = stepIdx !== undefined ? `step-${stepIdx}` : id(payload.tool_use_id ?? payload.tool_call_id, AGENT_ID);
+  const callId = stepIdx !== undefined ? `step-${stepIdx}` : id(payload.tool_use_id ?? payload.tool_call_id ?? payload.toolUseId ?? payload.toolCallId ?? obj(payload.toolCall).id, AGENT_ID);
 
   const mcpEventTool = mcpReportToolName(event);
   if (mcpEventTool) {
     const report = sourceMcpReport(mcpEventTool, reportEventInput(mcpEventTool, payload.tool_input ?? obj(payload.toolCall).args ?? payload, payload), payload, sessionId, options);
     if (report) { steps.push(...report.steps); followupPrompts = report.followupPrompts; }
     return {
-      app: 'antigravity', sessionId, ...reportedSettings(payload), event: event || 'unknown', starts: false, ends: false, steps, ...(followupPrompts ? { followupPrompts } : {}),
-      ...(cwd ? { cwd } : {}), ...(transcriptPath ? { transcriptPath } : {}), ...(model ? { model } : {}),
+      app: 'antigravity', sessionId, ...(parentSessionId ? { parentSessionId } : {}), ...reportedSettings(payload), event: event || 'unknown', starts: false, ends: false, steps, ...(followupPrompts ? { followupPrompts } : {}),
+      ...(agentType ? { agentType } : {}), ...(cwd ? { cwd } : {}), ...(transcriptPath ? { transcriptPath } : {}), ...(model ? { model } : {}),
     };
   }
 
@@ -382,24 +636,23 @@ export function normalizeAntigravityHook(raw: unknown, options: NormalizeHookOpt
       break;
     case 'PreToolUse': {
       const toolCall = obj(payload.toolCall);
-      const rawName = (first(toolCall.name, payload.tool_name) || 'tool').replace(/^default_api:/, '');
-      const rawInput = toolCall.args ?? payload.tool_input;
+      const rawName = (first(toolCall.name, payload.tool_name, payload.toolName) || 'tool').replace(/^default_api:/, '');
+      const rawInput = toolCall.args ?? payload.tool_input ?? payload.toolInput;
       const mcpTool = mcpReportToolName(rawName);
       if (mcpTool) {
         const report = sourceMcpReport(mcpTool, rawInput, payload, sessionId, options);
         if (report) { steps.push(...report.steps); followupPrompts = report.followupPrompts; }
       } else {
         let effectiveCallId = callId;
-        if (callId) {
-          const key = `${sessionId}:${callId}`;
-          const queue = antigravityPendingTools.get(key) ?? [];
-          effectiveCallId = queue.length > 0 ? `${callId}-${queue.length + 1}` : callId;
-          queue.push({ callId: effectiveCallId, name: rawName, input: rawInput, ...(cwd ? { cwd } : {}) });
-          antigravityPendingTools.set(key, queue);
-          while (antigravityPendingTools.size > 400) {
-            const oldest = antigravityPendingTools.keys().next().value;
-            if (oldest !== undefined) antigravityPendingTools.delete(oldest); else break;
-          }
+        const key = `${sessionId}:${callId ?? 'last'}`;
+        const queue = antigravityPendingTools.get(key) ?? [];
+        if (callId && queue.length > 0) effectiveCallId = `${callId}-${queue.length + 1}`;
+        queue.push({ ...(effectiveCallId ? { callId: effectiveCallId } : {}), name: rawName, input: rawInput, ...(cwd ? { cwd } : {}) });
+        if (queue.length > 50) queue.shift();
+        antigravityPendingTools.set(key, queue);
+        while (antigravityPendingTools.size > 400) {
+          const oldest = antigravityPendingTools.keys().next().value;
+          if (oldest !== undefined) antigravityPendingTools.delete(oldest); else break;
         }
         const tool = toolOf(rawName, rawInput, effectiveCallId);
         add(working(tool));
@@ -408,19 +661,19 @@ export function normalizeAntigravityHook(raw: unknown, options: NormalizeHookOpt
       break;
     }
     case 'PostToolUse': {
-      const key = callId ? `${sessionId}:${callId}` : undefined;
-      const queue = key ? antigravityPendingTools.get(key) : undefined;
+      const key = `${sessionId}:${callId ?? 'last'}`;
+      const queue = antigravityPendingTools.get(key);
       const cached = queue?.shift();
-      if (key && (!queue || queue.length === 0)) antigravityPendingTools.delete(key);
+      if (!queue || queue.length === 0) antigravityPendingTools.delete(key);
       const toolCall = obj(payload.toolCall);
-      const rawName = (first(toolCall.name, payload.tool_name, cached?.name) || 'tool').replace(/^default_api:/, '');
-      const rawInput = toolCall.args ?? payload.tool_input ?? cached?.input;
+      const rawName = (first(toolCall.name, payload.tool_name, payload.toolName, cached?.name) || 'tool').replace(/^default_api:/, '');
+      const rawInput = toolCall.args ?? payload.tool_input ?? payload.toolInput ?? cached?.input;
       const effectiveCwd = cwd ?? cached?.cwd;
       const effectiveCallId = cached?.callId ?? callId;
       if (!mcpReportToolName(rawName)) {
         const tool = toolOf(rawName, rawInput, effectiveCallId);
         const errText = str(payload.error).trim();
-        const response = payload.tool_response ?? payload.tool_output ?? payload.toolOutput;
+        const response = payload.tool_response ?? payload.toolResponse ?? payload.tool_output ?? payload.toolOutput;
         const rawResponseText = str(outputText(response)) || hookOutput(response) || str(response);
         const statusText = str(payload.status ?? toolCall.status).trim().toUpperCase();
         const bgTaskMatch = /Tool is running as a background task with task id:\s*([^\s"'`<>]+)/i.exec(rawResponseText);
@@ -439,6 +692,70 @@ export function normalizeAntigravityHook(raw: unknown, options: NormalizeHookOpt
         const ok = errText || explicitToolFailure(hookOutput(response)) ? false : statedSuccess(response) ?? true;
         const out = options.labelsOnly ? undefined : hookOutput(errText || response);
         add(completed(tool, ok, out));
+        if (ok && rawName === 'swarm') {
+          const args = parseAntigravityArgs(rawInput);
+          const action = unquoteAntigravityArg(args.action ?? args.Action).toLowerCase();
+          if (!action || action === 'add') {
+            for (const spawn of extractAntigravitySwarmSpawns(rawInput, response, sessionId)) {
+              const record: NormalizedSubagentSpawn = {
+                subagentId: spawn.subagentId,
+                ...(spawn.label ? { label: spawn.label } : {}),
+                ...(spawn.role ? { role: spawn.role } : {}),
+                ...(spawn.model ? { model: spawn.model } : {}),
+              };
+              add({ type: 'subagent.spawned', ...record });
+              subagentSpawns.push(record);
+              rememberAntigravityChild(sessionId, spawn.subagentId, spawn.label);
+            }
+          } else if (action === 'kill') {
+            const parsedResponses = extractAntigravityJsonValues(response).filter(value => !Array.isArray(value)).map(obj);
+            const workerName = safeLabel(first(
+              unquoteAntigravityArg(args.name ?? args.Name),
+              ...parsedResponses.map(item => first(item.name, item.worker_name, item.workerName)),
+            ), 120);
+            const responseChildId = parsedResponses
+              .map(item => id(item.conversation_id ?? item.conversationId, AGENT_ID))
+              .find(candidate => candidate && candidate !== sessionId);
+            const trackedChildId = workerName ? antigravitySwarmWorkers.get(sessionId)?.get(workerName) : undefined;
+            const childId = trackedChildId ?? responseChildId;
+            if (childId) {
+              add({ type: 'subagent.state', subagentId: childId, state: 'offline' });
+              forgetAntigravityChild(sessionId, childId);
+            }
+          }
+        } else if (ok && rawName === 'invoke_subagent') {
+          for (const spawn of extractAntigravityInvokeSpawns(rawInput, response, sessionId)) {
+            const record: NormalizedSubagentSpawn = {
+              subagentId: spawn.subagentId,
+              ...(spawn.label ? { label: spawn.label } : {}),
+              ...(spawn.role ? { role: spawn.role } : {}),
+              ...(spawn.model ? { model: spawn.model } : {}),
+            };
+            add({ type: 'subagent.spawned', ...record });
+            subagentSpawns.push(record);
+            rememberAntigravityChild(sessionId, spawn.subagentId);
+          }
+        } else if (ok && rawName === 'manage_subagents') {
+          const args = parseAntigravityArgs(rawInput);
+          const action = unquoteAntigravityArg(args.Action ?? args.action).toLowerCase();
+          if (action === 'kill') {
+            const ids = extractAntigravityIdList(args.ConversationIds ?? args.conversationIds ?? args.conversation_ids ?? args.ConversationId ?? args.conversationId ?? args.conversation_id, sessionId);
+            for (const childId of ids) {
+              add({ type: 'subagent.state', subagentId: childId, state: 'offline' });
+              forgetAntigravityChild(sessionId, childId);
+            }
+          } else if (action === 'kill_all') {
+            const allTracked = new Set<string>([
+              ...(antigravityTrackedChildren.get(sessionId) ?? []),
+              ...(antigravitySwarmWorkers.get(sessionId)?.values() ?? []),
+            ]);
+            for (const childId of allTracked) {
+              add({ type: 'subagent.state', subagentId: childId, state: 'offline' });
+            }
+            antigravityTrackedChildren.delete(sessionId);
+            antigravitySwarmWorkers.delete(sessionId);
+          }
+        }
         if (ok && rawName === 'manage_task') {
           const cancelMatch = /Task\s+["']?([^\s"'`<>]+)["']?\s+cancell?ed\b/i.exec(rawResponseText);
           const canceledKey = cancelMatch?.[1] ? shortBackgroundTaskKey(cancelMatch[1]) : undefined;
@@ -482,7 +799,8 @@ export function normalizeAntigravityHook(raw: unknown, options: NormalizeHookOpt
   }
 
   return {
-    app: 'antigravity', sessionId, ...reportedSettings(payload), event: event || 'unknown', starts: event === 'PreInvocation', ends: false, steps, ...(followupPrompts ? { followupPrompts } : {}),
+    app: 'antigravity', sessionId, ...(parentSessionId ? { parentSessionId } : {}), ...reportedSettings(payload), event: event || 'unknown', starts: event === 'PreInvocation', ends: false, steps,
+    ...(subagentSpawns.length ? { subagentSpawns } : {}), ...(followupPrompts ? { followupPrompts } : {}), ...(agentType ? { agentType } : {}),
     ...(cwd ? { cwd } : {}), ...(transcriptPath ? { transcriptPath } : {}), ...(model ? { model } : {}),
   };
 }
