@@ -14,6 +14,7 @@ import type { PromptSuggestionsStatus } from './promptSuggestions.js';
 import type { CodexPermissionHookStatus, CodexPermissionHookAnswer, CodexPermissionSetupPlan } from './codexPermissionHook.js';
 import type { PromptQueueStatus, PromptQueueChange } from './promptQueue.js';
 import type { SessionMovePreview, SessionMoveRequest, SessionProjectRootRequest, SessionWorkspaceFileScope } from './sessionMove.js';
+import type { ProjectProvisionApplyInput, ProjectProvisionPreview, ProjectProvisionPreviewInput, ProjectProvisionReceipt } from './projectProvisioning.js';
 import type { ObservedReplyStatus, ObservedReplyAnswer } from './observedReply.js';
 import type { ObservedControlStatus, ObservedControlDispatchInput, ObservedControlReceipt } from './observedControl.js';
 import type { ObservedInboxStatus } from './observedInbox.js';
@@ -902,6 +903,8 @@ export interface AgentHostApi extends ObservedMemoryApi {
   checkFolder(path: string): Promise<FolderCheck>;
   browseDirectories(path?: string): Promise<DirectoryListing>;
   saveWorkspace(input: WorkspaceInput): Promise<HostState>;
+  previewProjectProvision?(input: ProjectProvisionPreviewInput): Promise<ProjectProvisionPreview>;
+  applyProjectProvision?(input: ProjectProvisionApplyInput): Promise<ProjectProvisionReceipt>;
   /** Explicitly permit additional saved model connections for this workspace's native missions. */
   setWorkspaceMissionConnections(workspaceId: string, connectionIds: string[]): Promise<HostState>;
   deleteWorkspace(id: string): Promise<HostState>;
@@ -1265,7 +1268,7 @@ export interface AgentHostApi extends ObservedMemoryApi {
 /** Methods a transport may forward. `subscribe` is carried separately (IPC push or SSE). */
 export const AGENT_HOST_METHODS = [
   'sessionBrowserGroups', 'sessionBrowserSessions',
-  'getStateSummary', 'getState', 'getProfile', 'saveProfile', 'saveConnection', 'deleteConnection', 'testConnection', 'checkFolder', 'browseDirectories', 'saveWorkspace', 'deleteWorkspace',
+  'getStateSummary', 'getState', 'getProfile', 'saveProfile', 'saveConnection', 'deleteConnection', 'testConnection', 'checkFolder', 'browseDirectories', 'saveWorkspace', 'previewProjectProvision', 'applyProjectProvision', 'deleteWorkspace',
   'nativeStatus', 'refreshNativeStatus', 'setWorkspaceMissionConnections', 'planNativeMission', 'startNativeMission', 'cancelNativeMission', 'nativeMissionRun', 'listNativeMissions', 'refreshNativeMissionRecovery',
   ...OPERATING_PROFILE_HOST_METHODS,
   ...GENERAL_SCHEDULE_HOST_METHODS,
