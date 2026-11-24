@@ -32,13 +32,13 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/node": "^26.6.5",
-    "eslint": "^10.12.0",
+    "eslint": "^10.15.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "^17.13.0",
-    "meshoptimizer": "1.1.1",
+    "meshoptimizer": "1.3.0",
     "typescript": "~6.0.3",
-    "typescript-eslint": "^8.71.2",
-    "vitest": "^5.0.4"
+    "typescript-eslint": "^8.73.0",
+    "vitest": "^5.1.1"
   },
   "main": "eslint.config.js",
   "directories": {
