@@ -53,7 +53,7 @@ export function SessionMoveDialog({ t, agents, session, workspaces, currentWorks
     request.current++; setSection(next); setReviewed(undefined); setConfirmed(false); setError(undefined);
   };
   const review = async () => {
-    if (locked.current || blocked || !agents.previewSessionMove || !agents.moveSession || !destinations.some(workspace => workspace.id === targetWorkspaceId)) return;
+    if (locked.current || blocked || !targetWorkspaceId || !agents.previewSessionMove || !agents.moveSession || !destinations.some(workspace => workspace.id === targetWorkspaceId)) return;
     const owner = viewContext;
     if (owner !== committed.current) return;
     locked.current = true;
@@ -82,14 +82,15 @@ export function SessionMoveDialog({ t, agents, session, workspaces, currentWorks
     finally { locked.current = false; if (revision === request.current) setBusy(false); }
   };
   const applyFolder = async () => {
-    if (currentWorkspaceOnly || locked.current || blocked || !source || source.mode === 'observe' || !agents.setSessionProjectRoot || !registeredSessionFolders(source).includes(folder) || folder === currentFolder) return;
+    if (currentWorkspaceOnly || locked.current || blocked || !session.workspaceId || !source || source.mode === 'observe' || !agents.setSessionProjectRoot || !registeredSessionFolders(source).includes(folder) || folder === currentFolder) return;
     const owner = viewContext;
     if (owner !== committed.current) return;
     const revision = ++request.current;
+    const sourceWorkspaceId = session.workspaceId;
     locked.current = true; setBusy(true); setError(undefined);
     try {
-      const state = await agents.setSessionProjectRoot(session.id, { workspaceId: session.workspaceId, projectLocation: folder });
-      if (revision === request.current && owner === committed.current) onMoved(state, session.workspaceId);
+      const state = await agents.setSessionProjectRoot(session.id, { workspaceId: sourceWorkspaceId, projectLocation: folder });
+      if (revision === request.current && owner === committed.current) onMoved(state, sourceWorkspaceId);
     } catch (failure) { if (revision === request.current && owner === committed.current) setError(errorMessage(failure)); }
     finally { locked.current = false; if (revision === request.current) setBusy(false); }
   };
@@ -120,12 +121,12 @@ export function SessionMoveDialog({ t, agents, session, workspaces, currentWorks
       {!agents.setSessionProjectRoot && <p className="muted small">{settings.unavailable}</p>}
     </section> : <section role={currentWorkspaceOnly ? undefined : 'tabpanel'} id={`${titleId}-workspace`} aria-labelledby={currentWorkspaceOnly ? titleId : `${titleId}-workspace-tab`}>
     <p className="muted small">{settings.crossHint} {text.description}</p>
-    <Select label={text.destination} value={targetWorkspaceId} disabled={busy || blocked}
+    <Select label={text.destination} value={targetWorkspaceId ?? ''} disabled={busy || blocked}
       options={destinations.map(workspace => ({
         value: workspace.id, label: workspace.name, description: workspace.projectLocation, icon: 'folder' as const,
       }))} onChange={id => { request.current++; setWorkspaceId(id); setReviewed(undefined); setConfirmed(false); setError(undefined); }} />
     {preview && <section className="session-move-review" aria-label={text.review}>
-      <p><strong>{preview.source.name}</strong> → <strong>{preview.destination.name}</strong></p>
+      <p>{preview.source ? <><strong>{preview.source.name}</strong> → </> : null}<strong>{preview.destination.name}</strong></p>
       <h3>{text.folders}</h3>
       <ul>{preview.accessibleFolders.map(folder => <li key={`${folder.workspaceId}:${folder.path}`}>
         <code>{folder.path}</code><span className="badge">{folder.access === 'read-write' ? text.readWrite : text.readOnly}</span>

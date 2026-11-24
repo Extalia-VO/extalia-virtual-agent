@@ -19,7 +19,7 @@ afterEach(async () => {
 });
 async function fixture() {
   const root = await mkdtemp(path.join(tmpdir(), 'extalia-recovery-')); roots.push(root);
-  const session = { id: 's_recovery123', workspaceId: 'workspace' } as SessionRecord;
+  const session = { id: 's_recovery123', workspaceId: 'workspace' } as SessionRecord & { workspaceId: string };
   const records = new MissionRecords(root, path.join(root, 'missions.sqlite')); stores.push(records);
   await records.initialize([session]);
   const run: HostMissionRun = {

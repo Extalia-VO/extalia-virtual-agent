@@ -329,7 +329,7 @@ describe('reviewed Native session moves', () => {
     const canonicalRoot = state.workspaces.find(workspace => workspace.id === ctx.alpha.id)!.projectLocation;
     await expect(ctx.host.sendPrompt(session.id, 'Unreviewed folder change')).rejects.toThrow(/new Native session/);
     const review = await ctx.host.previewSessionMove!(session.id, ctx.alpha.id);
-    expect(review.source.folders[0]).toBe(canonicalRoot);
+    expect(review.source?.folders[0]).toBe(canonicalRoot);
     const requestCount = ctx.requests.length;
     await ctx.host.moveSession!(session.id, { workspaceId: ctx.alpha.id, reviewId: review.reviewId });
     expect(await ctx.store.get(session.id)).toMatchObject({ workspaceId: ctx.alpha.id, workspaceFileRoot: canonicalRoot,

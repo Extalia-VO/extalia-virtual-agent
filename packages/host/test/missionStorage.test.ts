@@ -23,7 +23,7 @@ it('keeps recovered mission usage aggregates safe and preserves reported zero an
 function record(index: number, answer: string, state: HostMissionRun['state'] = 'completed'): HostMissionRun {
   const at = new Date(Date.parse(session.createdAt) + index * 1000).toISOString();
   return {
-    id: randomUUID(), sessionId: session.id, workspaceId: session.workspaceId, title: `Mission ${index}`, state, createdAt: at, updatedAt: at, transient: false,
+    id: randomUUID(), sessionId: session.id, workspaceId: session.workspaceId!, title: `Mission ${index}`, state, createdAt: at, updatedAt: at, transient: false,
     tasks: Array.from({ length: 16 }, (_, n) => ({ id: `task_${n}`, taskId: randomUUID(), agentId: randomUUID(), title: 'Read-only task', connectionId: session.connectionId, model: 'model-a', state: state === 'recovering' ? 'unknown' : 'completed', answer, verification: 'unverified' as const, evidenceIds: [] })),
   };
 }

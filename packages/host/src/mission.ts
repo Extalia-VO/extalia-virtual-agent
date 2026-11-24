@@ -359,6 +359,7 @@ export async function prepareMission(input: {
     const ownedAuthority = await input.fileAuthority?.([root]);
     writeTools.set(task.taskId, createFileTools(root, { ...(ownedAuthority ? { authority: ownedAuthority } : {}) }));
   }
+  if (!session.workspaceId) throw new Error('Native missions require a workspace.');
   return {
     run: { id: missionId, sessionId: session.id, workspaceId: session.workspaceId, title: request.title, state: 'running', createdAt: now, updatedAt: now, transient: input.transient, tasks, budget, usage: { unknownTasks: 0 } },
     leadId,

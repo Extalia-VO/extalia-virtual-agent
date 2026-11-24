@@ -3,7 +3,7 @@ export interface WorkspaceSummary { id: string; projectLocation?: string; additi
 export interface MessageFileReference { name: string; path?: string; link?: boolean }
 export interface MessageFileScope {
   workspaces: readonly WorkspaceSummary[];
-  workspaceId?: string;
+  workspaceId?: string | null;
   projectPath?: string;
 }
 export interface ResolvedMessageFile { workspaceId: string; path: string }

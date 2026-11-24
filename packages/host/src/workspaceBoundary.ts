@@ -24,6 +24,9 @@ export async function assertWorkspaceWorktreeAccess(workspace: Workspace, worksp
   }
 }
 
+/** Boundary key recorded on unassigned Extalia Native sessions (no workspace or filesystem grants). */
+export const UNASSIGNED_SESSION_BOUNDARY = 'unassigned-v1:no-workspace-grants';
+
 /** A boundary change must never silently replay context gathered under older grants. */
 export function workspaceBoundaryKey(workspaces: readonly Workspace[]): string {
   const policy = workspaces.map(workspace => ({ id: workspace.id, root: workspace.projectLocation,

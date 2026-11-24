@@ -48,7 +48,7 @@ function NativeTreeContents({ memory, ...props }: Props & { memory: SessionBrows
     draggable: !locked && !pending && !session.running && !session.pendingApprovalId,
     onDragStart: (event: DragEvent<HTMLLIElement>) => {
       const current = state.sessions.find(row => row.id === session.id);
-      if (!current || locked || admitting.current || current.running || current.pendingApprovalId || !nativeSession(current) || current.transient) { event.preventDefault(); return; }
+      if (!current || !current.workspaceId || locked || admitting.current || current.running || current.pendingApprovalId || !nativeSession(current) || current.transient) { event.preventDefault(); return; }
       drag.current = { sessionId: current.id, workspaceId: current.workspaceId };
       event.dataTransfer.setData(NATIVE_SESSION_DRAG_TYPE, JSON.stringify(drag.current));
       event.dataTransfer.effectAllowed = 'move';

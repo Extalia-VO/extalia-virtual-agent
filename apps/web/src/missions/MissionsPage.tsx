@@ -40,13 +40,13 @@ export function MissionsPage({ t, language, agents, state, onState, workspaceId,
   const m = t.missions;
   const listHeading = useId();
   const ineligible = state.sessions.filter(session => missionEligibility(state, session) !== 'eligible').length;
-  const initialWorkspace = workspaceId ?? state.sessions.find(item => item.id === sessionId)?.workspaceId;
+  const initialWorkspace = workspaceId ?? state.sessions.find(item => item.id === sessionId)?.workspaceId ?? undefined;
   const [chosen, setChosen] = useState({ workspaceId: initialWorkspace, sessionId });
   const [followed, setFollowed] = useState({ workspaceId, sessionId });
   const [navigated, setNavigated] = useState(false);
   if (followed.workspaceId !== workspaceId || followed.sessionId !== sessionId) {
     setFollowed({ workspaceId, sessionId });
-    setChosen({ workspaceId: workspaceId ?? state.sessions.find(item => item.id === sessionId)?.workspaceId, sessionId });
+    setChosen({ workspaceId: workspaceId ?? state.sessions.find(item => item.id === sessionId)?.workspaceId ?? undefined, sessionId });
   }
   const focusedMissionId = navigated ? undefined : missionId;
   const { session, sessions, workspace } = useMemo(() => missionSelection(state, { ...chosen, exact: Boolean(focusedMissionId) }), [state, chosen, focusedMissionId]);
@@ -82,10 +82,10 @@ export function MissionsPage({ t, language, agents, state, onState, workspaceId,
   const active: View | null = view ?? (entry ? { kind: 'monitor', run: entry }
     : focusedMissionId || missions.loading || missions.value === undefined || missions.error ? null : { kind: 'compose', revision: workflowRevision });
   const selectSession = (next: typeof sessions[number], compose = false) => {
-    setNavigated(true); setChosen({ workspaceId: next.workspaceId, sessionId: next.id });
+    setNavigated(true); setChosen({ workspaceId: next.workspaceId ?? undefined, sessionId: next.id });
     if (compose) setViewOf({ owner: agents, sessionId: next.id, view: { kind: 'compose', revision: workflowRevision + 1 } });
     setWorkflowRevision(value => value + 1);
-    onSelectSession(next.id, next.workspaceId);
+    if (next.workspaceId) onSelectSession(next.id, next.workspaceId);
   };
 
   const header = (
@@ -121,7 +121,7 @@ export function MissionsPage({ t, language, agents, state, onState, workspaceId,
               setNavigated(true); setChosen({ workspaceId: id, sessionId: undefined }); setViewOf(null);
               onSelectWorkspace?.(id);
             }} onSession={selectSession} onState={onState} onCreated={next => { selectSession(next, true); setVersion(value => value + 1); }}
-            onOpenSettings={onOpenSettings} onOpenChat={() => { if (session) onSelectSession(session.id, session.workspaceId); onOpenChat(); }} />
+            onOpenSettings={onOpenSettings} onOpenChat={() => { if (session?.workspaceId) onSelectSession(session.id, session.workspaceId); onOpenChat(); }} />
           {session && <section className="card mission-list-card" aria-labelledby={listHeading}>
             <header className="mission-list-head">
               <h2 id={listHeading} tabIndex={-1}>{m.list}</h2>

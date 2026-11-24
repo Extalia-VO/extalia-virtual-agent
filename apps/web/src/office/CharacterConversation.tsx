@@ -295,7 +295,7 @@ export function CharacterConversation({ t, language, agents, state, session, age
           <ObservedCodexPromptComposer key={session.id} t={t} agents={agents} session={session} showNativeQueue={false} />}
         {!isWorker && !readOnlyReason && session.control === 'observed' && !supportsObservedPromptQueue(session.observation?.sourceId) && controlHub &&
           <ObservedSessionControl key={`control:${session.id}`} t={t} agents={agents} session={session} compact onOpenTools={() => setToolsChoice({ wide, open: true })} />}
-        {!readOnly && <Composer t={t} agents={agents} session={session} workspaceId={session.workspaceId}
+        {!readOnly && <Composer t={t} agents={agents} session={session} workspaceId={session.workspaceId ?? ''}
           hermes={sessionRuntime(workspace, session) === 'hermes'} modelScopeKey={modelChoicesKey(state, workspace, session)} running={running} waiting={waiting} readOnly={false} stopping={activity.stopping} sendBlocked={workspaceReview.required}
           onSend={send} onStop={() => { void guard(async () => { await agents.cancel(session.id); refreshState(); }); }} onSessionChanged={refreshState} />}
         {!isWorker && !readOnlyReason && session.control === 'observed' && !supportsObservedPromptQueue(session.observation?.sourceId) &&

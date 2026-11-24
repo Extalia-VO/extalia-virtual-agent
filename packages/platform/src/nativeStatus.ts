@@ -2,7 +2,7 @@
 export interface NativeActiveRun {
   id: string;
   sessionId: string;
-  workspaceId: string;
+  workspaceId: string | null;
   kind: 'chat' | 'planning' | 'preparing' | 'mission';
   cancellationRequested: boolean;
   missionId?: string;
@@ -11,7 +11,7 @@ export interface NativeActiveRun {
 export interface NativeStatusWorker {
   id: string;
   sessionId: string;
-  workspaceId: string;
+  workspaceId: string | null;
   kind: 'delegated' | 'mission-task';
   state: string;
   active: boolean;

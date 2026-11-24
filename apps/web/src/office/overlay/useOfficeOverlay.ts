@@ -25,7 +25,7 @@ export function useOfficeOverlay({ t, presences, allocations, events, recent, st
   const names = useMemo(() => new Map(presences.map(agent => [agent.id, agent.displayName])), [presences]);
   const projects = useMemo(() => {
     const workspaces = new Map((state?.workspaces ?? []).map(workspace => [workspace.id, workspace.name]));
-    const bySession = new Map((state?.sessions ?? []).map(session => [session.id, workspaces.get(session.workspaceId)]));
+    const bySession = new Map((state?.sessions ?? []).map(session => [session.id, session.workspaceId ? workspaces.get(session.workspaceId) : undefined]));
     return new Map(presences.flatMap(agent => {
       const project = bySession.get(agent.sessionId);
       return project ? [[agent.id, project] as const] : [];

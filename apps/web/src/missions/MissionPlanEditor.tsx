@@ -151,7 +151,7 @@ export function MissionPlanEditor({ t, agents, session, connections, pairs, init
   const planIssues = issues.filter(issue => !issue.taskKey);
   const launch = async () => {
     const owner = ownership.current;
-    if (issues.length || busy || !owner?.active || owner.pending) return;
+    if (issues.length || busy || !owner?.active || owner.pending || !session.workspaceId) return;
     owner.pending = true;
     const status = { agents, sessionId: session.id, workspaceId: session.workspaceId };
     setLaunchState({ ...status, busy: true, error: null });

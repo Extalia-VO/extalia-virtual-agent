@@ -16,6 +16,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.355] - 2026-11-24
+
+- Add the proposed master specification [PRD-SF-1.0](docs/product/prd-session-first-coding-discord.md) (*Session-First AI Workspace, Coding Workers & Discord Gateway*), link it from the product docs and app-flow tracker, and record Slice A architecture decisions [ADR 0095](docs/adr/0095-unassigned-session-context.md) (`OQ-01` nullable unassigned session context) and [ADR 0096](docs/adr/0096-session-first-chat-landing.md) (`OQ-02` session-first Chat landing).
+- Implement PRD-SF-1.0 Release Slice A1 ([ADR 0095](docs/adr/0095-unassigned-session-context.md) backend & platform foundation + [ADR 0096](docs/adr/0096-session-first-chat-landing.md) profile preference prep): support `workspaceId: string | null` for unassigned Extalia Native sessions across `@extalia/platform`, `@extalia/runtime`, and `@extalia/host` (`createSession(null, options)`, `modelChoices(null, ...)`, `teamModelChoices(null, ...)`, `planTeam(null, ...)`, `PromptQueues`), with Solo default or Operating Profile snapshot, fail-closed zero-grant turn admission (zero filesystem, folder, command, schedule, memory, knowledge, or skill-proposal tools for both lead and delegated team workers), idempotent `clientRequestId` retries on `createSession` and `sendPrompt`, one-way reviewed attach (`null → workspace`) via `previewSessionMove`/`moveSession` with empty-root historical file-scope cutoffs, one-time atomic `sessions/index.pre-unassigned.json` (`0o600`) backup before the first unassigned session write, and `ProfilePreferences.landingPage?: 'chat' | 'office'` validation.
+
 ## [0.4.354] - 2026-11-24
 
 - Replace hardcoded POSIX Node command paths in Antigravity, Gemini CLI, Codex, and Claude Code hooks with a fail-open POSIX launcher (`hooks/forward.sh`) alongside `hooks/forward.mjs` and a `hooks/node-path` hint, resolving standalone Node at runtime across `PATH`, Homebrew/system paths, Volta, fnm, nvm, and macOS Herd directories while preferring stable Homebrew symlinks over versioned Cellar paths so Node upgrades cannot fail with `exit status 127` or block Antigravity `PreToolUse`. Legacy `forward.mjs` hook configs remain recognized for status, upgrade, and surgical `disconnect`.

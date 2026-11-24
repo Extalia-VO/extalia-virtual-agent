@@ -27,6 +27,7 @@ Knowledge acceptance. There is no evidence-based aggregate completion percentage
 | Document | Role |
 | --- | --- |
 | [App flow and live agents](prd-app-flow-and-live-agents.md) | Current app-flow requirements and implementation tracker |
+| [Session-first workspace, coding workers and Discord](prd-session-first-coding-discord.md) | Proposed planning spec (`PRD-SF-1.0`, baseline `v0.4.353`); no unverified runtime claims |
 | [Observed agent control](prd-observed-agent-control.md) | Source-bound control requirements and provider acceptance |
 | [Repeatable Observe handover](prd-repeatable-handover.md) | Active checkpoints, repeated lineage, destination setup and runtime-specific acceptance |
 | [Master PRD v1.1 / patch v1.1.1](master-prd-v1.1/README.md) | Preserved imported specification; use the gap map for current implementation |

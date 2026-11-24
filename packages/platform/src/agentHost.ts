@@ -71,6 +71,12 @@ export interface ConnectionView extends Connection {
  * Native, the workspace's or profile's model for Hermes Agent).
  */
 export interface SessionOptions {
+  /** Saved Native connection id when creating an unassigned session (`workspaceId === null`). */
+  connectionId?: string;
+  /** Saved operating profile id applied as defaults when creating an unassigned session. */
+  operatingProfileId?: string;
+  /** Client UUID for fail-closed idempotent `createSession` retries. */
+  clientRequestId?: string;
   operatingProfile?: SessionOperatingProfileInput;
   model?: string;
   effort?: Effort;
@@ -169,6 +175,24 @@ export function normalizeSessionOptions(raw: unknown): SessionOptions {
   if (typeof raw !== 'object' || Array.isArray(raw)) throw new Error('Invalid session options.');
   const value = raw as Record<string, unknown>;
   const options: SessionOptions = {};
+  if (value.connectionId !== undefined && value.connectionId !== null && value.connectionId !== '') {
+    if (typeof value.connectionId !== 'string') throw new Error('Invalid connection id.');
+    const trimmed = value.connectionId.trim();
+    if (!trimmed || trimmed.length > 160 || /\p{Cc}/u.test(trimmed)) throw new Error('Invalid connection id.');
+    options.connectionId = trimmed;
+  }
+  if (value.operatingProfileId !== undefined && value.operatingProfileId !== null && value.operatingProfileId !== '') {
+    if (typeof value.operatingProfileId !== 'string') throw new Error('Invalid operating profile id.');
+    const trimmed = value.operatingProfileId.trim();
+    if (!trimmed || trimmed.length > 160 || /\p{Cc}/u.test(trimmed)) throw new Error('Invalid operating profile id.');
+    options.operatingProfileId = trimmed;
+  }
+  if (value.clientRequestId !== undefined && value.clientRequestId !== null && value.clientRequestId !== '') {
+    if (typeof value.clientRequestId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value.clientRequestId)) {
+      throw new Error('The request id must be a valid UUID.');
+    }
+    options.clientRequestId = value.clientRequestId.toLowerCase();
+  }
   const model = typeof value.model === 'string' ? value.model.trim() : value.model;
   if (model !== undefined && model !== null && model !== '') {
     if (!isModelId(model)) throw new Error('Use a model id of up to 200 letters, digits and . _ : / @ + - characters.');
@@ -247,7 +271,8 @@ export interface SessionContextUsage {
 export interface SessionSummary {
   operatingProfile?: Pick<SessionOperatingProfile, 'id' | 'name' | 'revision'>;
   id: string;
-  workspaceId: string;
+  /** Owning workspace id, or `null` for an unassigned Extalia Native session. */
+  workspaceId: string | null;
   /** Native folder/access grants differ from this session's recorded context; offer an explicit workspace review. */
   workspaceReviewRequired?: boolean;
   /** Active registered working folder override for a saved Native session. */
@@ -398,6 +423,7 @@ export interface ProfilePreferences {
   material?: string;
   font?: string;
   sidebar?: string;
+  landingPage?: 'chat' | 'office';
 }
 
 /** Host-owned UI state. Browser storage is a disposable mirror, never its authority. */
@@ -944,14 +970,14 @@ export interface AgentHostApi extends ObservedMemoryApi {
    * polling, read-only). Returns the locations with their updated `autoWatch`.
    */
   setAutoWatch(locationId: string, enabled: boolean): Promise<ImportLocation[]>;
-  /** Start a managed session, optionally with its own model and effort (see `modelChoices`). */
-  createSession(workspaceId: string, options?: SessionOptions): Promise<SessionSummary>;
+  /** Start a managed session, optionally with its own model and effort (see `modelChoices`). Pass `null` for an unassigned Native session. */
+  createSession(workspaceId: string | null, options?: SessionOptions): Promise<SessionSummary>;
   /** Replace a managed session's model and effort override for its next turns; empty fields go back to the defaults. */
   setSessionOptions(sessionId: string, options: SessionOptions): Promise<SessionSummary>;
-  /** Models and efforts for a new workspace session, or an existing managed session's saved runtime/connection. Credentials are never returned. */
-  modelChoices(workspaceId: string, sessionId?: string): Promise<ModelChoices>;
+  /** Models and efforts for a new workspace/unassigned session, or an existing managed session's saved runtime/connection. Credentials are never returned. */
+  modelChoices(workspaceId: string | null, sessionId?: string, connectionId?: string): Promise<ModelChoices>;
   /** Inspect a saved Native connection's catalog for the team editor. This does not authorize delegation or return credentials. */
-  teamModelChoices(workspaceId: string, connectionId: string, sessionId?: string): Promise<ModelChoices>;
+  teamModelChoices(workspaceId: string | null, connectionId: string, sessionId?: string): Promise<ModelChoices>;
   /** A managed session's subagent team, if it has one. */
   getSessionTeam(sessionId: string): Promise<AgentTeam | undefined>;
   /**
@@ -971,7 +997,7 @@ export interface AgentHostApi extends ObservedMemoryApi {
    * runs on this computer), or a deterministic plan is used (`'heuristic'`, with a `note`).
    * Without allowed models the plan picks from the workspace's models and returns them as `allowedModels`.
    */
-  planTeam(workspaceId: string, request: TeamPlanRequest, sessionId?: string): Promise<TeamPlan>;
+  planTeam(workspaceId: string | null, request: TeamPlanRequest, sessionId?: string): Promise<TeamPlan>;
   /** One shared profile-local planning reference. Optional for older hosts. */
   getModelSelectionGuide?(): Promise<ModelSelectionGuide | null>;
   /** Replace the guide, or clear it with null. The host assigns updatedAt. */
@@ -1021,7 +1047,7 @@ export interface AgentHostApi extends ObservedMemoryApi {
    * Send a prompt; `attachmentIds` name files uploaded with `uploadAttachment` to this session (up to ten).
    * Their contents go to the model for this turn only; the stored history keeps their names.
    */
-  sendPrompt(sessionId: string, text: string, options?: { attachmentIds?: string[]; learnSkill?: boolean }): Promise<void>;
+  sendPrompt(sessionId: string, text: string, options?: { attachmentIds?: string[]; learnSkill?: boolean; clientRequestId?: string }): Promise<void>;
   /**
    * Store a file to attach to the session's next prompt. Images up to 5 MB (png, jpeg, webp, gif), text files
    * up to 1 MB, other files up to 10 MB (named to the model, not read). Kept privately in the data directory,

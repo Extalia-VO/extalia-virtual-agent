@@ -177,10 +177,10 @@ export function App({ platform }: { platform: Platform }) {
   const compact = preferences.sidebar === 'compact';
   // The Office uses the whole width: its sidebar stays narrow and opens over the scene on hover or keyboard focus.
   const currentSession = useMemo(() => hostState ? resolveChat(hostState, selection).session : undefined, [hostState, selection]);
-  const chatWorkspaceId = selection.workspaceId;
+  const chatWorkspaceId = selection.workspaceId ?? undefined;
   // Chat opens on the last-used workspace when it still exists, otherwise on the first one.
   const rememberedWorkspace = hostState ? resolveLandingWorkspace(hostState.workspaces, stored.workspaceId) : undefined;
-  const chatSelection: ChatSelection = selection.workspaceId || !rememberedWorkspace ? selection : { ...selection, workspaceId: rememberedWorkspace };
+  const chatSelection: ChatSelection = selection.workspaceId !== undefined || !rememberedWorkspace ? selection : { ...selection, workspaceId: rememberedWorkspace };
 
   const groups = navigationGroups({ agents: Boolean(agents), workflow, canChat: Boolean(hostState?.workspaces.some(workspace => workspace.mode !== 'observe')) });
   const activePage = groups.some(group => group.pages.includes(page)) ? page : defaultPage;

@@ -152,6 +152,14 @@ and the phase it belongs to.
   browser) it opens Get started.
   - AC: fresh install → Splash → wizard → final button opens the 3D Office;
     restart → Splash → 3D Office, whatever page was open before.
+  - *Proposed amendment (2026-11-23; **Proposed / not yet implemented** on
+    `v0.4.353`):* [PRD-SF-1.0](prd-session-first-coding-discord.md) and
+    [ADR 0096](../adr/0096-session-first-chat-landing.md) propose changing the
+    default `managed` landing page from **3D Office** to the **Chat composer
+    (New Session)** with an optional `landingPage` preference in
+    `config/profile.json`, while keeping 3D Office one click away and keeping
+    `observe`-only and hostless static web landing honest. Current `v0.4.353`
+    runtime behavior remains unchanged (`3D Office`).
 - **A2. Mode switch.** *(Removed in v0.0.20.)* The top-bar "Virtual Agent |
   Virtual Office" switch is gone; Chat and 3D Office stay one click apart in
   the sidebar, and the top bar shows the Office floor and light controls only
@@ -384,6 +392,24 @@ for example when one runs out of quota.
    `pnpm check`.
 
 ## 11. Status tracker
+
+### Resilient POSIX hook launcher & Antigravity/Gemini subagent trees (2026-11-23, v0.4.354)
+
+- **Implemented and verified locally** (synthetic temp homes, isolated unit/integration tests; not an installed external-app live certification):
+  - Installed a dependency-free fail-open POSIX `/bin/sh` launcher (`hooks/forward.sh`, mode `0755`) alongside `forward.mjs` and a recorded standalone Node hint (`hooks/node-path`, mode `0600`) for Antigravity, Gemini CLI, Codex, and Claude Code command hooks, plus Homebrew Cellar symlink preference (`preferStableNodePath`) in `packages/host/src/connect/nodeRuntime.ts` and CLI `connect`. Runtime fallback walks recorded hint → `PATH` → standard Homebrew/system paths → Volta/fnm/nvm/macOS Herd directories, emits `{}` only for non-`PreToolUse` Antigravity hooks, emits no stdout/stderr for `PreToolUse` or other apps, and always exits `0` so Node upgrades cannot exit `127` or block Antigravity tools.
+  - Added Antigravity and Gemini CLI orchestrator/subagent tree projection across `@extalia/protocol` (`swarm`, `run_workflow`, `delegate_to_agent`, `codebase_investigator` classified as `delegate`), `packages/importers/src/parsers.ts`, `packages/host/src/hooks/normalize.ts` (`swarm(add/kill)` including `Created At:`/`Completed At:` response headers, `invoke_subagent`, `manage_subagents(kill/kill_all)`, Gemini `BeforeTool`/`AfterTool` delegation, and camelCase/snake_case subagent metadata), `packages/host/src/observations.ts` (multi-level `hookSubagentLinks` routing and race-condition folding of duplicate standalone auto-records), and `packages/host/src/nativeImport.ts` (Antigravity `rootReference`, BFS `antigravityDescendants`, and transcript subagent folding).
+- Local verification for `v0.4.354` runs via `pnpm check` (lint, boundaries, backend-ownership baseline, public-safety, schemas, typecheck, TypeScript and Rust test suites, and package builds) against synthetic temporary directories. Installed Antigravity/Gemini CLI manual refresh (`extalia connect antigravity` / `gemini`) remains user-triggered per dry-run/approval rules.
+
+### Session-first workspace, coding workers & Discord planning — Proposed (2026-11-23)
+
+- **Proposed / not yet implemented** (baseline `v0.4.353`, documentation-only):
+  authored [PRD-SF-1.0](prd-session-first-coding-discord.md) and Slice A
+  architecture gates [ADR 0095](../adr/0095-unassigned-session-context.md)
+  (nullable `workspaceId` zero-grant unassigned sessions, resolving `OQ-01`)
+  and [ADR 0096](../adr/0096-session-first-chat-landing.md) (proposed amendment
+  to Phase A1 changing default `managed` landing from `3D Office` to `Chat
+  composer`, resolving `OQ-02`). No runtime, schema, or UI behavior changes in
+  `v0.4.353`; historical evidence below remains unchanged.
 
 ### Feature README previews (2026-11-16)
 
@@ -1025,6 +1051,7 @@ Documentation/media scope; no runtime version bump or package publication.
 | C13 | Full Antigravity transcript hydration (`transcript_full.jsonl`) and 50k step text limit | Done (2026-11-14) | Recover truncated `USER_INPUT` and `PLANNER_RESPONSE` `content` and `tool_calls` from the sibling `.system_generated/logs/transcript_full.jsonl` whenever `transcript.jsonl` reports `truncated_fields` or `<truncated N bytes>` markers (without loading private `thinking` traces), track `transcript_full.jsonl` in `observationRevision`, raise `STEP_TEXT_LIMIT` from `20,000` to `50,000` chars to match `MESSAGE_LIMIT`, and close unclosed fenced code blocks before compact-log truncation markers when `transcript_full.jsonl` is absent. Verified in `packages/importers/test/parsers.test.ts` and `packages/host/test/nativeImportLocations.test.ts`. |
 | C14 | Antigravity background task lifecycle tracking | Done (2026-11-15) | Keep Antigravity `run_command` background tasks (`GENERIC status: "RUNNING"` / `task-<N>`) open across interim replies and premature `PostToolUse`/`Stop` hooks, guard `transcriptEvents` 30 s reply settle on open tool calls, monitor `.system_generated/tasks/task-*.log` writes via throttled (`>= 30s`) `working` updates within `OBSERVED_ACTIVITY_LIVE_MS` (without marking stale tasks live), align `step-N` call ids, and settle cleanly on `<SYSTEM_MESSAGE>` results/cancellations (`Command exited with code N` / `The command exited with code N`) or `manage_task` cancellations across `packages/importers` and `packages/host`. Verified in `packages/importers/test/{steps,parsers}.test.ts` and `packages/host/test/{hooks,observedHookFallback}.test.ts`. |
 | C15 | Antigravity & Gemini CLI real-contract hooks for live subagent trees | Done (2026-11-24) | Register Antigravity `SessionStart` (`packages/host/src/connect/antigravity.ts`), Gemini CLI `PreCompress` (`packages/host/src/connect/gemini.ts`), and Gemini CLI delegation tools (`invoke_agent`, `browser_agent`, `remote_agent`, `generalist`, `cli_help`) in `classifyTool` and `normalize.ts`; sync real Antigravity `PostToolUse` hooks (which omit `toolOutput` on stdin) against fresh transcript spawn edges via `NativeImportService.antigravitySpawnsFor` (with `GENERIC` spawn response hydration in `hydrateAntigravityTranscript`); resolve `swarm(kill)` / `manage_subagents(kill/kill_all)` `subagentStops` and nested `parentAgentId` chains in `Observations.receiveHook`; normalize `lastUserInput` title hints and `Stop` (`USER_CANCELED`, `fullyIdle === false`). Verified in `packages/protocol/test/protocol.test.ts`, `packages/host/test/{connect,hooks,antigravityGeminiSubagents}.test.ts`, and `apps/cli/test/connect.test.ts`. |
+| SF-A1 | PRD-SF-1.0 Slice A1: Unassigned Native session backend/platform foundation (`ADR 0095`) & `landingPage` profile preference (`ADR 0096`) | Done (2026-11-24) | Support `workspaceId: string | null` across `SessionRecord`, `SessionSummary`, `NativeActiveRun`, `NativeStatusWorker`, `createSession(null, options)`, `modelChoices(null, ...)`, `teamModelChoices(null, ...)`, and `planTeam(null, ...)`; record `UNASSIGNED_SESSION_BOUNDARY` and one-time atomic `sessions/index.pre-unassigned.json` (`0o600`) backup before first `null` session write; enforce fail-closed zero-grant admission in `sendPrompt` (zero file, folder, command, schedule, memory, knowledge, or skill-proposal tools on lead and delegated workers; conversation-only system/worker prompts in `@extalia/runtime`); support idempotent `clientRequestId` deduplication on `createSession` and `sendPrompt`; support one-way reviewed attach (`null → workspace`) via `previewSessionMove`/`moveSession` (`kind: 'attach'`, `source: null`, empty-root `workspaceFileScopes` cutoff); and validate `ProfilePreferences.landingPage?: 'chat' | 'office'` in `packages/host/src/profile.ts`. Verified in `packages/host/test/{unassignedSessions,profile,nativeSessionMove}.test.ts` and `packages/runtime/test/operatingProfilePrompt.test.ts`. |
 
 ### Phase 0 discrepancy ledger
 

@@ -77,4 +77,27 @@ describe('Native operating profile background', () => {
       expect(JSON.stringify(request.messages)).not.toContain(shared.personality);
     }
   });
+
+  it('builds honest conversation-only prompts for unassigned sessions and workers without advertising project file or command access', () => {
+    const leadSystem = buildSystemPrompt({
+      workspace: null,
+      platform: { os: 'Linux', shell: 'sh' },
+      permissionMode: 'plan',
+      operatingProfile: shared,
+      team: { members: [{ name: 'Writer', role: 'Engineer', access: 'write', scope: ['src'] }] },
+    });
+    expect(leadSystem).toContain('unassigned conversation with no attached project workspace');
+    expect(leadSystem).toContain('attach this session to a workspace first');
+    expect(leadSystem).not.toContain('/projects/example');
+    expect(leadSystem).not.toContain('[can edit');
+    expect(leadSystem).not.toContain('investigate with the read tools');
+    expect(metadata(leadSystem)).toEqual(shared);
+
+    const workerSystem = workerSystemPrompt(null, { name: 'Writer', role: 'Engineer', access: 'write', scope: ['src'] }, ['Be accurate'], { commands: true, operatingProfile: shared });
+    expect(workerSystem).toContain('unassigned conversation with no attached project workspace');
+    expect(workerSystem).toContain('You have no workspace access');
+    expect(workerSystem).not.toContain('edit and create files');
+    expect(workerSystem).not.toContain(', and run commands');
+    expect(metadata(workerSystem)).toEqual(shared);
+  });
 });
