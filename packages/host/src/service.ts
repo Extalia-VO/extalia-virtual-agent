@@ -81,7 +81,7 @@ import {
   normalizeBuiltinSkills, normalizeSkillConsent, normalizeSkillNames, normalizeSkillEvaluationInput, type SkillConsentInput, type WorkspaceSkills,
   normalizeIntegrationGate, normalizeLearningScheduleAction, normalizeWorkspaceKnowledgeRequest, type KnowledgeVaultSettings, type LearningMeetingResult,
   type KnowledgeNoteResult, type KnowledgeLinkPage, type KnowledgeSearchResult, type WorkspaceKnowledgeBinding, type ProjectKnowledgeBuildResult,
-  GLOBAL_OBSERVE_WORKSPACE_ID, KNOWLEDGE_EVENT_SESSION_ID, normalizeKnowledgeVaultRoot, type NativeActiveRun, type NativeStatus, type NativeStatusRecheck, type NativeStatusWorker,
+  GLOBAL_OBSERVE_WORKSPACE_ID, KNOWLEDGE_EVENT_SESSION_ID, normalizeKnowledgeVaultRoot, normalizeScheduleRunFilter, type NativeActiveRun, type NativeStatus, type NativeStatusRecheck, type NativeStatusWorker,
   type ContinuityView, type HandoverTarget,
 } from '@extalia/platform';
 import { createEvent, type AgentEvent, type EventBody, type EventSource, type ExtaliaEvent } from '@extalia/protocol';
@@ -6829,6 +6829,8 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
 
   const generalSchedules = new GeneralScheduleManager({
     directory: layout.config,
+    sqlitePath: path.join(layout.state, 'schedules.sqlite'),
+    mirrorLegacyJson: true,
     callbacks: {
       validateWorkspace: workspaceId => {
         const workspace = findWorkspace(workspaceId);
@@ -7074,6 +7076,45 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     setScheduleEnabled: async (id, enabled, expectedRevision) => { assertHostOpen(); return generalSchedules!.setEnabled(id, enabled, expectedRevision); },
     runScheduleNow: async (id, expectedRevision) => { assertHostOpen(); return generalSchedules!.runNow(id, expectedRevision); },
     deleteSchedule: async (id, expectedRevision) => { assertHostOpen(); return generalSchedules!.delete(id, expectedRevision); },
+    listScheduleRuns: async filter => {
+      assertHostOpen();
+      let normalized;
+      try { normalized = normalizeScheduleRunFilter(filter); }
+      catch (error) { throw userError(error instanceof Error ? error.message : 'Invalid schedule run filter.'); }
+      findWorkspace(normalized.workspaceId);
+      try { return await generalSchedules!.listScheduleRuns(normalized); }
+      catch (error) {
+        if (error instanceof Error && error.name === 'UserError') throw error;
+        throw userError(error instanceof Error ? error.message : 'Could not list schedule runs.');
+      }
+    },
+    scheduleRunDetail: async runId => {
+      assertHostOpen();
+      if (typeof runId !== 'string' || !runId.trim()) throw userError('Choose a schedule run.');
+      const detail = await generalSchedules!.scheduleRunDetail(runId.trim());
+      if (!detail) throw userError('Schedule run not found.');
+      findWorkspace(detail.run.workspaceId);
+      return detail;
+    },
+    previewScheduleNextRuns: async (trigger, count = 5) => {
+      assertHostOpen();
+      const resolvedCount = count === undefined ? 5 : count;
+      try { return generalSchedules!.previewScheduleNextRuns(trigger, resolvedCount); }
+      catch (error) { throw userError(error instanceof Error ? error.message : 'Could not preview schedule runs.'); }
+    },
+    reviewUnknownScheduleRun: async (runId, expectedRevision, decision) => {
+      assertHostOpen();
+      if (typeof runId !== 'string' || !runId.trim()) throw userError('Choose a schedule run.');
+      const trimmedRunId = runId.trim();
+      const existing = await generalSchedules!.scheduleRunDetail(trimmedRunId);
+      if (!existing) throw userError('Schedule run not found.');
+      findWorkspace(existing.run.workspaceId);
+      try { return await generalSchedules!.reviewUnknownScheduleRun(trimmedRunId, expectedRevision, decision); }
+      catch (error) {
+        if (error instanceof Error && error.name === 'UserError') throw error;
+        throw userError(error instanceof Error ? error.message : 'Could not review schedule run.');
+      }
+    },
     listVaultProfiles: () => { assertHostOpen(); return vaultProfiles.list(); },
     saveVaultProfile: (input: Parameters<VaultProfiles['save']>[0]) => withWorkspaceChange(async () => {
       assertHostOpen(); knowledgeVault.assertStable();
@@ -7081,7 +7122,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       await Promise.all(observations.summaries().map(source => observedMemory?.afterPersisted(source.id, observedMemoryHint(source.id))));
       return result;
     }),
-  } satisfies Pick<Required<AgentHostApi>, 'listVaultProfiles' | 'saveVaultProfile' | 'learningSchedule' | 'changeLearningSchedule' | 'requestKnowledgeUpdate' | 'listSchedules' | 'saveSchedule' | 'setScheduleEnabled' | 'runScheduleNow' | 'deleteSchedule'>);
+  } satisfies Pick<Required<AgentHostApi>, 'listVaultProfiles' | 'saveVaultProfile' | 'learningSchedule' | 'changeLearningSchedule' | 'requestKnowledgeUpdate' | 'listSchedules' | 'saveSchedule' | 'setScheduleEnabled' | 'runScheduleNow' | 'deleteSchedule' | 'listScheduleRuns' | 'scheduleRunDetail' | 'previewScheduleNextRuns' | 'reviewUnknownScheduleRun'>);
 
   workMemory = new WorkMemory({ backend: rustLearning, directory: path.join(layout.state, 'work-memory-outbox'),
     resolve: resolveWorkMemory, authorizeCapture: authorizeWorkMemoryCapture, persist: operation => persistence.run(operation),

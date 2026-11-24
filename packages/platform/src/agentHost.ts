@@ -46,7 +46,17 @@ import type { WorkspaceKnowledgeBinding, WorkspaceKnowledgeMethod } from './work
 import type { SkillMarketSearchResult, SkillMarketPreviewInput, SkillMarketPreview } from './skillMarket.js';
 import type { ContinuityView, ContinuityReadInput, ContinuityReadPage, HandoverPreviewInput, HandoverPreview, HandoverApplyInput, HandoverReconcileInput, HandoverReceipt } from './handover.js';
 import { VAULT_PROFILE_HOST_METHODS, type VaultProfilesCatalog, type SaveVaultProfileInput } from './vaultProfiles.js';
-import { GENERAL_SCHEDULE_HOST_METHODS, type GeneralScheduleCatalog, type SaveGeneralScheduleInput } from './schedules.js';
+import {
+  GENERAL_SCHEDULE_HOST_METHODS,
+  type GeneralScheduleCatalog,
+  type NextRunPreview,
+  type SaveGeneralScheduleInput,
+  type ScheduleReviewDecision,
+  type ScheduleRunDetail,
+  type ScheduleRunFilter,
+  type ScheduleRunPage,
+  type ScheduleTrigger,
+} from './schedules.js';
 
 /**
  * The agent host runs the Extalia Native runtime where files and commands are
@@ -1242,6 +1252,10 @@ export interface AgentHostApi extends ObservedMemoryApi {
   setScheduleEnabled?(id: string, enabled: boolean, expectedRevision?: number): Promise<GeneralScheduleCatalog>;
   runScheduleNow?(id: string, expectedRevision?: number): Promise<GeneralScheduleCatalog>;
   deleteSchedule?(id: string, expectedRevision?: number): Promise<GeneralScheduleCatalog>;
+  listScheduleRuns?(filter: ScheduleRunFilter): Promise<ScheduleRunPage>;
+  scheduleRunDetail?(runId: string): Promise<ScheduleRunDetail>;
+  previewScheduleNextRuns?(trigger: ScheduleTrigger, count?: number): Promise<NextRunPreview>;
+  reviewUnknownScheduleRun?(runId: string, expectedRevision: number, decision: ScheduleReviewDecision): Promise<ScheduleRunDetail>;
   /** Host resolves the registered vault; an optional expected binding only refuses stale callers. */
   workspaceKnowledge?(workspaceId: string, method: WorkspaceKnowledgeMethod, args: unknown[], expectedBinding?: WorkspaceKnowledgeBinding): Promise<unknown>;
   /** Live protocol events for every session. Returns an unsubscribe function. */

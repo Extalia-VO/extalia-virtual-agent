@@ -37,3 +37,17 @@ export {
 } from './migration.js';
 export { PROFILE_SCHEMA, applyProfilePatch, createProfileStore, decodeProfile, emptyProfile, type ProfileStore } from './profile.js';
 export { runObservedCliArchiveReader } from './observedCliArchiveReader.js';
+export {
+  GeneralScheduleManager, ScheduleStoreCorruptionError, ScheduleStoreDowngradeError, buildScheduledSessionOptions,
+  type GeneralScheduleHostCallbacks, type GeneralScheduleManagerOptions, type ScheduleDeferredDispatch,
+  type ScheduleDispatchReceipt, type ScheduleExecutionTarget, type ScheduleMigrationDiagnostics,
+  type ScheduleRetryContext, type TurnBindingInput, type TurnSettlementDetails, type TurnSettlementMatch, type VerificationDetails,
+} from './schedules.js';
+export {
+  ScheduleStore, SCHEDULE_STORE_SCHEMA_VERSION,
+  buildAutomaticOccurrenceKey, buildManualOccurrenceKey,
+  type AdmitScheduleOccurrenceInput, type AdmitScheduleOccurrenceResult,
+  type LegacyMigrationResult as ScheduleLegacyMigrationResult,
+  type RecordDeliveryInput, type StoredScheduleCatalogState,
+} from './scheduleStore.js';
+export * from './serviceManager.js';

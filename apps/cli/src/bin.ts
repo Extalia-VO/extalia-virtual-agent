@@ -43,6 +43,7 @@ const code = await run(process.argv.slice(2), {
   nodeVersion: process.version,
   env: process.env,
   homeDirectory,
+  binPath,
   connectService: async () => {
     // Hooks connected before 0.0.21 live in the old data folder; copy it first (once) so they are found.
     if (!process.env.EXTALIA_HOME?.trim()) {

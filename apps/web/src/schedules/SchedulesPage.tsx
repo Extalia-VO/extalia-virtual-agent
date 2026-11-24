@@ -1,14 +1,19 @@
 import type { Effort } from '@extalia/core';
 import {
-  nextScheduleRunAt, parseCronExpression,
+  isValidIanaTimeZone, nextScheduleRunAt, parseCronExpression,
   type AgentHostApi, type GeneralSchedule, type GeneralScheduleCatalog, type HostState,
-  type ModelChoices, type PermissionMode, type SaveGeneralScheduleInput, type ScheduleMissedPolicy,
+  type ModelChoices, type NextRunPreview, type PermissionMode, type SaveGeneralScheduleInput,
+  type ScheduleMissedPolicy, type ScheduleReviewDecision, type ScheduleRunDetail,
+  type ScheduleRunPage, type ScheduleRunState, type ScheduleRunV1,
   type ScheduleSessionTarget, type ScheduleTrigger, type ScheduleWorkerAssignment,
 } from '@extalia/platform';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Messages } from '../i18n';
 import { Icon } from '../ui/Icon';
 import { Select } from '../ui/Select';
+import { ScheduleRunHistoryPanel } from './ScheduleRunHistoryPanel';
+import { NextRunsPreviewPanel, ScheduleTimezoneField } from './ScheduleTimezoneField';
+import { formatTimestampInZone, scheduleTriggerZoneBadge } from './scheduleFormatting';
 import './schedulesPage.css';
 
 type Recurrence = 'daily' | 'weekdays' | 'weekly' | 'hourly' | 'once' | 'custom';
@@ -42,13 +47,15 @@ export function scheduleSessionTarget(mode: ScheduleSessionTarget['mode'], selec
   if (mode === 'derive-from-session') return sessions.some(session => session.id === sourceId && !session.runtime) ? { mode, sourceSessionId: sourceId, reuseDerived } : undefined;
   return { mode };
 }
-export function scheduleRecurrenceTrigger(recurrence: Recurrence, time: string, weekday = '1'): ScheduleTrigger | undefined {
-  if (recurrence === 'hourly') return { kind: 'cron', cron: '0 * * * *' };
+export function scheduleRecurrenceTrigger(recurrence: Recurrence, time: string, weekday = '1', timeZone?: string): ScheduleTrigger | undefined {
+  const trimmedZone = timeZone?.trim();
+  const zoneFields = trimmedZone ? { timeZone: trimmedZone, dstPolicy: 'each-valid-instant' as const } : {};
+  if (recurrence === 'hourly') return { kind: 'cron', cron: '0 * * * *', ...zoneFields };
   if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) return undefined;
   const [hour, minute] = time.split(':').map(Number);
-  if (recurrence === 'daily') return { kind: 'cron', cron: `${minute} ${hour} * * *` };
-  if (recurrence === 'weekdays') return { kind: 'cron', cron: `${minute} ${hour} * * 1-5` };
-  if (recurrence === 'weekly' && /^[0-6]$/.test(weekday)) return { kind: 'cron', cron: `${minute} ${hour} * * ${weekday}` };
+  if (recurrence === 'daily') return { kind: 'cron', cron: `${minute} ${hour} * * *`, ...zoneFields };
+  if (recurrence === 'weekdays') return { kind: 'cron', cron: `${minute} ${hour} * * 1-5`, ...zoneFields };
+  if (recurrence === 'weekly' && /^[0-6]$/.test(weekday)) return { kind: 'cron', cron: `${minute} ${hour} * * ${weekday}`, ...zoneFields };
   return undefined;
 }
 /** Recognize only exact editable presets; custom expressions keep their original bytes. */
@@ -86,7 +93,7 @@ export function SchedulesPage({ t, agents, state, workspaceId: initialWorkspaceI
   if (scope.agents !== agents || scope.workspaceId !== activeWorkspaceId || scope.authority !== authority) setScope({ agents, workspaceId: activeWorkspaceId, authority });
   const owner = useRef<typeof scope | undefined>(scope);
   useLayoutEffect(() => { owner.current = scope; return () => { owner.current = undefined; }; }, [scope]);
-  const draftEpoch = useRef(0), catalogEpoch = useRef(0);
+  const draftEpoch = useRef(0), catalogEpoch = useRef(0), previewEpoch = useRef(0), historyEpoch = useRef(0);
   const [catalog, setCatalog] = useState<GeneralScheduleCatalog>({ revision: '', schedules: [] });
   const [catalogOwner, setCatalogOwner] = useState(() => ({ agents, authority }));
   const catalogCurrent = catalogOwner.agents === agents && catalogOwner.authority === authority;
@@ -102,13 +109,28 @@ export function SchedulesPage({ t, agents, state, workspaceId: initialWorkspaceI
   const [name, setName] = useState(''), [prompt, setPrompt] = useState(''), [enabled, setEnabled] = useState(true);
   const [recurrence, setRecurrence] = useState<Recurrence>('weekdays'), [time, setTime] = useState('09:00'), [weekday, setWeekday] = useState('1');
   const [triggerKind, setTriggerKind] = useState<'cron' | 'interval' | 'once'>('cron'), [cron, setCron] = useState('0 9 * * 1-5');
+  const [timeZone, setTimeZone] = useState(''), [editingLegacyNoZone, setEditingLegacyNoZone] = useState(false);
   const [intervalMinutes, setIntervalMinutes] = useState('60'), [runAtLocal, setRunAtLocal] = useState(defaultOneOffLocal);
   const [sessionMode, setSessionMode] = useState<ScheduleSessionTarget['mode']>('create-and-reuse');
   const [targetSessionId, setTargetSessionId] = useState(''), [sourceSessionId, setSourceSessionId] = useState(''), [reuseDerived, setReuseDerived] = useState(true);
   const [leadModel, setLeadModel] = useState(''), [leadEffort, setLeadEffort] = useState<Effort | ''>('');
   const [permissionMode, setPermissionMode] = useState<PermissionMode | ''>(''), [teamMode, setTeamMode] = useState<'workspace' | 'solo' | 'custom'>('workspace');
   const [workers, setWorkers] = useState<ScheduleWorkerAssignment[]>([]), [missedPolicy, setMissedPolicy] = useState<ScheduleMissedPolicy>('run-once');
+  const [previewResult, setPreviewResult] = useState<{ key: string; preview?: NextRunPreview; error?: string }>();
+  const [historyOpen, setHistoryOpen] = useState(false), [historyScheduleId, setHistoryScheduleId] = useState('');
+  const [historyStateFilter, setHistoryStateFilter] = useState<ScheduleRunState | ''>('');
+  const [runsState, setRunsState] = useState<{ key: string; page: ScheduleRunPage; error?: string }>({ key: '', page: { runs: [], total: 0 } });
+  const [runsRefreshing, setRunsRefreshing] = useState(false), [runsLoadingMore, setRunsLoadingMore] = useState(false);
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const [selectedDetail, setSelectedDetail] = useState<ScheduleRunDetail>();
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [reviewBusy, setReviewBusy] = useState(false), [reviewError, setReviewError] = useState<string | null>(null);
   const supported = Boolean(agents.listSchedules && agents.saveSchedule && agents.setScheduleEnabled && agents.runScheduleNow && agents.deleteSchedule);
+  const historySupported = Boolean(agents.listScheduleRuns);
+  const previewSupported = Boolean(agents.previewScheduleNextRuns);
+
+  const hostZone = catalogCurrent ? catalog.timeZone : undefined;
+  const defaultNewTimeZone = hostZone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 
   useEffect(() => {
     if (!supported || !agents.listSchedules) return;
@@ -134,12 +156,14 @@ export function SchedulesPage({ t, agents, state, workspaceId: initialWorkspaceI
   const resetForm = () => {
     draftEpoch.current++; setEditorWorkspace(''); setEditingId(null); setEditingRevision(undefined);
     setName(''); setPrompt(''); setEnabled(true); setRecurrence('weekdays'); setTime('09:00'); setWeekday('1');
-    setTriggerKind('cron'); setCron('0 9 * * 1-5'); setIntervalMinutes('60'); setRunAtLocal(defaultOneOffLocal());
+    setTriggerKind('cron'); setCron('0 9 * * 1-5'); setTimeZone(''); setEditingLegacyNoZone(false);
+    setIntervalMinutes('60'); setRunAtLocal(defaultOneOffLocal());
     setSessionMode('create-and-reuse'); setTargetSessionId(''); setSourceSessionId(''); setReuseDerived(true);
-    setLeadModel(''); setLeadEffort(''); setPermissionMode(''); setTeamMode('workspace'); setWorkers([]); setMissedPolicy('run-once'); setError(null); setAdvanced(false);
+    setLeadModel(''); setLeadEffort(''); setPermissionMode(''); setTeamMode('workspace'); setWorkers([]); setMissedPolicy('run-once');
+    setError(null); setAdvanced(false); setPreviewResult(undefined);
   };
   const beginNew = (suggestion?: Suggestion) => {
-    resetForm(); setEditorWorkspace(editorKey);
+    resetForm(); setEditorWorkspace(editorKey); setTimeZone(defaultNewTimeZone); setEditingLegacyNoZone(false);
     if (!suggestion || !activeWorkspace) return;
     const template = text.templates[suggestion]; setName(template.name); setPrompt(template.prompt(activeWorkspace.name));
     if (suggestion === 'sessionFollowup' && recentSession) { setSessionMode('existing'); setTargetSessionId(recentSession.id); }
@@ -150,24 +174,209 @@ export function SchedulesPage({ t, agents, state, workspaceId: initialWorkspaceI
     setName(schedule.name); setPrompt(schedule.prompt); setEnabled(schedule.enabled);
     const preset = scheduleTriggerPreset(schedule.trigger); setRecurrence(preset.recurrence); setTime(preset.time); setWeekday(preset.weekday);
     setTriggerKind(schedule.trigger.kind);
-    if (schedule.trigger.kind === 'cron') setCron(schedule.trigger.cron);
-    else if (schedule.trigger.kind === 'interval') setIntervalMinutes(String(schedule.trigger.intervalMinutes));
-    else setRunAtLocal(isoToLocalInput(schedule.trigger.runAt));
+    if (schedule.trigger.kind === 'cron') {
+      setCron(schedule.trigger.cron);
+      setTimeZone(schedule.trigger.timeZone ?? '');
+      setEditingLegacyNoZone(schedule.trigger.timeZone === undefined);
+    } else if (schedule.trigger.kind === 'interval') {
+      setIntervalMinutes(String(schedule.trigger.intervalMinutes));
+      setTimeZone(defaultNewTimeZone);
+      setEditingLegacyNoZone(false);
+    } else {
+      setRunAtLocal(isoToLocalInput(schedule.trigger.runAt));
+      setTimeZone(defaultNewTimeZone);
+      setEditingLegacyNoZone(false);
+    }
     setSessionMode(schedule.sessionTarget.mode);
     if (schedule.sessionTarget.mode === 'existing') setTargetSessionId(schedule.sessionTarget.sessionId);
     if (schedule.sessionTarget.mode === 'derive-from-session') { setSourceSessionId(schedule.sessionTarget.sourceSessionId); setReuseDerived(schedule.sessionTarget.reuseDerived !== false); }
     setLeadModel(schedule.assignment.leadModel ?? ''); setLeadEffort(schedule.assignment.leadEffort ?? ''); setPermissionMode(schedule.assignment.permissionMode ?? '');
     setTeamMode(schedule.assignment.teamMode); setWorkers(schedule.assignment.workers?.map(worker => ({ ...worker })) ?? []); setMissedPolicy(schedule.missedPolicy);
   };
+
+  const isCronEditor = recurrence !== 'once' && (recurrence !== 'custom' || triggerKind === 'cron');
+  const trimmedTimeZone = timeZone.trim();
+  const timeZoneValid = trimmedTimeZone === '' ? editingLegacyNoZone : isValidIanaTimeZone(trimmedTimeZone);
+
   const currentTrigger = useMemo<ScheduleTrigger | undefined>(() => {
-    if (recurrence !== 'custom' && recurrence !== 'once') return scheduleRecurrenceTrigger(recurrence, time, weekday);
+    if (recurrence !== 'custom' && recurrence !== 'once') {
+      if (!timeZoneValid) return undefined;
+      return scheduleRecurrenceTrigger(recurrence, time, weekday, trimmedTimeZone || undefined);
+    }
     if (recurrence === 'once' || triggerKind === 'once') { const ms = Date.parse(runAtLocal); return Number.isFinite(ms) ? { kind: 'once', runAt: new Date(ms).toISOString() } : undefined; }
     if (triggerKind === 'interval') { const minutes = Number(intervalMinutes); return Number.isSafeInteger(minutes) && minutes >= 1 && minutes <= 10080 ? { kind: 'interval', intervalMinutes: minutes } : undefined; }
-    try { parseCronExpression(cron); return { kind: 'cron', cron }; } catch { return undefined; }
-  }, [recurrence, time, weekday, triggerKind, intervalMinutes, cron, runAtLocal]);
+    if (!timeZoneValid) return undefined;
+    try {
+      parseCronExpression(cron);
+      return {
+        kind: 'cron',
+        cron,
+        ...(trimmedTimeZone ? { timeZone: trimmedTimeZone, dstPolicy: 'each-valid-instant' as const } : {}),
+      };
+    } catch { return undefined; }
+  }, [recurrence, time, weekday, triggerKind, intervalMinutes, cron, runAtLocal, trimmedTimeZone, timeZoneValid]);
+
+  const previewKey = editorOpen && currentTrigger && previewSupported ? JSON.stringify([authority, currentTrigger]) : '';
+  const nextRunsPreview = previewKey && previewResult?.key === previewKey ? previewResult.preview : undefined;
+  const previewError = previewKey && previewResult?.key === previewKey ? previewResult.error ?? null : null;
+  const previewLoading = Boolean(previewKey && previewResult?.key !== previewKey);
+
+  useEffect(() => {
+    if (!previewKey || !currentTrigger || !agents.previewScheduleNextRuns) return;
+    let cancelled = false;
+    const epoch = ++previewEpoch.current;
+    void agents.previewScheduleNextRuns(currentTrigger, 5).then(
+      preview => {
+        if (!cancelled && epoch === previewEpoch.current) {
+          setPreviewResult({ key: previewKey, preview });
+        }
+      },
+      failure => {
+        if (!cancelled && epoch === previewEpoch.current) {
+          setPreviewResult({ key: previewKey, error: failure instanceof Error ? failure.message : text.nextRunsUnavailable });
+        }
+      },
+    );
+    return () => { cancelled = true; };
+  }, [previewKey, currentTrigger, agents, text.nextRunsUnavailable]);
+
+  const historyKey = historyOpen && historySupported && activeWorkspaceId
+    ? JSON.stringify([authority, activeWorkspaceId, historyScheduleId, historyStateFilter, catalog.revision])
+    : '';
+  const runsPage = historyKey && runsState.key === historyKey ? runsState.page : { runs: [], total: 0 };
+  const runsError = historyKey && runsState.key === historyKey ? runsState.error ?? null : null;
+  const runsLoading = runsRefreshing || Boolean(historyKey && runsState.key !== historyKey);
+
+  useEffect(() => {
+    if (!historyKey || !activeWorkspaceId || !agents.listScheduleRuns) return;
+    let cancelled = false;
+    const epoch = ++historyEpoch.current;
+    void agents.listScheduleRuns({
+      workspaceId: activeWorkspaceId,
+      ...(historyScheduleId ? { scheduleId: historyScheduleId } : {}),
+      ...(historyStateFilter ? { state: historyStateFilter } : {}),
+      limit: 20,
+    }).then(
+      page => {
+        if (!cancelled && epoch === historyEpoch.current) {
+          setRunsState({ key: historyKey, page });
+        }
+      },
+      failure => {
+        if (!cancelled && epoch === historyEpoch.current) {
+          setRunsState(prev => ({
+            key: historyKey,
+            page: prev.key === historyKey ? prev.page : { runs: [], total: 0 },
+            error: failure instanceof Error ? failure.message : text.loadFailed,
+          }));
+        }
+      },
+    );
+    return () => { cancelled = true; };
+  }, [historyKey, activeWorkspaceId, historyScheduleId, historyStateFilter, agents, text.loadFailed]);
+
+  const loadRunsManual = async (append = false, cursor?: string) => {
+    if (!agents.listScheduleRuns || !activeWorkspaceId || !historyKey) return;
+    const epoch = ++historyEpoch.current;
+    const targetScope = scope;
+    if (append) setRunsLoadingMore(true);
+    else setRunsRefreshing(true);
+    try {
+      const page = await agents.listScheduleRuns({
+        workspaceId: activeWorkspaceId,
+        ...(historyScheduleId ? { scheduleId: historyScheduleId } : {}),
+        ...(historyStateFilter ? { state: historyStateFilter } : {}),
+        limit: 20,
+        ...(cursor ? { cursor } : {}),
+      });
+      if (epoch !== historyEpoch.current || targetScope !== owner.current) return;
+      setRunsState(prev => ({
+        key: historyKey,
+        page: append && prev.key === historyKey
+          ? { runs: [...prev.page.runs, ...page.runs], total: page.total, ...(page.nextCursor ? { nextCursor: page.nextCursor } : {}) }
+          : page,
+      }));
+    } catch (failure) {
+      if (epoch === historyEpoch.current && targetScope === owner.current) {
+        setRunsState(prev => ({
+          key: historyKey,
+          page: prev.key === historyKey ? prev.page : { runs: [], total: 0 },
+          error: failure instanceof Error ? failure.message : text.loadFailed,
+        }));
+      }
+    } finally {
+      if (epoch === historyEpoch.current && targetScope === owner.current) {
+        setRunsRefreshing(false);
+        setRunsLoadingMore(false);
+      }
+    }
+  };
+
+  const openRunHistory = (scheduleId = '') => {
+    setHistoryScheduleId(scheduleId);
+    setHistoryOpen(true);
+    setSelectedRunId(null);
+    setSelectedDetail(undefined);
+    setReviewError(null);
+  };
+
+  const handleSelectRun = (run: ScheduleRunV1) => {
+    setSelectedRunId(run.id);
+    setReviewError(null);
+    if (!agents.scheduleRunDetail) {
+      setSelectedDetail(undefined);
+      return;
+    }
+    setDetailLoading(true);
+    const targetScope = scope;
+    void agents.scheduleRunDetail(run.id).then(
+      detail => {
+        if (targetScope === owner.current) {
+          setSelectedDetail(detail);
+          setDetailLoading(false);
+        }
+      },
+      failure => {
+        if (targetScope === owner.current) {
+          setRunsState(prev => ({
+            key: historyKey,
+            page: prev.key === historyKey ? prev.page : { runs: [], total: 0 },
+            error: failure instanceof Error ? failure.message : text.loadFailed,
+          }));
+          setDetailLoading(false);
+        }
+      },
+    );
+  };
+
+  const handleReviewUnknownRun = async (runId: string, expectedRevision: number, decision: ScheduleReviewDecision) => {
+    if (!agents.reviewUnknownScheduleRun) return;
+    setReviewBusy(true);
+    setReviewError(null);
+    const targetScope = scope;
+    try {
+      const updated = await agents.reviewUnknownScheduleRun(runId, expectedRevision, decision);
+      if (targetScope !== owner.current) return;
+      setSelectedDetail(updated);
+      setRunsState(prev => ({
+        ...prev,
+        page: {
+          ...prev.page,
+          runs: prev.page.runs.map(item => (item.id === updated.run.id ? updated.run : item)),
+        },
+      }));
+    } catch (failure) {
+      if (targetScope === owner.current) {
+        setReviewError(failure instanceof Error ? failure.message : text.updateFailed);
+      }
+      throw failure;
+    } finally {
+      if (targetScope === owner.current) setReviewBusy(false);
+    }
+  };
+
   const selectedTarget = scheduleSessionTarget(sessionMode, targetSessionId, sourceSessionId, reuseDerived, workspaceSessions);
   const nextPreviewIso = currentTrigger && previewTriggerNextRun(currentTrigger);
-  const hostZone = catalogCurrent ? catalog.timeZone : undefined;
   const zoneMatches = !hostZone || hostZone === Intl.DateTimeFormat().resolvedOptions().timeZone;
   const storageUnavailable = catalogCurrent && catalog.problem === 'storage-unavailable';
   const writeBlocked = busy || storageUnavailable;
@@ -231,7 +440,8 @@ export function SchedulesPage({ t, agents, state, workspaceId: initialWorkspaceI
   }));
   return <section className="page schedules-page" data-testid="schedules-page">
     <header className="page-head"><div><h1>{text.title}</h1><p className="muted">{text.lead}</p></div><div className="row-actions">
-      <Select label={text.workspace} value={activeWorkspaceId} options={managedWorkspaces.map(workspace => ({ value: workspace.id, label: workspace.name }))} disabled={busy} onChange={id => { resetForm(); onSelectWorkspace(id); }} />
+      <Select label={text.workspace} value={activeWorkspaceId} options={managedWorkspaces.map(workspace => ({ value: workspace.id, label: workspace.name }))} disabled={busy} onChange={id => { resetForm(); setHistoryScheduleId(''); setSelectedRunId(null); setSelectedDetail(undefined); onSelectWorkspace(id); }} />
+      <button type="button" className="button" data-testid="schedules-open-history" onClick={() => historyOpen && !historyScheduleId ? setHistoryOpen(false) : openRunHistory('')}><Icon name="logs" />{historyOpen && !historyScheduleId ? text.hideRuns : text.runHistory}</button>
       <button type="button" className="button primary" disabled={writeBlocked} onClick={() => beginNew()}><Icon name="plus" />{text.newSchedule}</button>
     </div></header>
     <p className="muted small schedule-runtime-hint"><Icon name="clock" />{text.runtimeHint}{' '}{hostZone ? text.hostTimeZone(hostZone) : text.hostLocalTime}</p>
@@ -252,8 +462,10 @@ export function SchedulesPage({ t, agents, state, workspaceId: initialWorkspaceI
         {recurrence === 'weekly' && <Select label={text.weekdayLabel} value={weekday} options={text.weekdays.map((label, index) => ({ value: String(index), label }))} onChange={setWeekday} />}
         {(recurrence === 'once' || recurrence === 'custom' && triggerKind === 'once') && <label className="field"><span>{text.runAtLabel}</span><input type="datetime-local" value={runAtLocal} onChange={event => setRunAtLocal(event.target.value)} /></label>}
       </div>
+      {isCronEditor && <ScheduleTimezoneField text={text} timeZone={timeZone} hostZone={hostZone} isLegacyNoZone={editingLegacyNoZone} disabled={busy} onChangeTimeZone={setTimeZone} />}
       {(recurrence === 'once' || recurrence === 'custom' && triggerKind === 'once') && <p className="muted small">{text.oneOffLocalTime}</p>}
-      <p className="muted small" data-testid="schedule-next-preview"><Icon name="clock" />{currentTrigger && currentTrigger.kind !== 'once' && !zoneMatches ? text.hostCalculatesNext : nextPreviewIso ? text.nextPreview(formatDateTime(nextPreviewIso)) : text.invalidTrigger}</p>
+      <p className="muted small" data-testid="schedule-next-preview"><Icon name="clock" />{currentTrigger && currentTrigger.kind !== 'once' && !trimmedTimeZone && !zoneMatches ? text.hostCalculatesNext : nextPreviewIso ? text.nextPreview(formatTimestampInZone(nextPreviewIso, currentTrigger?.kind === 'cron' ? currentTrigger.timeZone : undefined)) : text.invalidTrigger}</p>
+      {currentTrigger && <NextRunsPreviewPanel text={text} preview={nextRunsPreview} loading={previewLoading} error={previewError} supported={previewSupported} />}
       {!selectedTarget && <p className="form-error" role="alert">{text.sessionUnavailable}</p>}
       <details className="schedule-advanced" open={advanced} onToggle={event => setAdvanced(event.currentTarget.open)}><summary><Icon name="settings" />{text.advanced}</summary><div className="schedule-advanced-body">
         <div className="form-grid"><Select label={text.triggerKind} value={triggerKind} options={(['cron', 'interval', 'once'] as const).map(value => ({ value, label: text.triggerKinds[value] }))} onChange={value => { setTriggerKind(value); setRecurrence(value === 'once' ? 'once' : 'custom'); }} />
@@ -397,16 +609,20 @@ export function SchedulesPage({ t, agents, state, workspaceId: initialWorkspaceI
       </div></details>
       <div className="row-actions schedule-editor-footer"><button type="button" className="button" disabled={busy} onClick={resetForm}>{text.cancelEdit}</button><button type="button" className="button primary" disabled={writeBlocked || !name.trim() || !prompt.trim() || !currentTrigger || !selectedTarget} onClick={handleSave}><Icon name={editingId ? 'check' : 'plus'} />{busy ? text.saving : editingId ? text.saveUpdate : text.saveCreate}</button></div>
     </fieldset></section>}
+    {historyOpen && <ScheduleRunHistoryPanel text={text} workspaceName={activeWorkspace?.name} schedules={workspaceSchedules} runs={runsPage.runs} total={runsPage.total} nextCursor={runsPage.nextCursor} loading={runsLoading} loadingMore={runsLoadingMore} error={runsError} supported={historySupported} scheduleFilter={historyScheduleId} stateFilter={historyStateFilter} selectedRunId={selectedRunId} selectedDetail={selectedDetail} detailLoading={detailLoading} reviewBusy={reviewBusy} reviewError={reviewError} onChangeScheduleFilter={value => { setHistoryScheduleId(value); setSelectedRunId(null); setSelectedDetail(undefined); }} onChangeStateFilter={value => { setHistoryStateFilter(value); setSelectedRunId(null); setSelectedDetail(undefined); }} onRefresh={() => void loadRunsManual(false)} onLoadMore={() => { if (runsPage.nextCursor) void loadRunsManual(true, runsPage.nextCursor); }} onSelectRun={handleSelectRun} onCloseDetail={() => { setSelectedRunId(null); setSelectedDetail(undefined); setReviewError(null); }} onClosePanel={() => setHistoryOpen(false)} onOpenSession={onOpenSession} onReviewUnknownRun={handleReviewUnknownRun} />}
     <section className="schedule-list-section" aria-labelledby="schedule-list-title"><h2 id="schedule-list-title">{text.yourSchedules}<span className="badge">{catalogReady ? workspaceSchedules.length : '—'}</span></h2><div className="stack" data-testid="schedule-list">
       {!catalogReady ? <p className="muted" role="status">{error ? text.loadFailed : text.loadingSchedules}</p> : !workspaceSchedules.length ? <div className="card schedule-empty"><Icon name="clock" /><strong>{text.empty}</strong><p className="muted">{text.emptyHint}</p><button type="button" className="button" disabled={writeBlocked} onClick={() => beginNew()}><Icon name="plus" />{text.newSchedule}</button></div> : workspaceSchedules.map(schedule => {
         const linked = schedule.lastSessionId ?? schedule.boundSessionId ?? (schedule.sessionTarget.mode === 'existing' ? schedule.sessionTarget.sessionId : undefined);
-        return <article key={schedule.id} className="card schedule-row" data-testid={`schedule-card-${schedule.id}`}><div className="card-head"><div><h3>{schedule.name}</h3><p className="muted small"><span className="badge">{text.states[schedule.state]}</span> · {triggerLabel(schedule.trigger)}</p></div><div className="row-actions">
+        const zoneBadge = scheduleTriggerZoneBadge(schedule.trigger, hostZone, text);
+        const scheduleZone = schedule.trigger.kind === 'cron' ? schedule.trigger.timeZone : undefined;
+        return <article key={schedule.id} className="card schedule-row" data-testid={`schedule-card-${schedule.id}`}><div className="card-head"><div><h3>{schedule.name}</h3><p className="muted small schedule-card-trigger-line"><span className="badge">{text.states[schedule.state]}</span><span>{triggerLabel(schedule.trigger)}</span>{schedule.trigger.kind === 'cron' && <code>{schedule.trigger.cron}</code>}{zoneBadge && <span className="badge subtle" data-testid={`schedule-zone-badge-${schedule.id}`}>{zoneBadge}</span>}</p></div><div className="row-actions">
+          <button type="button" className="button small" data-testid={`schedule-history-btn-${schedule.id}`} onClick={() => openRunHistory(schedule.id)}><Icon name="logs" />{text.viewRuns}</button>
           <button type="button" className="button small" disabled={writeBlocked || schedule.state === 'running'} onClick={() => handleRunNow(schedule)}><Icon name="send" />{text.runNow}</button>
           <button type="button" className="button small" disabled={writeBlocked || schedule.state === 'running'} onClick={() => void mutation(() => agents.setScheduleEnabled!(schedule.id, !schedule.enabled, schedule.revision))}>{schedule.enabled ? text.pause : text.resume}</button>
           <button type="button" className="button small" disabled={writeBlocked || schedule.state === 'running'} onClick={() => beginEdit(schedule)}><Icon name="edit" />{text.edit}</button>
           <button type="button" className="button small" disabled={writeBlocked || schedule.state === 'running'} onClick={() => void mutation(() => agents.deleteSchedule!(schedule.id, schedule.revision), () => { if (editingId === schedule.id) resetForm(); })}><Icon name="trash" />{text.delete}</button>
-        </div></div><p className="muted small">{scheduleRecoveryStatus(schedule.recovery, schedule.nextRunAt ? formatDateTime(schedule.nextRunAt) : undefined, text) ?? (schedule.nextRunAt ? text.nextRun(formatDateTime(schedule.nextRunAt)) : '—')}{schedule.lastOutcome && !schedule.recovery ? ` · ${text.outcomes[schedule.lastOutcome]}` : ''}</p>
-        <details className="schedule-row-details"><summary>{text.details}</summary><p className="schedule-prompt">{schedule.prompt}</p><p className="muted small">{text.sessionModes[schedule.sessionTarget.mode]} · {text.teamModes[schedule.assignment.teamMode]}{schedule.assignment.leadModel ? ` · ${schedule.assignment.leadModel}` : ''}</p><p className="muted small">{text.runsCount(schedule.runCount)}{schedule.lastRunAt ? ` · ${text.lastRun(formatDateTime(schedule.lastRunAt))}` : ''}</p></details>
+        </div></div><p className="muted small">{scheduleRecoveryStatus(schedule.recovery, schedule.nextRunAt ? formatTimestampInZone(schedule.nextRunAt, scheduleZone) : undefined, text) ?? (schedule.nextRunAt ? text.nextRun(formatTimestampInZone(schedule.nextRunAt, scheduleZone)) : '—')}{schedule.nextRunAt && scheduleZone ? ` (${schedule.nextRunAt})` : ''}{schedule.lastOutcome && !schedule.recovery ? ` · ${text.outcomes[schedule.lastOutcome]}` : ''}</p>
+        <details className="schedule-row-details"><summary>{text.details}</summary><p className="schedule-prompt">{schedule.prompt}</p><p className="muted small">{text.sessionModes[schedule.sessionTarget.mode]} · {text.teamModes[schedule.assignment.teamMode]}{schedule.assignment.leadModel ? ` · ${schedule.assignment.leadModel}` : ''}</p><p className="muted small">{text.runsCount(schedule.runCount)}{schedule.completedRunCount !== undefined ? ` · ${text.completedTurnsCount(schedule.completedRunCount)}` : ''}{schedule.legacyDispatchCount !== undefined ? ` · ${text.legacyDispatchesCount(schedule.legacyDispatchCount)}` : ''}{schedule.lastRunAt ? ` · ${text.lastRun(formatTimestampInZone(schedule.lastRunAt, scheduleZone))}` : ''}</p></details>
         {linked && <button type="button" className="button small" onClick={() => onOpenSession(linked, schedule.workspaceId)}><Icon name="chat" />{text.openSession}</button>}{schedule.lastError && <p className="form-error">{schedule.lastError}</p>}
         </article>;
       })}

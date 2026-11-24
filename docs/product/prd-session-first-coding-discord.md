@@ -860,6 +860,7 @@ Sebuah work package hanya dianggap **Done** jika seluruh syarat berlaku terpenuh
 - [Repository development instructions](../../AGENTS.md): implementation protocol and public-safety constraints.
 - [ADR 0095 — Unassigned session context (Proposed)](../adr/0095-unassigned-session-context.md): arsitektur sesi *unassigned* tanpa izin filesystem (menjawab `OQ-01`).
 - [ADR 0096 — Session-first Chat landing page (Proposed)](../adr/0096-session-first-chat-landing.md): amandemen Phase A1 untuk default landing Chat composer (menjawab `OQ-02`).
+- [Schedule & Automation vNext (`Rev 1.1`, Proposed)](prd-schedule-automation-vnext.md): ledger eksekusi terjadwal, per-job IANA timezone, layanan host headless, serta pemisahan *general schedules* (`workspaceId` wajib saat ini) dari kurator otonom Knowledge/Skills.
 
 ### Suggested canonical FR crosswalk
 

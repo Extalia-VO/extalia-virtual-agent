@@ -36,3 +36,31 @@
 @media (prefers-reduced-motion: reduce) { .schedule-suggestion { transition: none; } }
 
 .schedule-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
+.badge.info { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); }
+.schedule-timezone-section { margin-top: 14px; display: grid; gap: 10px; }
+.schedule-preview-box { margin-top: 12px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; background: color-mix(in srgb, var(--surface) 70%, transparent); display: grid; gap: 10px; }
+.schedule-preview-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.schedule-preview-list { margin: 0; padding-left: 20px; display: grid; gap: 8px; }
+.schedule-preview-item { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.schedule-preview-times { display: grid; gap: 2px; }
+.schedule-preview-badges { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.schedule-preview-notes { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+.schedule-card-trigger-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+.schedule-history-panel { margin-block: 22px; padding: 22px; display: grid; gap: 16px; }
+.schedule-history-filters { gap: 14px; }
+.schedule-run-row { padding: 14px 16px; border: 1px solid var(--line); }
+.schedule-run-row.is-selected { border-color: var(--accent); }
+.schedule-run-badges { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.schedule-run-meta { margin-top: 6px; }
+.schedule-run-detail { padding: 18px; border: 1px solid var(--accent); display: grid; gap: 14px; }
+.schedule-detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px 16px; margin: 0; }
+.schedule-detail-grid > div { display: grid; gap: 2px; min-width: 0; }
+.schedule-detail-grid dt { font-size: 12px; font-weight: 600; color: var(--muted); }
+.schedule-detail-grid dd { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
+.schedule-detail-wide { grid-column: 1 / -1; }
+.schedule-deliveries { display: grid; gap: 8px; border-top: 1px solid var(--line); padding-top: 12px; }
+.schedule-deliveries h4, .schedule-unknown-review h4 { margin: 0; font-size: 14px; }
+.schedule-delivery-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.schedule-delivery-item { padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; display: grid; gap: 4px; }
+.schedule-unknown-review { border-top: 1px solid var(--line); padding-top: 14px; display: grid; gap: 10px; }
+@media (max-width: 760px) { .schedule-history-panel { padding: 16px; } .schedule-run-detail { padding: 14px; } }
