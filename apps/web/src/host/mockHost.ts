@@ -1,7 +1,7 @@
 import { DEFAULT_PERMISSIONS, modelPlanningBasis, applyTeamSpec, defaultOrchestration, generateFullName, initialSessionTeam, parseTeamSpec, withDistinctMemberNames, pickTeamModels, planModelOrder, planTeamHeuristic, presetById, workspaceCrossAccess, type AgentTeam, type Workspace } from '@extalia/core';
 import type {
   AgentAppConnection, AgentAppConnectOptions, AgentAppConnectPlan, AgentAppConnectResult, AgentAppDisconnectResult,
-  AgentAppId, AgentAppRecoveryReport, AgentAppTestResult, AgentHostApi, ApprovalDecisionInput, ConnectionInput, ConnectionView,
+  AgentAppId, AgentAppRecoveryReport, AgentAppTestResult, AgentHostApi, ApprovalDecisionInput, CommandSandboxStatus, ConnectionInput, ConnectionView,
   GeneralSchedule, GeneralScheduleCatalog, HookIngestStatus, HostState, ModelChoices, ModelSelectionGuide, NextRunPreview,
   Platform, ProfilePreferences, ProjectGitInspection, ProjectPlannedAction, ProjectProvisionApplyInput,
   ProjectProvisionPreview, ProjectProvisionPreviewInput, ProjectProvisionReceipt, ProjectProvisionStepReceipt,
@@ -1816,6 +1816,24 @@ function createMockAgents(options: MockOptions): AgentHostApi {
       const request = pending.get(approvalId);
       if (!request || request.sessionId !== sessionId) throw new Error('This approval is no longer pending.');
       request.resolve(decision);
+    },
+    async revokeApproval(sessionId, approvalId) {
+      await latency();
+      const request = pending.get(approvalId);
+      if (request && request.sessionId === sessionId) {
+        pending.delete(approvalId);
+        request.resolve(CANCELLED);
+      }
+    },
+    async commandSandboxStatus(): Promise<CommandSandboxStatus> {
+      await latency();
+      return {
+        supported: true,
+        kind: 'macos-seatbelt',
+        platform: 'darwin',
+        networkAccess: 'denied',
+        verifiedAt: new Date().toISOString(),
+      };
     },
     async cancel(sessionId) {
       await latency();
