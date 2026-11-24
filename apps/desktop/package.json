@@ -1,7 +1,7 @@
 {
   "name": "@extalia/desktop",
   "description": "Extalia Desktop shell for macOS, Windows and Linux.",
-  "version": "0.4.358",
+  "version": "0.4.359",
   "private": true,
   "license": "MIT",
   "author": "Extalia contributors",

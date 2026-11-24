@@ -3,7 +3,7 @@
 
 | Metadata | Nilai |
 | --- | --- |
-| Status | **In progress (Slice A complete & verified locally; Slices B–E pending)** — Slice A1 backend (`ADR 0095` + profile `landingPage` `ADR 0096`) serta Slice A2 (`#127`: zero-workspace Chat UI, `Unassigned` session tree, `null → workspace` attach dialog, Chat-first default landing + lazy 3D Office) telah terimplementasi secara lokal; Slices B–E (project provisioning, isolated coding worker executor/apply, live Discord/Gateway adapters `#138`, shared 3D Office polish) belum diimplementasikan |
+| Status | **In progress (Slices A & B complete & verified locally at v0.4.359; Slices C–E pending)** — Slice A1 backend (`ADR 0095` + profile `landingPage` `ADR 0096`), Slice A2 (`#127`: zero-workspace Chat UI, `Unassigned` session tree, `null → workspace` attach dialog, Chat-first default landing + lazy 3D Office), dan Slice B (`#149`, `WP-05`, `ADR 0099`: two-phase `previewProjectProvision` / `applyProjectProvision`, protected-path/symlink refusal, dirty/protected-branch Git acknowledgement, curated zero-script templates, partial-failure step receipts, Chat `ProjectProvisionDialog` & atomic `null → workspace` attach, `COD-001` unassigned proposal guidance) telah terimplementasi secara lokal; Slices C–E (isolated coding worker executor/apply, live Discord/Gateway acceptance & UI `#138`/`#142`, shared 3D Office polish) belum selesai |
 | Versi dokumen | PRD-SF-1.0 |
 | Tanggal | 23 November 2026 |
 | Repository | [Extalia-VO/extalia-virtual-agent](https://github.com/Extalia-VO/extalia-virtual-agent) |

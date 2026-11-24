@@ -16,6 +16,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.359] - 2026-11-24
+
+- Record [ADR 0099](docs/adr/0099-safe-project-provisioning-and-attach.md) and implement PRD-SF-1.0 Release Slice B (`#149`, `WP-05`) safe project provisioning and prompt-to-project attach: add two-phase `previewProjectProvision` and `applyProjectProvision` APIs (`@extalia/platform`, `@extalia/host`), enforce protected OS, home, data-directory, and credential path and symlink refusals (`isProtectedProjectPath`), inspect Git dirty state and protected branches (`main`, `master`, `production`, `prod`, `release/*`, `hotfix/*`) with required warning acknowledgement, support curated zero-script templates (`none`, `basic-readme`, `node-ts-minimal`) and safe `git init`, return itemized partial-failure step receipts without replayable review IDs, atomically attach idle unassigned sessions preserving empty-root `workspaceFileScopes`, add `COD-001` project-proposal guidance in `@extalia/runtime`, and add the accessible EN/ID `ProjectProvisionDialog` + unassigned Chat triggers (`apps/web/src/chat/{ProjectProvisionDialog,ChatPage}.tsx`, `mockHost.ts`).
+
 ## [0.4.358] - 2026-11-24
 
 - Add [Universal Gateway Module v2](docs/product/prd-universal-gateway-v2.md) (`Rev 2.0`) and record [ADR 0098](docs/adr/0098-universal-gateway-and-autonomous-reports.md).
