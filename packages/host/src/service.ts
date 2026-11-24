@@ -21,6 +21,10 @@ import type { readCodexNativeQueue } from './codexNativeQueue.js';
 import { ObservedCodexPermissionService } from './observedCodexPermissionService.js';
 import { PromptQueues } from './promptQueue.js';
 import { SessionMoveReviews, sessionProjectWorkspace, sessionProjectWorkspaces } from './sessionMove.js';
+import {
+  buildScaffoldFiles, inspectProjectTarget, ProjectProvisionError, ProjectProvisionReviews, runSafeGitInit,
+  type InspectedProjectTarget, type ProjectProvisionReviewSnapshot,
+} from './projectProvisioning.js';
 import { discoverHandoverHarnesses } from './handoverHarnesses.js';
 import { SessionContinuity, type ContinuitySourceSnapshot } from './sessionContinuity.js';
 import { handoverEvidence } from './handoverEvidence.js';
@@ -64,11 +68,11 @@ import { ObservedHermesService } from './observedHermesService.js';
 import type { HermesObservedRpcFactory } from './hermesObservedControl.js';
 import type { CodexObservedRpcFactory } from './codexObservedControl.js';
 import {
-  assertHermesTeamCapacity, DEFAULT_PERMISSIONS, applyImport, decodeConnection, decodeLibrary, decodeWorkspace, defaultOrchestration, deleteSession as deleteLibrarySession,
+  assertHermesTeamCapacity, DEFAULT_PERMISSIONS, DEFAULT_WORKSPACE_CROSS_ACCESS, WORKSPACE_CROSS_ACCESS, applyImport, decodeConnection, decodeLibrary, decodeWorkspace, defaultOrchestration, deleteSession as deleteLibrarySession,
   displayTitle, emptyLibrary, keepsHistory, presetById, previewImport, renameSession as renameLibrarySession, resolveFeatures, safeLabel, safeText, setSessionState,
-  sourceLabel, tierModel, EFFORTS, RUNTIME_IDS, workspaceRuntime, workspaceCrossAccess, MAX_WORKSPACE_FOLDERS, providerHeaders, type Effort,
+  sourceLabel, tierModel, EFFORTS, RUNTIME_IDS, workspaceRuntime, workspaceCrossAccess, MAX_WORKSPACE_FOLDERS, providerHeaders, type Effort, type RuntimeId,
   characterSessionId, decodeCharacterAppearance, decodeCharacterAppearanceStore, emptyCharacterAppearanceStore, isCharacterId, MAX_CHARACTER_APPEARANCES,
-  type CharacterAppearanceStore, type CharacterAppearances, type Connection, type PortableSession, type SessionLibrary, type TaskTier, type Workspace,
+  type CharacterAppearanceStore, type CharacterAppearances, type Connection, type PortableSession, type SessionLibrary, type TaskTier, type Workspace, type WorkspaceCrossAccess, type WorkspacePermissions,
   decodeAgentTeam, parseTeamPlanResult, pickTeamModels, planModelOrder, planTeamHeuristic, teamPlanPrompt, type AgentTeam, type TeamMember, type TeamPlan, type TeamPlanRequest,
   applyTeamSpec, generateFullName, initialSessionTeam, isContextUsage, parseTeamSpec, withDistinctMemberNames,
 } from '@extalia/core';
@@ -83,6 +87,7 @@ import {
   type KnowledgeNoteResult, type KnowledgeLinkPage, type KnowledgeSearchResult, type WorkspaceKnowledgeBinding, type ProjectKnowledgeBuildResult,
   GLOBAL_OBSERVE_WORKSPACE_ID, KNOWLEDGE_EVENT_SESSION_ID, normalizeKnowledgeVaultRoot, normalizeScheduleRunFilter, type NativeActiveRun, type NativeStatus, type NativeStatusRecheck, type NativeStatusWorker,
   type ContinuityView, type HandoverTarget,
+  type ProjectPlannedAction, type ProjectProvisionApplyInput, type ProjectProvisionPreviewInput, type ProjectProvisionReceipt, type ProjectProvisionStepReceipt,
 } from '@extalia/platform';
 import { createEvent, type AgentEvent, type EventBody, type EventSource, type ExtaliaEvent } from '@extalia/protocol';
 import {
@@ -91,7 +96,7 @@ import {
 } from '@extalia/runtime';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
-import { mkdtemp, readdir, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { AttachmentStore, type TakenAttachment } from './attachments.js';
@@ -813,6 +818,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     return next;
   }
   const sessionMoveReviews = new SessionMoveReviews();
+  const projectProvisionReviews = new ProjectProvisionReviews();
   function withWorkspaceChange<T>(change: () => Promise<T>, invalidatePendingLearning = true): Promise<T> {
     if (observedWorkspaceChange) return Promise.reject(userError('Wait for the project association to finish before changing workspace settings.'));
     workspaceChangeRevision++;
@@ -2454,6 +2460,221 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     return { record, source, destination, workspaces, access, messages, lastEventId, previousFileRoot, permissionMode: storedOptions(record).permissionMode ?? 'workspace' as const };
   }
 
+  async function projectProvisionSnapshot(rawInput: ProjectProvisionPreviewInput): Promise<{
+    snapshot: ProjectProvisionReviewSnapshot;
+    inspected: InspectedProjectTarget;
+    attachSession?: {
+      sessionId: string;
+      title: string;
+      transfersHistory: boolean;
+      permissionMode: PermissionMode;
+      record: SessionRecord;
+      messages: readonly unknown[];
+      lastEventId?: string;
+      boundary: string;
+    };
+  }> {
+    if (!rawInput || typeof rawInput !== 'object' || Array.isArray(rawInput)) {
+      throw userError('Invalid project provisioning request.');
+    }
+
+    let attachSession: {
+      sessionId: string;
+      title: string;
+      transfersHistory: boolean;
+      permissionMode: PermissionMode;
+      record: SessionRecord;
+      messages: readonly unknown[];
+      lastEventId?: string;
+      boundary: string;
+    } | undefined;
+
+    const requestedAttachId = rawInput.attachSessionId;
+    if (requestedAttachId !== undefined && requestedAttachId !== '') {
+      if (typeof requestedAttachId !== 'string') {
+        throw userError('Choose a saved Extalia Native session to attach.');
+      }
+      const sessionId = requestedAttachId.trim();
+      if (!sessionId || observations.has(sessionId) || unsavedSessions.has(sessionId)) {
+        throw userError('Choose a saved Extalia Native session to attach.');
+      }
+      if (runs.has(sessionId)) {
+        throw userError('Wait for this session to finish or stop it before attaching it to a project.');
+      }
+      if (promptQueues?.hasUnfinished(sessionId)) {
+        throw userError('Finish or remove pending prompts and inspect uncertain deliveries before attaching this session.');
+      }
+      nativeOwnership.assertClear(sessionId);
+      missions.assertSessionClear(sessionId);
+      knowledgeVault.assertStable();
+      if (workspaceContextReaders || learningSchedule.isBusy) {
+        throw userError('Wait for Native context, learning or team planning to finish before attaching a session.');
+      }
+      const record = await savedSessions.get(sessionId);
+      if (!record || record.runtime) {
+        throw userError('Only saved Extalia Native sessions can be attached to a project.');
+      }
+      if (record.workspaceId !== null) {
+        throw userError('Only unassigned sessions can be attached during project provisioning.');
+      }
+      storedOperatingProfile(record);
+      const sessionConnection = findConnection(record.connectionId);
+      validateTeamConnections(storedTeam(record), null);
+      const sessionOptions = checkNativeSessionOptions(sessionConnection, storedOptions(record));
+      const messages = await savedSessions.readMessages(sessionId);
+      await writeChains.get(sessionId);
+      const events = await savedSessions.readEvents(sessionId);
+      const lastEventId = events.at(-1)?.id;
+      if (runs.has(sessionId)) {
+        throw userError('This session started working. Review the project after it finishes.');
+      }
+      attachSession = {
+        sessionId: record.id,
+        title: record.title,
+        transfersHistory: messages.length > 0,
+        permissionMode: sessionOptions.permissionMode ?? ('workspace' as const),
+        record,
+        messages,
+        ...(lastEventId ? { lastEventId } : {}),
+        boundary: UNASSIGNED_SESSION_BOUNDARY,
+      };
+    }
+
+    let inspected: InspectedProjectTarget;
+    try {
+      inspected = await inspectProjectTarget({
+        mode: rawInput.mode,
+        parentPath: rawInput.parentPath,
+        folderName: rawInput.folderName,
+        targetPath: rawInput.targetPath,
+        templateId: rawInput.templateId,
+        gitInit: rawInput.gitInit,
+        attachSessionId: attachSession?.sessionId,
+        homeDirectory,
+        dataDirectory,
+        existingWorkspaces: config.workspaces,
+        env,
+      });
+    } catch (error) {
+      if (error instanceof ProjectProvisionError) throw userError(error.message);
+      throw error;
+    }
+
+    let runtimeId: RuntimeId;
+    let connectionId: string | undefined;
+    let runtimeProfileId: string | undefined;
+    let runtimeModel: string | undefined;
+    let permissions: WorkspacePermissions;
+    let crossWorkspaceAccess: WorkspaceCrossAccess;
+    let workspaceName: string;
+
+    if (inspected.existingWorkspace) {
+      const existing = effectiveOperatingWorkspace(inspected.existingWorkspace);
+      nativeOwnership.assertWorkspaceClear(existing.id);
+      if (rawInput.runtimeId !== undefined && rawInput.runtimeId !== 'extalia-native') {
+        throw userError('Unassigned Extalia Native sessions can only be attached to an Extalia Native workspace.');
+      }
+      if (attachSession) {
+        const effective = sessionWorkspace(existing, attachSession.record);
+        validateTeamConnections(storedTeam(attachSession.record), effective);
+        await checkSessionOptions(effective, storedOptions(attachSession.record));
+      }
+      runtimeId = 'extalia-native';
+      connectionId = existing.providerProfileId;
+      permissions = { ...(existing.permissions ?? DEFAULT_PERMISSIONS) };
+      crossWorkspaceAccess = workspaceCrossAccess(existing);
+      workspaceName = existing.name;
+    } else {
+      runtimeId = rawInput.runtimeId ?? 'extalia-native';
+      if (!RUNTIME_IDS.includes(runtimeId)) {
+        throw userError('Choose Extalia Native or Hermes Agent.');
+      }
+      if (attachSession && runtimeId === 'hermes') {
+        throw userError('Unassigned Extalia Native sessions can only be attached to an Extalia Native workspace.');
+      }
+      if (runtimeId === 'extalia-native') {
+        connectionId = rawInput.connectionId?.trim() || attachSession?.record.connectionId;
+        if (!connectionId) throw userError('Choose a model connection for this workspace.');
+        findConnection(connectionId);
+      } else {
+        runtimeProfileId = rawInput.runtimeProfileId?.trim() || 'default';
+        runtimeModel = rawInput.runtimeModel?.trim() || undefined;
+      }
+      permissions = rawInput.permissions
+        ? { fileWrite: rawInput.permissions.fileWrite, commands: rawInput.permissions.commands }
+        : { ...DEFAULT_PERMISSIONS };
+      if ((permissions.fileWrite !== 'ask' && permissions.fileWrite !== 'allow')
+        || (permissions.commands !== 'ask' && permissions.commands !== 'allow')) {
+        throw userError('Choose ask or allow for workspace permissions.');
+      }
+      crossWorkspaceAccess = rawInput.crossWorkspaceAccess ?? DEFAULT_WORKSPACE_CROSS_ACCESS;
+      if (!WORKSPACE_CROSS_ACCESS.includes(crossWorkspaceAccess)) {
+        throw userError('Choose isolated, read-only, or read-write cross-workspace access.');
+      }
+      workspaceName = (rawInput.workspaceName?.trim() || inspected.defaultName).trim();
+      const dryRunStamp = now();
+      const dryRun = decodeWorkspace({
+        id: 'w_preview',
+        profileId: config.profile.id,
+        name: workspaceName,
+        projectLocation: inspected.targetPath,
+        ...(runtimeId === 'hermes'
+          ? { runtimeId: 'hermes', runtimeProfileId, ...(runtimeModel ? { runtimeModel } : {}) }
+          : { providerProfileId: connectionId }),
+        permissions,
+        additionalProjectLocations: [],
+        crossWorkspaceAccess,
+        createdAt: dryRunStamp,
+        updatedAt: dryRunStamp,
+      });
+      if (!dryRun.ok) throw userError(dryRun.errors.join(' '));
+    }
+
+    const plannedActions: ProjectPlannedAction[] = [];
+    if (inspected.mode === 'create' && !inspected.folderExists) {
+      plannedActions.push({ kind: 'create-folder', target: inspected.targetPath });
+    }
+    if (inspected.mode === 'create' && inspected.templateId !== 'none') {
+      for (const file of buildScaffoldFiles(inspected.templateId, workspaceName)) {
+        plannedActions.push({ kind: 'write-file', target: file.relativePath });
+      }
+    }
+    if (inspected.gitInit) {
+      plannedActions.push({ kind: 'git-init', target: inspected.targetPath });
+    }
+    if (!inspected.existingWorkspace) {
+      plannedActions.push({ kind: 'register-workspace', target: workspaceName, detail: inspected.targetPath });
+    }
+    if (attachSession) {
+      plannedActions.push({ kind: 'attach-session', target: attachSession.sessionId, detail: attachSession.title });
+    }
+
+    const snapshot: ProjectProvisionReviewSnapshot = {
+      mode: inspected.mode,
+      targetPath: inspected.targetPath,
+      parentPath: inspected.parentPath,
+      folderExists: inspected.folderExists,
+      workspaceName,
+      runtimeId,
+      ...(connectionId ? { connectionId } : {}),
+      ...(runtimeProfileId ? { runtimeProfileId } : {}),
+      ...(runtimeModel ? { runtimeModel } : {}),
+      permissions,
+      crossWorkspaceAccess,
+      templateId: inspected.templateId,
+      gitInit: inspected.gitInit,
+      ...(inspected.existingWorkspace ? { existingWorkspace: inspected.existingWorkspace } : {}),
+      gitInspection: inspected.gitInspection,
+      plannedActions,
+      warnings: inspected.warnings,
+      requiresWarningAcknowledgement: inspected.requiresWarningAcknowledgement,
+      workspacesBoundaryKey: workspaceBoundaryKey(config.workspaces),
+      ...(attachSession ? { attachSession } : {}),
+    };
+
+    return { snapshot, inspected, attachSession };
+  }
+
   function effortsForConnection(connection: Connection): Effort[] {
     return connection.api === 'anthropic-messages' ? [...EFFORTS] : [];
   }
@@ -4014,6 +4235,245 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         config = next;
         try { await save(); } catch (error) { if (config === next) config = previous; throw error; }
         return state();
+      });
+    },
+
+    async previewProjectProvision(input: ProjectProvisionPreviewInput) {
+      assertHostOpen();
+      return withWorkspaceChange(async () => {
+        const { snapshot } = await projectProvisionSnapshot(input);
+        return projectProvisionReviews.preview(input, snapshot);
+      }, false);
+    },
+
+    async applyProjectProvision(input: ProjectProvisionApplyInput): Promise<ProjectProvisionReceipt> {
+      assertHostOpen();
+      return withWorkspaceChange(async () => {
+        if (!input || typeof input.reviewId !== 'string' || !input.reviewId.trim()) {
+          throw userError('Review the project details first.');
+        }
+        let stored: { input: ProjectProvisionPreviewInput; requiresWarningAcknowledgement: boolean };
+        try {
+          stored = projectProvisionReviews.get(input.reviewId);
+        } catch (error) {
+          throw userError(error instanceof Error ? error.message : 'The project review expired or is invalid.');
+        }
+        const { snapshot, inspected, attachSession } = await projectProvisionSnapshot(stored.input);
+        try {
+          projectProvisionReviews.verify(input.reviewId, snapshot);
+        } catch (error) {
+          throw userError(error instanceof Error ? error.message : 'Project state changed since review.');
+        }
+        if (snapshot.requiresWarningAcknowledgement && !input.acknowledgeWarnings) {
+          throw userError('Acknowledge the repository warnings before continuing.');
+        }
+        projectProvisionReviews.consume(input.reviewId);
+
+        const steps: ProjectProvisionStepReceipt[] = [];
+        let workspace: Workspace | undefined;
+        let attachedSessionId: string | undefined;
+
+        const failReceipt = (error: unknown): ProjectProvisionReceipt => ({
+          ok: false,
+          partial: steps.some(step => step.status === 'completed'),
+          mode: snapshot.mode,
+          targetPath: snapshot.targetPath,
+          ...(workspace ? { workspace } : {}),
+          ...(attachedSessionId ? { attachedSessionId } : {}),
+          steps,
+          error: error instanceof Error ? error.message : String(error),
+        });
+
+        // Step 1: create-folder
+        if (snapshot.mode === 'open' || inspected.folderExists) {
+          steps.push({
+            step: 'create-folder',
+            status: 'skipped',
+            target: snapshot.targetPath,
+            detail: snapshot.mode === 'open' ? 'Existing project folder.' : 'Reused existing empty folder.',
+          });
+        } else {
+          try {
+            await mkdir(snapshot.targetPath);
+            steps.push({ step: 'create-folder', status: 'completed', target: snapshot.targetPath });
+          } catch (error) {
+            const message = error instanceof Error ? error.message : 'Could not create the project folder.';
+            steps.push({ step: 'create-folder', status: 'failed', target: snapshot.targetPath, detail: message });
+            return failReceipt(new Error(`Could not create the project folder: ${message}`));
+          }
+        }
+
+        // Step 2: write-file
+        const scaffoldFiles = snapshot.mode === 'create' ? buildScaffoldFiles(snapshot.templateId, snapshot.workspaceName) : [];
+        if (!scaffoldFiles.length) {
+          steps.push({ step: 'write-file', status: 'skipped', detail: 'No scaffold files requested.' });
+        } else {
+          for (const file of scaffoldFiles) {
+            const fullPath = path.join(snapshot.targetPath, file.relativePath);
+            try {
+              if (!isWithin(snapshot.targetPath, fullPath)) {
+                throw new ProjectProvisionError(`Refused to write outside the project folder: ${file.relativePath}`);
+              }
+              if (snapshot.templateId === 'node-ts-minimal' && path.dirname(file.relativePath) === 'src') {
+                await mkdir(path.join(snapshot.targetPath, 'src'), { recursive: true });
+              }
+              await writeFile(fullPath, file.content, { encoding: 'utf8', flag: 'wx' });
+              steps.push({ step: 'write-file', status: 'completed', target: file.relativePath });
+            } catch (error) {
+              const message = error instanceof Error ? error.message : 'Could not write scaffold file.';
+              steps.push({ step: 'write-file', status: 'failed', target: file.relativePath, detail: message });
+              return failReceipt(new Error(`Could not write ${file.relativePath}: ${message}`));
+            }
+          }
+        }
+
+        // Step 3: git-init
+        if (!snapshot.gitInit) {
+          steps.push({ step: 'git-init', status: 'skipped', target: snapshot.targetPath, detail: 'Git initialization not requested.' });
+        } else {
+          try {
+            await runSafeGitInit(snapshot.targetPath, { env });
+            steps.push({ step: 'git-init', status: 'completed', target: snapshot.targetPath });
+          } catch (error) {
+            const message = error instanceof Error ? error.message : 'Git init failed.';
+            steps.push({ step: 'git-init', status: 'failed', target: snapshot.targetPath, detail: message });
+            return failReceipt(new Error(message));
+          }
+        }
+
+        // Step 4: register-workspace
+        if (inspected.existingWorkspace) {
+          const existing = config.workspaces.find(item => item.id === inspected.existingWorkspace!.id);
+          if (!existing) {
+            const message = 'The existing workspace is no longer available.';
+            steps.push({ step: 'register-workspace', status: 'failed', target: inspected.existingWorkspace.id, detail: message });
+            return failReceipt(new Error(message));
+          }
+          workspace = existing;
+          steps.push({
+            step: 'register-workspace',
+            status: 'skipped',
+            target: existing.id,
+            detail: `Reused existing workspace "${existing.name}".`,
+          });
+        } else {
+          try {
+            const canonicalTarget = await realpath(snapshot.targetPath);
+            const stamp = now();
+            const runtimeFields = snapshot.runtimeId === 'hermes'
+              ? {
+                runtimeId: 'hermes' as const,
+                runtimeProfileId: snapshot.runtimeProfileId || 'default',
+                ...(snapshot.runtimeModel ? { runtimeModel: snapshot.runtimeModel } : {}),
+              }
+              : { ...(snapshot.connectionId ? { providerProfileId: snapshot.connectionId } : {}) };
+            const decoded = decodeWorkspace({
+              id: newId('w'),
+              profileId: config.profile.id,
+              name: snapshot.workspaceName,
+              projectLocation: canonicalTarget,
+              ...runtimeFields,
+              permissions: snapshot.permissions,
+              additionalProjectLocations: [],
+              crossWorkspaceAccess: snapshot.crossWorkspaceAccess,
+              createdAt: stamp,
+              updatedAt: stamp,
+            });
+            if (!decoded.ok) throw userError(decoded.errors.join(' '));
+            const nextWorkspaces = [...config.workspaces, decoded.value];
+            if (workspaceBoundaryKey(config.workspaces) !== workspaceBoundaryKey(nextWorkspaces)) {
+              await assertWorkspaceBoundaryEditable();
+            }
+            const assignment = decoded.value.crossWorkspaceAccess === 'isolated'
+              ? assignWorkspaceVaultProfile({ profiles: config.vaultProfiles, workspaces: nextWorkspaces, defaultProfile: config.profile }, decoded.value.id)
+              : undefined;
+            const previous = config;
+            const next = {
+              ...config,
+              workspaces: assignment?.workspaces ?? nextWorkspaces,
+              ...(assignment ? { vaultProfiles: assignment.profiles } : {}),
+            };
+            config = next;
+            try {
+              await save();
+            } catch (error) {
+              if (config === next) config = previous;
+              throw error;
+            }
+            workspace = config.workspaces.find(item => item.id === decoded.value.id) ?? decoded.value;
+            steps.push({ step: 'register-workspace', status: 'completed', target: workspace.id, detail: workspace.name });
+          } catch (error) {
+            const message = error instanceof Error ? error.message : 'Could not register the workspace.';
+            steps.push({ step: 'register-workspace', status: 'failed', target: snapshot.workspaceName, detail: message });
+            return failReceipt(new Error(message));
+          }
+        }
+
+        // Step 5: attach-session
+        if (!attachSession) {
+          steps.push({ step: 'attach-session', status: 'skipped', detail: 'No session attached.' });
+        } else {
+          try {
+            const targetWorkspace = workspace!;
+            const applyAttach = async () => {
+              if (runs.has(attachSession.sessionId)) {
+                throw userError('Wait for this session to finish or stop it before attaching it to a project.');
+              }
+              nativeOwnership.assertClear(attachSession.sessionId);
+              missions.assertSessionClear(attachSession.sessionId);
+              knowledgeVault.assertStable();
+              nativeOwnership.assertWorkspaceClear(targetWorkspace.id);
+              await createWorkspaceAccess({
+                workspaceId: targetWorkspace.id,
+                workspaces: structuredClone(config.workspaces),
+                protectedRoots: [layout.root],
+              });
+              const boundary = workspaceSessionBoundaryKey(targetWorkspace.id, config.workspaces);
+              followupSuggestions.invalidate(attachSession.sessionId);
+              const recordedScopes = attachSession.record.workspaceFileScopes;
+              const workspaceFileScopes = Array.isArray(recordedScopes) ? structuredClone(recordedScopes) : [];
+              if (recordedScopes !== undefined && !Array.isArray(recordedScopes) && attachSession.lastEventId) {
+                workspaceFileScopes.push({ throughEventId: attachSession.lastEventId, workspaceId: '', projectLocation: '' });
+              }
+              if (attachSession.lastEventId && workspaceFileScopes.at(-1)?.throughEventId !== attachSession.lastEventId) {
+                workspaceFileScopes.push({ throughEventId: attachSession.lastEventId, workspaceId: '', projectLocation: '' });
+              }
+              await savedSessions.update(
+                attachSession.sessionId,
+                {
+                  workspaceId: targetWorkspace.id,
+                  workspaceBoundary: boundary,
+                  reviewedContextBoundary: boundary,
+                  projectLocation: undefined,
+                  workspaceFileRoot: targetWorkspace.projectLocation,
+                  ...(workspaceFileScopes.length ? { workspaceFileScopes } : {}),
+                },
+                { expectedRecord: attachSession.record },
+              );
+              grants.delete(attachSession.sessionId);
+              queueWorkspaces.set(attachSession.sessionId, targetWorkspace.id);
+            };
+            if (promptQueues) await promptQueues.withIdleSession(attachSession.sessionId, applyAttach);
+            else await applyAttach();
+            attachedSessionId = attachSession.sessionId;
+            steps.push({ step: 'attach-session', status: 'completed', target: attachedSessionId, detail: targetWorkspace.id });
+          } catch (error) {
+            const message = error instanceof Error ? error.message : 'Could not attach the session.';
+            steps.push({ step: 'attach-session', status: 'failed', target: attachSession.sessionId, detail: message });
+            return failReceipt(new Error(message));
+          }
+        }
+
+        return {
+          ok: true,
+          partial: false,
+          mode: snapshot.mode,
+          targetPath: workspace?.projectLocation ?? snapshot.targetPath,
+          ...(workspace ? { workspace } : {}),
+          ...(attachedSessionId ? { attachedSessionId } : {}),
+          steps,
+          state: await state(),
+        };
       });
     },
 

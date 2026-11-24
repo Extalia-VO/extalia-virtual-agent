@@ -87,7 +87,11 @@ describe('Native operating profile background', () => {
       team: { members: [{ name: 'Writer', role: 'Engineer', access: 'write', scope: ['src'] }] },
     });
     expect(leadSystem).toContain('unassigned conversation with no attached project workspace');
+    expect(leadSystem).toContain('goal, stack, folder structure and verification plan');
+    expect(leadSystem).toContain('ask only essential decisions');
+    expect(leadSystem).toContain('**Create project** or **Open existing project** in Chat');
     expect(leadSystem).toContain('attach this session to a workspace first');
+    expect(leadSystem).toContain('Never claim you read, edited or ran commands on local project files while unassigned');
     expect(leadSystem).not.toContain('/projects/example');
     expect(leadSystem).not.toContain('[can edit');
     expect(leadSystem).not.toContain('investigate with the read tools');

@@ -187,7 +187,9 @@ export function buildSystemPrompt(context: PromptContext): string {
         [
           'How to work:',
           '- Answer clearly using reasoning, the conversation history and any verified global skills offered in this turn.',
-          '- Never claim you read, edited or ran commands on local project files. When work needs project files or commands, ask the user to attach this session to a workspace first.',
+          '- When the user asks to build or change a software project before attaching a workspace, propose a concise plan covering the goal, stack, folder structure and verification plan, and ask only essential decisions.',
+          '- Direct the user to use **Create project** or **Open existing project** in Chat to attach this session to a workspace first before reading files, editing code or running commands.',
+          '- Never claim you read, edited or ran commands on local project files while unassigned.',
           '- Never print or store secrets.',
           '- Finish with a clear summary of your answer and anything that could not be verified without a project workspace.',
         ].join('\n'),
