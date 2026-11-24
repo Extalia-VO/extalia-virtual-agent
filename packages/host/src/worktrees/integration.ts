@@ -2,11 +2,15 @@ import { createHash } from 'node:crypto';
 import { realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { redact, safeText } from '@extalia/core';
+import type { IntegrationGateExecutorInfo, IntegrationGateOutcome } from '@extalia/platform';
 import { readJson, writeJsonAtomic } from '../jsonStore.js';
 import { ensurePrivateDirectory } from '../paths.js';
 import { createCommandTool } from '../tools/command.js';
+import type { CommandSandboxExecutor } from '../tools/commandSandbox.js';
 import { checkBranchName, COMMIT_CONFIG, isCommitId, WorktreeError } from './git.js';
 import { diffSummary, isWithin, newWorktreeId, type DiffFile, type WorktreeManager } from './manager.js';
+
+export type { IntegrationGateExecutorInfo, IntegrationGateOutcome };
 
 /**
  * Serial integration queue (ADR 0028). A proposal merges one released worker
@@ -39,6 +43,8 @@ export interface GateResult {
   logDigest: string;
   observedAt: string;
   basis: 'verified_by_extalia' | 'not_run';
+  outcome?: IntegrationGateOutcome;
+  executor?: IntegrationGateExecutorInfo;
 }
 
 /**
@@ -78,6 +84,12 @@ export interface IntegrationQueueOptions {
   registryFile: string;
   /** Refuse the gate command until a verified workspace-isolated executor is available. */
   requireWorkspaceBoundary?: boolean;
+  /** Verified OS command sandbox executor for isolated gate execution. */
+  sandbox?: CommandSandboxExecutor;
+  /** Extalia data directory to shield from sandboxed gate commands. */
+  dataDirectory?: string;
+  /** Home directory whose sensitive entries are shielded from sandboxed gate commands. */
+  homeDirectory?: string;
   /** Environment for the gate command; credentials are removed before it runs. */
   env?: Readonly<Record<string, string | undefined>>;
 }
@@ -192,21 +204,38 @@ export class IntegrationQueue {
   }
 
   private async runGate(gate: Required<IntegrationGate>, root: string): Promise<GateResult> {
-    const tool = createCommandTool(root, { env: this.options.env ?? process.env, filesystemBoundary: this.options.requireWorkspaceBoundary ? 'required' : undefined });
+    const sandboxReady = Boolean(this.options.sandbox?.status.supported);
+    const tool = createCommandTool(root, {
+      env: this.options.env ?? process.env,
+      filesystemBoundary: this.options.requireWorkspaceBoundary ? 'required' : undefined,
+      ...(sandboxReady ? { sandbox: this.options.sandbox } : {}),
+      ...(this.options.dataDirectory ? { dataDirectory: this.options.dataDirectory } : {}),
+      ...(this.options.homeDirectory ? { homeDirectory: this.options.homeDirectory } : {}),
+    });
     let exitCode: number | undefined;
     let commandStarted = false;
     const started = Date.now();
-    const outcome = await tool.run({ command: gate.command, timeout_seconds: gate.timeoutSeconds }, {
+    const toolOutcome = await tool.run({ command: gate.command, timeout_seconds: gate.timeoutSeconds }, {
       signal: new AbortController().signal, toolCallId: 'integration-gate',
       emit: body => {
         if (body.type === 'command.started') commandStarted = true;
         if (body.type === 'command.completed') exitCode = body.exitCode;
       },
     });
-    const log = safeText(redact(outcome.output), LOG_LIMIT);
+    const log = safeText(redact(toolOutcome.output), LOG_LIMIT);
+    const outcome: IntegrationGateOutcome = !commandStarted
+      ? 'not_run'
+      : (toolOutcome.settlement ?? (toolOutcome.ok && exitCode === 0 ? 'passed' : 'failed'));
+    const ok = commandStarted && exitCode === 0 && outcome === 'passed';
+    const executor: IntegrationGateExecutorInfo = sandboxReady
+      ? { kind: this.options.sandbox!.status.kind, isolated: true, networkAccess: this.options.sandbox!.status.networkAccess }
+      : this.options.requireWorkspaceBoundary
+        ? { kind: 'none', isolated: false, networkAccess: 'denied' }
+        : { kind: 'legacy-unsandboxed', isolated: false, networkAccess: 'allowed' };
     return {
-      command: gate.command, exitCode: exitCode ?? 1, ok: outcome.ok && exitCode === 0, durationMs: Date.now() - started, log,
+      command: gate.command, exitCode: exitCode ?? 1, ok, durationMs: Date.now() - started, log,
       logDigest: `sha256:${createHash('sha256').update(log).digest('hex')}`, observedAt: new Date().toISOString(), basis: commandStarted ? 'verified_by_extalia' : 'not_run',
+      outcome, executor,
     };
   }
 
@@ -255,12 +284,30 @@ export class IntegrationQueue {
 }
 
 const STATUSES = new Set<IntegrationStatus>(['ready', 'conflict', 'gate_failed', 'gate_missing', 'empty', 'applied', 'stale']);
+const GATE_OUTCOMES = new Set<IntegrationGateOutcome>(['not_run', 'passed', 'failed', 'timed_out', 'cancelled', 'unknown']);
+const GATE_EXECUTOR_KINDS = new Set<IntegrationGateExecutorInfo['kind']>(['macos-seatbelt', 'linux-bwrap', 'none', 'legacy-unsandboxed']);
+
+function validGate(raw: unknown): boolean {
+  if (raw === undefined) return true;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return false;
+  const gate = raw as GateResult;
+  if (gate.outcome !== undefined && !GATE_OUTCOMES.has(gate.outcome)) return false;
+  if (gate.executor !== undefined) {
+    if (!gate.executor || typeof gate.executor !== 'object' || Array.isArray(gate.executor)) return false;
+    if (!GATE_EXECUTOR_KINDS.has(gate.executor.kind)) return false;
+    if (typeof gate.executor.isolated !== 'boolean') return false;
+    if (gate.executor.networkAccess !== 'denied' && gate.executor.networkAccess !== 'allowed') return false;
+  }
+  return true;
+}
+
 function validProposal(raw: unknown): raw is IntegrationProposal {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return false;
   const value = raw as IntegrationProposal;
   return typeof value.id === 'string' && /^i-[0-9a-f]{12}$/.test(value.id) && typeof value.worktreeId === 'string' && path.isAbsolute(value.repository ?? '')
     && typeof value.targetBranch === 'string' && isCommitId(value.targetCommit) && isCommitId(value.workerHead) && (value.mergeCommit === undefined || isCommitId(value.mergeCommit))
-    && STATUSES.has(value.status) && Array.isArray(value.files) && (value.gateSource === undefined || value.gateSource === 'request' || value.gateSource === 'workspace') && (value.diffDigest === undefined || /^sha256:[0-9a-f]{64}$/.test(value.diffDigest));
+    && STATUSES.has(value.status) && Array.isArray(value.files) && (value.gateSource === undefined || value.gateSource === 'request' || value.gateSource === 'workspace') && (value.diffDigest === undefined || /^sha256:[0-9a-f]{64}$/.test(value.diffDigest))
+    && validGate(value.gate);
 }
 
 function checkGate(gate: IntegrationGate): Required<IntegrationGate> {
