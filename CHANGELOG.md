@@ -16,6 +16,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.360] - 2026-11-24
+
+- Record [ADR 0100](docs/adr/0100-os-sandbox-executor-and-exact-approvals.md) and implement PRD-SF-1.0 Release Slice C foundation (`#150`, `WP-06`/`WP-08`, `V2-05`/`V2-06`): add verifiable fail-closed OS command sandbox executors (`packages/host/src/tools/commandSandbox.ts` supporting `macos-seatbelt`, `linux-bwrap`, and fail-closed defaults) gated behind opt-in host configuration (`commandSandboxStatus`), wire SHA-256 digest-, generation-, and TTL-bound `ExactApprovalLedger` (`packages/host/src/approvalLedger.ts`) with effect-time `verifyApprovalEffect` & `revokeApproval` checks (`@extalia/runtime`, `@extalia/host`), record explicit settlement states (`not_run`, `passed`, `failed`, `timed_out`, `cancelled`, `unknown`) and executor isolation provenance on `IntegrationGateResult`, and render localized EN/ID outcome/executor badges in `MissionChanges.tsx`.
+
 ## [0.4.359] - 2026-11-24
 
 - Record [ADR 0099](docs/adr/0099-safe-project-provisioning-and-attach.md) and implement PRD-SF-1.0 Release Slice B (`#149`, `WP-05`) safe project provisioning and prompt-to-project attach: add two-phase `previewProjectProvision` and `applyProjectProvision` APIs (`@extalia/platform`, `@extalia/host`), enforce protected OS, home, data-directory, and credential path and symlink refusals (`isProtectedProjectPath`), inspect Git dirty state and protected branches (`main`, `master`, `production`, `prod`, `release/*`, `hotfix/*`) with required warning acknowledgement, support curated zero-script templates (`none`, `basic-readme`, `node-ts-minimal`) and safe `git init`, return itemized partial-failure step receipts without replayable review IDs, atomically attach idle unassigned sessions preserving empty-root `workspaceFileScopes`, add `COD-001` project-proposal guidance in `@extalia/runtime`, and add the accessible EN/ID `ProjectProvisionDialog` + unassigned Chat triggers (`apps/web/src/chat/{ProjectProvisionDialog,ChatPage}.tsx`, `mockHost.ts`).
