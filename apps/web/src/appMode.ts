@@ -1,7 +1,9 @@
 import type { PageId } from './i18n';
+import type { LandingPagePreference } from './preferences';
 import { profileClientStateStorage } from './profileClientState';
 
 export type Workflow = 'managed' | 'observe';
+export type { LandingPagePreference };
 
 /** Profile-backed landing memory: only the last-used workspace. The page is never remembered. */
 export const LANDING_STORAGE_KEY = 'extalia.landing.v2';
@@ -42,8 +44,7 @@ export function navigationGroups({ agents, workflow, canChat }: NavigationInput)
     { section: 'activity', pages: ['history', 'import', 'logs'] },
     { section: 'app', pages: ['settings', 'diagnostics'] },
   ];
-  const work: PageId[] = ['office'];
-  if (chatAvailable({ agents, workflow, hasWorkspaces: canChat })) work.push('chat');
+  const work: PageId[] = chatAvailable({ agents, workflow, hasWorkspaces: canChat }) ? ['chat', 'office'] : ['office'];
   if (canChat) work.push('missions', 'schedules');
   work.push('observe');
   // Files and Git read a workspace's project folder, so they need one.
@@ -60,14 +61,21 @@ export function navigationGroups({ agents, workflow, canChat }: NavigationInput)
 export interface LandingInput {
   /** Whether the host can run agents (false in the static web build). */
   agents: boolean;
+  /** Active host workflow when known; defaults conservatively to 'managed'. */
+  workflow?: Workflow;
+  /** Optional shared profile preference (managed mode only). */
+  preference?: LandingPagePreference;
 }
 
 /**
- * The page opened after setup and on every launch: always the 3D Office, whatever
- * page was used last. Without an agent host it is Get started (nothing to show yet).
+ * The page opened after setup and on every launch (arbitrary last-visited pages
+ * are never remembered). Managed hosts open session-first Chat unless the user
+ * opted into the 3D Office; Observe opens the 3D Office; static web opens Get started.
  */
 export function resolveLandingPage(input: LandingInput): PageId {
-  return input.agents ? 'office' : 'start';
+  if (!input.agents) return 'start';
+  if (input.workflow === 'observe') return 'office';
+  return input.preference === 'office' ? 'office' : 'chat';
 }
 
 /** The remembered workspace when it still exists; otherwise undefined (the chat then picks the first). */

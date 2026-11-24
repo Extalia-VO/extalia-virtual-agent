@@ -1,6 +1,7 @@
 import { presetById, type RuntimeId } from '@extalia/core';
 import type { AgentHostApi, HostState, Platform } from '@extalia/platform';
 import { useEffect, useId, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { resolveLandingPage } from '../appMode';
 import { errorMessage } from '../host/remote';
 import { LANGUAGES, type Messages } from '../i18n';
 import { FONTS, MATERIALS, THEMES, type MaterialPreference, type Preferences } from '../preferences';
@@ -83,6 +84,7 @@ export function SetupWizard({ t, platform, agents, state, onState, preferences, 
   // Hermes Agent brings its own models: choosing it skips the model connection.
   const hermes = workspace.runtimeId === 'hermes';
   const observeOnly = workspace.mode === 'observe';
+  const finishDestination = resolveLandingPage({ agents: true, workflow: observeOnly ? 'observe' : 'managed', preference: preferences.landingPage });
   const hermesInstalled = Boolean(availableHermes(runtimes));
   const hermesBlocked = hermes && runtimesReady && !hermesInstalled;
   const shownSteps = SETUP_STEPS.filter(item => !observeOnly || item !== 'connection');
@@ -378,7 +380,7 @@ export function SetupWizard({ t, platform, agents, state, onState, preferences, 
             {step === 'connection' && <button type="button" className="primary" disabled={!advance} onClick={hermes ? () => go('workspace') : saveConnection}>{busy ? t.common.saving : t.common.next}<Icon name="chevron" /></button>}
             {step === 'workspace' && <button type="button" className="primary" disabled={!advance} onClick={saveWorkspace}>{busy ? t.common.saving : t.common.next}<Icon name="chevron" /></button>}
             {step === 'agentApps' && <button type="button" className="primary" disabled={!advance} onClick={() => go('done')}>{t.setup.continue}<Icon name="chevron" /></button>}
-            {step === 'done' && <button type="button" className="primary" disabled={busy || !ready} onClick={finish}>{busy ? t.setup.finishing : t.setup.finish}<Icon name="monitor" /></button>}
+            {step === 'done' && <button type="button" className="primary" disabled={busy || !ready} onClick={finish}>{busy ? t.setup.finishing : finishDestination === 'office' ? t.setup.finishOffice : t.setup.finish}<Icon name={finishDestination === 'office' ? 'monitor' : 'chat'} /></button>}
           </div>
           {step === 'welcome' && <p className="muted small setup-observe-hint" id="setup-observe-hint">{t.observer.setup}</p>}
         </section>

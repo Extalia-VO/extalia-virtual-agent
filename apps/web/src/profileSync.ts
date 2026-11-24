@@ -11,7 +11,7 @@ import { attachProfileClientState } from './profileClientState';
  * Web build without a host keeps using localStorage only.
  */
 
-export const PROFILE_FIELDS = ['language', 'theme', 'material', 'font', 'sidebar'] as const satisfies readonly (keyof Preferences & keyof ProfilePreferences)[];
+export const PROFILE_FIELDS = ['language', 'theme', 'material', 'font', 'sidebar', 'landingPage'] as const satisfies readonly (keyof Preferences & keyof ProfilePreferences)[];
 type Field = typeof PROFILE_FIELDS[number];
 
 export const toProfilePreferences = (preferences: Preferences): ProfilePreferences =>

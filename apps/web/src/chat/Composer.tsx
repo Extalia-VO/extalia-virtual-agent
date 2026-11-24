@@ -40,7 +40,7 @@ let chipSequence = 0;
 
 interface ComposerContext {
   agents: AgentHostApi;
-  workspaceId: string;
+  workspaceId: string | null;
   sessionId: string | undefined;
   hermes: boolean;
   readOnly: boolean;
@@ -76,12 +76,14 @@ class ComposerSubmission {
  * Right: permission mode, model and effort, the context ring and Send. Enter sends, Shift+Enter adds a line.
  * The choices apply to the session at once (`setSessionOptions`); before the first message they travel with it.
  */
-export function Composer({ t, agents, session, workspaceId, hermes, modelScopeKey, running, waiting, readOnly, stopping, sendBlocked = false, onSend, onStop, onSessionChanged, onOpenContext, contextPanelId }: {
+export function Composer({ t, agents, session, workspaceId, connectionId, hermes, modelScopeKey, running, waiting, readOnly, stopping, sendBlocked = false, onSend, onStop, onSessionChanged, onOpenContext, contextPanelId }: {
   t: Messages;
   agents: AgentHostApi;
   /** The session the message goes to; absent on the Chat page before its first message. */
   session?: SessionSummary | undefined;
-  workspaceId: string;
+  workspaceId: string | null;
+  /** Selected Native connection when starting a new unassigned session (`workspaceId === null`). */
+  connectionId?: string | undefined;
   /** A Hermes workspace or session: Hermes manages the permissions, so the picker only says so. */
   hermes: boolean;
   modelScopeKey?: string;
@@ -110,8 +112,8 @@ export function Composer({ t, agents, session, workspaceId, hermes, modelScopeKe
   const [draft, setDraft] = useState<SessionChoice>({});
   // A pending choice belongs to the session it was made for; a new session state drops it.
   const [pending, setPending] = useState<{ base: SessionSummary | undefined; choice: SessionChoice }>();
-  // The workspace's models and efforts, kept with the workspace they came for.
-  const scopeKey = modelScopeKey ?? JSON.stringify([workspaceId, session?.id, session?.connectionId, session?.runtime, hermes]);
+  // The workspace's (or unassigned connection's) models and efforts, kept with the scope they came for.
+  const scopeKey = modelScopeKey ?? JSON.stringify([workspaceId, connectionId, session?.id, session?.connectionId, session?.runtime, hermes]);
   const [loaded, setLoaded] = useState<{ key: string; choices: ModelChoices }>();
   const [draftScope, setDraftScope] = useState(scopeKey);
   if (draftScope !== scopeKey) { setDraftScope(scopeKey); setDraft({}); }
@@ -152,11 +154,11 @@ export function Composer({ t, agents, session, workspaceId, hermes, modelScopeKe
 
   useEffect(() => {
     let current = true;
-    agents.modelChoices(workspaceId, sessionId)
+    agents.modelChoices(workspaceId, sessionId, workspaceId === null && !sessionId ? connectionId : undefined)
       .then(next => { if (current) setLoaded({ key: scopeKey, choices: next }); })
       .catch(() => { if (current) setLoaded(undefined); });
     return () => { current = false; };
-  }, [agents, workspaceId, sessionId, scopeKey]);
+  }, [agents, workspaceId, sessionId, connectionId, scopeKey]);
 
   // The choices shown: the session's own, or the draft that the first message will create the session with.
   const shown: SessionChoice = optimistic ?? (session ? choiceFromOptions(session.options) : draft);
@@ -181,8 +183,9 @@ export function Composer({ t, agents, session, workspaceId, hermes, modelScopeKe
     description: (mode: PermissionMode) => t.composer.mode[mode].description,
     managed: t.composer.mode.managed,
   };
-  const permissionOptions = permissionSelectOptions(hermes ? 'hermes' : 'extalia-native', modeLabels, { modes: choices?.permissionModes, current: shown.permissionMode });
-  const permissionValue = hermes ? HERMES_CHOICE : (shown.permissionMode ?? 'workspace');
+  const unassigned = workspaceId === null;
+  const permissionOptions = permissionSelectOptions(hermes ? 'hermes' : 'extalia-native', modeLabels, { modes: unassigned ? ['plan'] : choices?.permissionModes, current: unassigned ? 'plan' : shown.permissionMode });
+  const permissionValue = hermes ? HERMES_CHOICE : unassigned ? 'plan' : (shown.permissionMode ?? 'workspace');
   const submissionContext = useMemo(() => ({ agents, workspaceId, sessionId, hermes, readOnly, permissionValue }), [agents, workspaceId, sessionId, hermes, readOnly, permissionValue]);
   const currentSubmissionContext = useRef(submissionContext);
   const submission = useRef<ComposerSubmission | undefined>(undefined);
@@ -406,7 +409,7 @@ export function Composer({ t, agents, session, workspaceId, hermes, modelScopeKe
         </div>
         <div className="composer-controls">
           {!readOnly && <Select className="composer-picker composer-permission" aria-label={t.composer.permission} value={permissionValue}
-            options={permissionOptions} disabled={!pickersEnabled || hermes} placeholder={t.composer.mode.workspace.label}
+            options={permissionOptions} disabled={!pickersEnabled || hermes || unassigned} placeholder={unassigned ? t.composer.mode.plan.label : t.composer.mode.workspace.label}
             onChange={value => { if (isPermissionMode(value)) void changeChoice({ permissionMode: value }); }} />}
           {!readOnly && choices && <Select className="composer-picker composer-model" aria-label={t.composer.model} value={choiceValue(shown.model)}
             options={modelOptions} disabled={!pickersEnabled} placeholder={defaultModelLabel}
@@ -430,7 +433,7 @@ export function Composer({ t, agents, session, workspaceId, hermes, modelScopeKe
       </div>
       <small id="composer-hint" className="visually-hidden">{t.chat.hint}</small>
     </form>
-    <PromptSuggestions t={t} agents={agents} session={session} workspaceId={workspaceId}
+    <PromptSuggestions t={t} agents={agents} session={session} workspaceId={workspaceId ?? undefined}
       copyOnly={session?.control === 'observed' && !supportsObservedPromptQueue(session.observation?.sourceId)}
       disabled={sendBlocked || readOnly && session?.control !== 'observed' || running || waiting} />
     </>

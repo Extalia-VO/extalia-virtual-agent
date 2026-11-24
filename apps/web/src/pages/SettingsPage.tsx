@@ -197,6 +197,20 @@ function SettingsPageContent({ t, platform, preferences, onChange, hostState, on
                     onChange={val => onChange({ ...preferences, sidebar: val })}
                   />
                 </div>
+                {agents && hostState && !observeOnly && (
+                  <div className="field">
+                    <Select
+                      label={t.settings.landingPage}
+                      value={preferences.landingPage}
+                      options={([
+                        { value: 'chat' as const, label: t.settings.landingPages.chat, icon: 'chat' as const },
+                        { value: 'office' as const, label: t.settings.landingPages.office, icon: 'monitor' as const }
+                      ])}
+                      onChange={val => onChange({ ...preferences, landingPage: val })}
+                    />
+                    <small className="muted">{t.settings.landingPageHint}</small>
+                  </div>
+                )}
               </div>
             </section>
             {agents && hostState && <section className="card settings-section"><h2>{t.observer.workflow}</h2><div className="actions">

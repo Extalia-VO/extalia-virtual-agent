@@ -10,7 +10,8 @@ import './memoryContext.css';
 type MemoryConnection = Pick<ConnectionView, 'id' | 'name' | 'features'>;
 
 /** Saved sessions retain their own connection; only a new conversation uses the workspace default. */
-export function memoryContextScope(state: Pick<HostState, 'connections' | 'profile' | 'dataDirectory' | 'storage' | 'host'>, workspace: Workspace, session?: SessionSummary) {
+export function memoryContextScope(state: Pick<HostState, 'connections' | 'profile' | 'dataDirectory' | 'storage' | 'host'>, workspace?: Workspace, session?: SessionSummary) {
+  if (!workspace) return undefined;
   if (session ? session.control !== 'managed' || session.runtime || session.workspaceId !== workspace.id : workspace.runtimeId === 'hermes') return undefined;
   const connectionId = session ? session.connectionId : workspace.providerProfileId;
   const profileKey = JSON.stringify([state.profile.id, state.dataDirectory ?? state.storage.dataDirectory, state.host.kind]);

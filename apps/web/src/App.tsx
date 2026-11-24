@@ -27,7 +27,6 @@ import { LearningCountdown } from './knowledge/LearningCountdown';
 import type { SettingsSection } from './pages/settings/settingsSections';
 import { useSkillsWaiting } from './skills/skillsModel';
 import { StartPage } from './pages/StartPage';
-import { OfficePage } from './pages/OfficePage';
 import { NativeStatusButton } from './native/NativeStatusButton';
 import { loadPreferences, savePreferences, type Preferences } from './preferences';
 import { useProfileSync } from './profileSync';
@@ -40,7 +39,8 @@ import { UpdateBanner, useUpdateStatus } from './updates/Updates';
 import { UpdateAvailableDialog } from './updates/UpdateAvailableDialog';
 import { PageLoadBoundary } from './pages/PageLoadBoundary';
 
-// Keep landing, conversation and global supervision controls available without loading every page.
+// Keep conversation and global supervision controls ready; 3D Office and secondary pages load on demand.
+const OfficePage = lazy(() => import('./pages/OfficePage').then(module => ({ default: module.OfficePage })));
 const HistoryPage = lazy(() => import('./library/HistoryPage').then(module => ({ default: module.HistoryPage })));
 const KnowledgePage = lazy(() => import('./knowledge/KnowledgePage').then(module => ({ default: module.KnowledgePage })));
 const ImportPage = lazy(() => import('./library/ImportPage').then(module => ({ default: module.ImportPage })));
@@ -126,12 +126,12 @@ export function App({ platform }: { platform: Platform }) {
     return subscribeProfileClientState(refresh);
   }, []);
   const workflow = hostState?.workflow ?? 'managed';
-  // Every launch and the end of setup land in the 3D Office (Get started without an agent host).
-  const defaultPage: PageId = resolveLandingPage({ agents: Boolean(agents) });
+  // Managed launches open session-first Chat by default unless the user opted into 3D Office.
+  const defaultPage: PageId = resolveLandingPage({ agents: Boolean(agents), workflow, preference: preferences.landingPage });
   const [chosenPage, setChosenPage] = useState<PageId | null>(null);
   const page: PageId = chosenPage ?? defaultPage;
   const [missionFocus, setMissionFocus] = useState<{ id?: string; token: number } | null>(null);
-  const [selection, setSelectionState] = useState<ChatSelection>({});
+  const [selection, setSelectionState] = useState<ChatSelection>({ sessionId: null });
   const [officeLearningTarget, setOfficeLearningTarget] = useState<HTMLDivElement | null>(null);
   const [officeLearningCompactTarget, setOfficeLearningCompactTarget] = useState<HTMLDivElement | null>(null);
   const [contentLearningCompactTarget, setContentLearningCompactTarget] = useState<HTMLDivElement | null>(null);
@@ -178,8 +178,8 @@ export function App({ platform }: { platform: Platform }) {
   // The Office uses the whole width: its sidebar stays narrow and opens over the scene on hover or keyboard focus.
   const currentSession = useMemo(() => hostState ? resolveChat(hostState, selection).session : undefined, [hostState, selection]);
   const chatWorkspaceId = selection.workspaceId ?? undefined;
-  // Chat opens on the last-used workspace when it still exists, otherwise on the first one.
-  const rememberedWorkspace = hostState ? resolveLandingWorkspace(hostState.workspaces, stored.workspaceId) : undefined;
+  // Chat opens on the last-used managed workspace when it still exists, otherwise on the first one (or Unassigned).
+  const rememberedWorkspace = hostState ? resolveLandingWorkspace(hostState.workspaces.filter(workspace => workspace.mode !== 'observe'), stored.workspaceId) : undefined;
   const chatSelection: ChatSelection = selection.workspaceId !== undefined || !rememberedWorkspace ? selection : { ...selection, workspaceId: rememberedWorkspace };
 
   const groups = navigationGroups({ agents: Boolean(agents), workflow, canChat: Boolean(hostState?.workspaces.some(workspace => workspace.mode !== 'observe')) });
@@ -228,7 +228,7 @@ export function App({ platform }: { platform: Platform }) {
   } else if (boot.phase === 'setup-required' && agents && hostState) {
     // First run: only the wizard mounts (no sidebar, Office or Chat), whatever page was asked for.
     body = <>{banner}<SetupWizard t={t} platform={platform} agents={agents} state={hostState} preferences={preferences} onPreferences={update}
-      onState={next => { if (next.setupComplete) setChosenPage(null); host.apply(next); }} /></>;
+      onState={next => { if (next.setupComplete) { setChosenPage(null); setSelectionState({ sessionId: null }); } host.apply(next); }} /></>;
   } else {
     const hostLabel = hostState ? t.hosts[hostState.host.kind] : t.hosts[platform.info.kind];
     body = (
