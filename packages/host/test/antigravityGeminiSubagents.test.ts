@@ -460,6 +460,204 @@ describe('Antigravity live hook observation routing, multi-level trees & race co
       await f.observer.close();
     }
   });
+
+  it('builds multi-level subagent trees from real Antigravity PostToolUse hooks (no toolOutput) and hydrates truncated batch transcript spawns', async () => {
+    const f = await createTempEnv();
+    try {
+      const rootLogsDir = path.join(f.home, '.gemini', 'antigravity', 'brain', 'agy-real-root', '.system_generated', 'logs');
+      const workerLogsDir = path.join(f.home, '.gemini', 'antigravity', 'brain', 'agy-real-worker-a', '.system_generated', 'logs');
+      await mkdir(rootLogsDir, { recursive: true });
+      await mkdir(workerLogsDir, { recursive: true });
+      const rootTranscript = path.join(rootLogsDir, 'transcript.jsonl');
+      const rootFullTranscript = path.join(rootLogsDir, 'transcript_full.jsonl');
+      const workerTranscript = path.join(workerLogsDir, 'transcript.jsonl');
+      const workerFullTranscript = path.join(workerLogsDir, 'transcript_full.jsonl');
+
+      await writeFile(rootTranscript, agyRow(1, 'USER_INPUT', 0, { content: '<USER_REQUEST>\nBuild real subagent tree\n</USER_REQUEST>' }));
+      await writeFile(workerTranscript, agyRow(1, 'SYSTEM_MESSAGE', 100, { content: '<SYSTEM_MESSAGE>\nsender=coordinator content=You are worker-a\n</SYSTEM_MESSAGE>' }));
+
+      // 1. Root SessionStart (official real fields, including lastUserInput & transcript_full.jsonl path)
+      await f.observer.receiveHook(normalizeAntigravityHook({
+        conversationId: 'agy-real-root',
+        hookEventName: 'SessionStart',
+        workspacePaths: ['/projects/example'],
+        transcriptPath: rootFullTranscript,
+        modelName: 'gemini-4-lead',
+        lastUserInput: 'Build real subagent tree',
+      })!);
+
+      // 2. Root invokes swarm(action: 'add') — PreToolUse fires before transcript writes tool result.
+      await f.observer.receiveHook(normalizeAntigravityHook({
+        conversationId: 'agy-real-root',
+        hookEventName: 'PreToolUse',
+        stepIdx: 2,
+        workspacePaths: ['/projects/example'],
+        transcriptPath: rootFullTranscript,
+        toolCall: { id: 'toolu_swarm_1', name: 'swarm', args: { action: 'add', name: 'worker-a', brief: 'Implement step A' } },
+      })!);
+
+      // 3. Antigravity flushes compact + full transcripts (simulating truncated_fields on BOTH PLANNER_RESPONSE and GENERIC).
+      const compactSwarmRows = agyRow(2, 'PLANNER_RESPONSE', 500, {
+        content: '',
+        tool_calls: [{ name: 'swarm', args: { action: 'add', name: 'worker-a', brief: '<truncated 2048 bytes>' } }],
+        truncated_fields: ['tool_calls'],
+      }) + agyRow(3, 'GENERIC', 700, {
+        content: 'Created At: 2026-10-15T12:00:00+00:00\nCompleted At: ...\n<truncated 1200 bytes>',
+        truncated_fields: ['content'],
+      });
+      const fullSwarmRows = agyRow(1, 'USER_INPUT', 0, { content: '<USER_REQUEST>\nBuild real subagent tree\n</USER_REQUEST>' })
+        + agyRow(2, 'PLANNER_RESPONSE', 500, {
+          content: '',
+          tool_calls: [{ name: 'swarm', args: { action: 'add', name: 'worker-a', brief: 'Full brief for worker-a', model: 'gemini-4-worker' } }],
+        })
+        + agyRow(3, 'GENERIC', 700, {
+          content: `Created At: 2026-10-15T12:00:00+00:00\nCompleted At: 2026-10-15T12:00:01+00:00\n${JSON.stringify({
+            status: 'added',
+            name: 'worker-a',
+            model: 'gemini-4-worker',
+            model_display_name: 'Gemini 4 Worker',
+            conversation_id: 'agy-real-worker-a',
+          })}`,
+        });
+      await writeFile(rootFullTranscript, fullSwarmRows);
+      await appendFile(rootTranscript, compactSwarmRows);
+
+      // 4. Real PostToolUse arrives WITHOUT toolOutput/tool_response (matches official Antigravity docs/hooks.md).
+      await f.observer.receiveHook(normalizeAntigravityHook({
+        conversationId: 'agy-real-root',
+        hookEventName: 'PostToolUse',
+        stepIdx: 2,
+        workspacePaths: ['/projects/example'],
+        transcriptPath: rootFullTranscript,
+        toolCall: { id: 'toolu_swarm_1', name: 'swarm', args: { action: 'add', name: 'worker-a', brief: 'Implement step A' } },
+      })!);
+
+      // 5. Race condition for second worker (`worker-b`): child starts & runs a tool BEFORE root flushes/completes PostToolUse!
+      await f.observer.receiveHook(normalizeAntigravityHook({
+        conversationId: 'agy-real-worker-b',
+        hookEventName: 'SessionStart',
+        workspacePaths: ['/projects/worktrees/worker-b'],
+        modelName: 'gemini-4-flash',
+      })!);
+      await f.observer.receiveHook(normalizeAntigravityHook({
+        conversationId: 'agy-real-worker-b',
+        hookEventName: 'PreToolUse',
+        stepIdx: 1,
+        workspacePaths: ['/projects/worktrees/worker-b'],
+        toolCall: { id: 'toolu_wb_read', name: 'read_file', args: { Path: '/projects/example/src/b.ts' } },
+      })!);
+      expect(f.observer.summaries().map(s => s.observation?.nativeSessionId).sort()).toEqual(['agy-real-root', 'agy-real-worker-b']);
+
+      await appendFile(rootFullTranscript,
+        agyRow(4, 'PLANNER_RESPONSE', 900, { content: '', tool_calls: [{ name: 'swarm', args: { action: 'add', name: 'worker-b' } }] })
+        + agyRow(5, 'GENERIC', 1100, {
+          content: JSON.stringify({ status: 'added', name: 'worker-b', model_display_name: 'Gemini 4 Flash', conversation_id: 'agy-real-worker-b' }),
+        }),
+      );
+      await appendFile(rootTranscript,
+        agyRow(4, 'PLANNER_RESPONSE', 900, { content: '', tool_calls: [{ name: 'swarm', args: { action: 'add', name: 'worker-b' } }] })
+        + agyRow(5, 'GENERIC', 1100, {
+          content: JSON.stringify({ status: 'added', name: 'worker-b', model_display_name: 'Gemini 4 Flash', conversation_id: 'agy-real-worker-b' }),
+        }),
+      );
+      await f.observer.receiveHook(normalizeAntigravityHook({
+        conversationId: 'agy-real-root',
+        hookEventName: 'PostToolUse',
+        stepIdx: 4,
+        transcriptPath: rootFullTranscript,
+        toolCall: { id: 'toolu_swarm_2', name: 'swarm', args: { action: 'add', name: 'worker-b' } },
+      })!);
+      expect(f.observer.summaries()).toHaveLength(1);
+
+      // 6. Worker-a delegates a nested grandchild (`helper-b`) via invoke_subagent WITHOUT toolOutput on PostToolUse.
+      await f.observer.receiveHook(normalizeAntigravityHook({
+        conversationId: 'agy-real-worker-a',
+        hookEventName: 'PreToolUse',
+        stepIdx: 2,
+        workspacePaths: ['/projects/worktrees/worker-a'],
+        transcriptPath: workerFullTranscript,
+        toolCall: { id: 'toolu_sub_1', name: 'invoke_subagent', args: { TypeName: 'verifier', Role: 'Helper Verifier', Model: 'gemini-4-helper' } },
+      })!);
+      await writeFile(workerFullTranscript,
+        agyRow(1, 'SYSTEM_MESSAGE', 100, { content: '<SYSTEM_MESSAGE>\nsender=coordinator content=You are worker-a\n</SYSTEM_MESSAGE>' })
+        + agyRow(2, 'PLANNER_RESPONSE', 1300, { content: '', tool_calls: [{ name: 'invoke_subagent', args: { TypeName: 'verifier', Role: 'Helper Verifier', Model: 'gemini-4-helper' } }] })
+        + agyRow(3, 'GENERIC', 1400, { content: 'Created At: 2026-10-15T12:00:05+00:00\nCompleted At: 2026-10-15T12:00:06+00:00\n{"conversationId":"agy-real-helper-b","status":"started"}' }),
+      );
+      await appendFile(workerTranscript,
+        agyRow(2, 'PLANNER_RESPONSE', 1300, { content: '', tool_calls: [{ name: 'invoke_subagent', args: { TypeName: 'verifier', Role: 'Helper Verifier', Model: 'gemini-4-helper' } }] })
+        + agyRow(3, 'GENERIC', 1400, { content: 'Created At: 2026-10-15T12:00:05+00:00\nCompleted At: 2026-10-15T12:00:06+00:00\n{"conversationId":"agy-real-helper-b","status":"started"}' }),
+      );
+      await f.observer.receiveHook(normalizeAntigravityHook({
+        conversationId: 'agy-real-worker-a',
+        hookEventName: 'PostToolUse',
+        stepIdx: 2,
+        transcriptPath: workerFullTranscript,
+        toolCall: { id: 'toolu_sub_1', name: 'invoke_subagent', args: { TypeName: 'verifier', Role: 'Helper Verifier', Model: 'gemini-4-helper' } },
+      })!);
+      await f.observer.receiveHook(normalizeAntigravityHook({
+        conversationId: 'agy-real-helper-b',
+        hookEventName: 'PreToolUse',
+        stepIdx: 1,
+        workspacePaths: ['/projects/worktrees/worker-a'],
+        toolCall: { id: 'toolu_hb_cmd', name: 'run_command', args: { CommandLine: 'pnpm test' } },
+      })!);
+
+      // 7. Root kills `worker-a` by name via swarm(action: 'kill') WITHOUT toolOutput, then kills all remaining via manage_subagents(kill_all) WITHOUT toolOutput.
+      await f.observer.receiveHook(normalizeAntigravityHook({
+        conversationId: 'agy-real-root',
+        hookEventName: 'PreToolUse',
+        stepIdx: 6,
+        transcriptPath: rootFullTranscript,
+        toolCall: { id: 'toolu_kill_a', name: 'swarm', args: { action: 'kill', name: 'worker-a' } },
+      })!);
+      await f.observer.receiveHook(normalizeAntigravityHook({
+        conversationId: 'agy-real-root',
+        hookEventName: 'PostToolUse',
+        stepIdx: 6,
+        transcriptPath: rootFullTranscript,
+        toolCall: { id: 'toolu_kill_a', name: 'swarm', args: { action: 'kill', name: 'worker-a' } },
+      })!);
+      await f.observer.receiveHook(normalizeAntigravityHook({
+        conversationId: 'agy-real-root',
+        hookEventName: 'PreToolUse',
+        stepIdx: 7,
+        transcriptPath: rootFullTranscript,
+        toolCall: { id: 'toolu_kill_all', name: 'manage_subagents', args: { Action: 'kill_all' } },
+      })!);
+      await f.observer.receiveHook(normalizeAntigravityHook({
+        conversationId: 'agy-real-root',
+        hookEventName: 'PostToolUse',
+        stepIdx: 7,
+        transcriptPath: rootFullTranscript,
+        toolCall: { id: 'toolu_kill_all', name: 'manage_subagents', args: { Action: 'kill_all' } },
+      })!);
+
+      const summaries = f.observer.summaries();
+      expect(summaries).toHaveLength(1);
+      expect(summaries[0]).toMatchObject({
+        title: 'Build real subagent tree',
+        model: 'gemini-4-lead',
+        observation: { sourceId: 'antigravity', nativeSessionId: 'agy-real-root', projectPath: '/projects/example', channel: 'hook' },
+      });
+
+      const events = f.observer.events(summaries[0]!.id);
+      expect(events.every(event => parseEvent(event).ok)).toBe(true);
+      expect(spawned(events).map(event => [event.agentId, event.body])).toEqual([
+        ['primary', { type: 'subagent.spawned', subagentId: 'agy-real-worker-a', label: 'worker-a', role: 'worker-a', model: 'Gemini 4 Worker' }],
+        ['primary', { type: 'subagent.spawned', subagentId: 'agy-real-worker-b', label: 'worker-b', role: 'worker-b', model: 'Gemini 4 Flash' }],
+        ['agy-real-worker-a', { type: 'subagent.spawned', subagentId: 'agy-real-helper-b', label: 'Helper Verifier', role: 'verifier', model: 'gemini-4-helper' }],
+      ]);
+      expect(events.some(event => event.agentId === 'agy-real-worker-b' && event.body.type === 'tool.started' && event.body.target === 'b.ts')).toBe(true);
+      expect(events.some(event => event.agentId === 'agy-real-helper-b' && event.body.type === 'tool.started' && event.body.tool === 'run_command')).toBe(true);
+      expect(
+        events
+          .filter(event => event.agentId === 'primary' && event.body.type === 'subagent.state' && event.body.state === 'offline')
+          .map(event => (event.body as { subagentId: string }).subagentId),
+      ).toEqual(['agy-real-worker-a', 'agy-real-worker-b']);
+    } finally {
+      await f.observer.close();
+    }
+  });
 });
 
 describe('Antigravity transcript subagent discovery', () => {
@@ -763,6 +961,98 @@ describe('Gemini CLI orchestrator/subagent hooks & Claude/Codex regression guard
       ]);
       expect(events.some(event => event.agentId === 'gemini-child-async' && event.body.type === 'tool.started' && event.body.target === 'a.ts')).toBe(true);
       expect(events.some(event => event.agentId === 'gemini-grandchild' && event.body.type === 'tool.started' && event.body.target === 'b.ts')).toBe(true);
+    } finally {
+      await f.observer.close();
+    }
+  });
+
+  it('tracks Gemini CLI invoke_agent, browser_agent, out-of-order concurrent unkeyed delegations, and nested parent_agent_id trees', async () => {
+    const f = await createTempEnv();
+    try {
+      await f.observer.receiveHook(normalizeGeminiHook({
+        session_id: 'gemini-lead-2',
+        hook_event_name: 'BeforeAgent',
+        prompt: 'Inspect frontend and backend',
+        workspace_dir: '/projects/example',
+      })!);
+
+      const preInvoke = normalizeGeminiHook({
+        session_id: 'gemini-lead-2',
+        hook_event_name: 'BeforeTool',
+        tool_name: 'invoke_agent',
+        tool_input: { agent_name: 'backend_expert', goal: 'Audit API' },
+      })!;
+      const preBrowser = normalizeGeminiHook({
+        session_id: 'gemini-lead-2',
+        hook_event_name: 'BeforeTool',
+        tool_name: 'invoke_agent',
+        tool_input: { subagent_name: 'frontend_expert', goal: 'Audit UI' },
+      })!;
+      const backendSubId = (preInvoke.steps.find(step => step.body.type === 'subagent.spawned')?.body as { subagentId: string }).subagentId;
+      const frontendSubId = (preBrowser.steps.find(step => step.body.type === 'subagent.spawned')?.body as { subagentId: string }).subagentId;
+      expect(backendSubId).not.toBe(frontendSubId);
+
+      await f.observer.receiveHook(preInvoke);
+      await f.observer.receiveHook(preBrowser);
+
+      // Nested grandchild reports directly using parent_agent_id + agent_id inside the same session, and itself delegates to a 4th-level child.
+      const preGrandchild = normalizeGeminiHook({
+        session_id: 'gemini-lead-2',
+        hook_event_name: 'BeforeTool',
+        agent_id: 'grandchild-browser',
+        parent_agent_id: frontendSubId,
+        agent_type: 'browser_agent',
+        tool_name: 'browser_agent',
+        tool_input: { subagent_name: 'dom_inspector' },
+      })!;
+      const domInspectorSubId = (preGrandchild.steps.find(step => step.body.type === 'subagent.spawned')?.body as { subagentId: string }).subagentId;
+      await f.observer.receiveHook(preGrandchild);
+      await f.observer.receiveHook(normalizeGeminiHook({
+        session_id: 'gemini-lead-2',
+        hook_event_name: 'AfterTool',
+        agent_id: 'grandchild-browser',
+        parent_agent_id: frontendSubId,
+        agent_type: 'browser_agent',
+        tool_name: 'browser_agent',
+        tool_input: { subagent_name: 'dom_inspector' },
+        tool_response: { llmContent: 'DOM inspected' },
+      })!);
+
+      // Concurrent unkeyed AfterTool completions finish out of order (`frontend_expert` first, then `backend_expert`).
+      await f.observer.receiveHook(normalizeGeminiHook({
+        session_id: 'gemini-lead-2',
+        hook_event_name: 'AfterTool',
+        tool_name: 'invoke_agent',
+        tool_input: { subagent_name: 'frontend_expert' },
+        tool_response: { llmContent: 'UI verified' },
+      })!);
+      await f.observer.receiveHook(normalizeGeminiHook({
+        session_id: 'gemini-lead-2',
+        hook_event_name: 'AfterTool',
+        tool_name: 'invoke_agent',
+        tool_input: { agent_name: 'backend_expert' },
+        tool_response: { llmContent: 'API verified' },
+      })!);
+
+      const [summary] = f.observer.summaries();
+      expect(summary?.observation?.projectPath).toBe('/projects/example');
+      const events = f.observer.events(summary!.id);
+      expect(events.every(event => parseEvent(event).ok)).toBe(true);
+      expect(spawned(events).map(event => [event.agentId, (event.body as { subagentId: string; role?: string }).subagentId, (event.body as { role?: string }).role])).toEqual([
+        ['primary', backendSubId, 'backend_expert'],
+        ['primary', frontendSubId, 'frontend_expert'],
+        [frontendSubId, 'grandchild-browser', 'browser_agent'],
+        ['grandchild-browser', domInspectorSubId, 'dom_inspector'],
+      ]);
+      expect(
+        events
+          .filter(event => event.body.type === 'subagent.state' && event.body.state === 'offline')
+          .map(event => [event.agentId, (event.body as { subagentId: string }).subagentId]),
+      ).toEqual([
+        ['grandchild-browser', domInspectorSubId],
+        ['primary', frontendSubId],
+        ['primary', backendSubId],
+      ]);
     } finally {
       await f.observer.close();
     }

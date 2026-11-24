@@ -116,20 +116,29 @@ function readBounded(root: string, path: string, max: number): string {
  * `content` (and truncated `tool_calls`) from `transcript_full.jsonl` without loading
  * full `thinking` traces or huge tool outputs into memory.
  */
-function hydrateAntigravityTranscript(root: string, transcriptPath: string, content: string): string {
+function hydrateAntigravityTranscript(root: string, transcriptPath: string, content: string, includeSpawnToolResponses = false): string {
   if (!content.includes('"truncated_fields"') && !content.includes('<truncated ')) return content;
   const lines = content.split('\n');
   const needed = new Map<number, { indices: number[]; rows: Row[] }>();
+  let expectSpawnResponses = false;
   for (let index = 0; index < lines.length; index++) {
     const line = lines[index]!;
+    if (includeSpawnToolResponses) {
+      if (line.includes('"USER_INPUT"')) expectSpawnResponses = false;
+      else if (line.includes('"PLANNER_RESPONSE"')) expectSpawnResponses = line.includes('swarm') || line.includes('invoke_subagent');
+    }
     if (!line.includes('"truncated_fields"') && !line.includes('<truncated ')) continue;
     try {
       const row = JSON.parse(line) as Row;
       const stepIndex = typeof row.step_index === 'number' && Number.isInteger(row.step_index) ? row.step_index : undefined;
-      if (stepIndex === undefined || (row.type !== 'USER_INPUT' && row.type !== 'PLANNER_RESPONSE')) continue;
       const truncated = Array.isArray(row.truncated_fields) ? row.truncated_fields : [];
       const contentTruncated = truncated.includes('content') || (typeof row.content === 'string' && /<truncated \d+ bytes>/.test(row.content));
       const toolsTruncated = truncated.includes('tool_calls');
+      if (includeSpawnToolResponses && row.type === 'PLANNER_RESPONSE' && toolsTruncated) {
+        expectSpawnResponses = true;
+      }
+      const isSpawnResponse = includeSpawnToolResponses && expectSpawnResponses && (row.type === 'GENERIC' || row.type === 'TOOL_RESPONSE');
+      if (stepIndex === undefined || (row.type !== 'USER_INPUT' && row.type !== 'PLANNER_RESPONSE' && !isSpawnResponse)) continue;
       if (!contentTruncated && !toolsTruncated) continue;
       const bucket = needed.get(stepIndex) ?? { indices: [], rows: [] };
       bucket.indices.push(index);
@@ -971,6 +980,28 @@ export class NativeImportService {
     return undefined;
   }
 
+  /** Fresh `swarm` / `invoke_subagent` spawn edges for one Antigravity conversation transcript. */
+  antigravitySpawnsFor(reference: NativeObservationRef): AntigravitySubagentSpawn[] {
+    if (reference.sourceId !== 'antigravity') return [];
+    try {
+      if (reference.path) {
+        const location = this.observationLocation(reference);
+        return location.kind === 'antigravity' ? (this.antigravityTranscriptSpawns(location, reference.path)?.spawns ?? []) : [];
+      }
+      if (!reference.nativeSessionId) return [];
+      for (const location of this.knownLocations()) {
+        if (location.kind !== 'antigravity' || !location.available || !location.supported) continue;
+        const candidate = join(location.path, reference.nativeSessionId, '.system_generated', 'logs', 'transcript.jsonl');
+        if (!existsSync(candidate)) continue;
+        try {
+          contained(location.path, candidate);
+          return this.antigravityTranscriptSpawns(location, candidate)?.spawns ?? [];
+        } catch { /* unsafe or missing transcript */ }
+      }
+      return [];
+    } catch { return []; }
+  }
+
   /** Locations whose new sessions can be watched automatically (readable transcript formats only). */
   autoWatchable(locationId: string): boolean {
     const location = this.knownLocations().find(item => item.id === locationId);
@@ -1610,7 +1641,7 @@ export class NativeImportService {
       let spawns: AntigravitySubagentSpawn[] = [];
       if (raw.includes('swarm') || raw.includes('invoke_subagent') || raw.includes('conversation_id') || raw.includes('conversationId')) {
         const content = raw.includes('"truncated_fields"') || raw.includes('<truncated ')
-          ? hydrateAntigravityTranscript(location.path, canonical, raw)
+          ? hydrateAntigravityTranscript(location.path, canonical, raw, true)
           : raw;
         spawns = extractAntigravityTranscriptSpawns(content, convId);
       }

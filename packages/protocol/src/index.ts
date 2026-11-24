@@ -27,9 +27,9 @@ export * from './controlValidate.js';
 
 export function classifyTool(name: string): { kind: ActivityKind; label: string } {
   const lower = name.toLowerCase();
+  if (/^task$|(?:^|__|\/|:)(?:swarm|run_workflow|delegate_to_agent|invoke_agent|codebase_investigator|browser_agent|remote_agent|generalist|cli_help)$|subagent|spawn_?agent/.test(lower)) return { kind: 'delegate', label: `Delegating via ${name}` };
   if (/^web|web_?(search|fetch)|browser|fetch_?url|search_web|read_url/.test(lower)) return { kind: 'web', label: `Browsing via ${name}` };
   if (/handback/.test(lower)) return { kind: 'tool', label: `Reporting back via ${name}` };
-  if (/^task$|(?:^|__|\/|:)(?:swarm|run_workflow|delegate_to_agent|codebase_investigator)$|subagent|spawn_?agent/.test(lower)) return { kind: 'delegate', label: `Delegating via ${name}` };
   if (/skill|curat/.test(lower)) return { kind: 'knowledge', label: /manage|write|patch|create|update/.test(lower) ? `Updating skills via ${name}` : `Consulting skills via ${name}` };
   if (/search|grep|find|glob/.test(lower)) return { kind: 'search', label: `Searching via ${name}` };
   if (/read|view|cat/.test(lower)) return { kind: 'read', label: `Reading via ${name}` };

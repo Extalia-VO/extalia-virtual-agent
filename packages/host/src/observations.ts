@@ -9,7 +9,7 @@ import { open, rm, stat, type FileHandle } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import path from 'node:path';
 import { HermesDashboardClient, parseHermesDashboardUrl } from './hermesDashboard.js';
-import { HOOK_APP_LABELS, HOOK_SOURCE_IDS, clearAntigravityBackgroundTasks, hookProtocolEvents, hookSource, isHookApp, type HookApp, type NormalizedHook } from './hooks/normalize.js';
+import { HOOK_APP_LABELS, HOOK_SOURCE_IDS, clearAntigravityBackgroundTasks, hookProtocolEvents, hookSource, isHookApp, type HookApp, type NormalizedHook, type NormalizedSubagentSpawn } from './hooks/normalize.js';
 import { readJson, writeJsonAtomic } from './jsonStore.js';
 import type { NativeImportService, NativeObservationRef, ObservedRead } from './nativeImport.js';
 import { sessionContext } from './sessionContext.js';
@@ -1773,6 +1773,13 @@ export class Observations {
           ...(hook.model ? { model: safeLabel(hook.model, 120) } : {}),
         });
       }
+      if (hook.agentId && hook.agentId !== 'primary' && hook.parentAgentId && hook.parentAgentId !== hook.agentId) {
+        this.recordHookSubagentLink(sourceId, hook.agentId, {
+          parentId: hook.parentAgentId,
+          ...(hook.agentType ? { role: hook.agentType, label: hook.agentType } : {}),
+          ...(hook.model ? { model: safeLabel(hook.model, 120) } : {}),
+        });
+      }
       if (hook.subagentSpawns?.length) {
         for (const spawn of hook.subagentSpawns) {
           this.recordHookSubagentLink(sourceId, spawn.subagentId, {
@@ -1817,11 +1824,37 @@ export class Observations {
       // Sub-agent threads and child conversations report into their root session as nested sub-agents.
       const resolved = this.resolveHookTarget(sourceId, hook.app, hook.sessionId, direct);
       const { reference, subagentId, parentAgentId, subagentLabel, subagentRole, subagentModel, ancestors } = resolved;
+      const discoveredSpawns: NormalizedSubagentSpawn[] = [...(hook.subagentSpawns ?? [])];
+      const knownSpawnIds = new Set(discoveredSpawns.map(spawn => spawn.subagentId));
+      // Real Antigravity PostToolUse hooks omit toolOutput from stdin; read fresh spawn edges from the acting transcript.
+      if (hook.app === 'antigravity' && (hook.event === 'PostToolUse' || hook.event === 'PostInvocation' || hook.event === 'Stop')) {
+        const actingRecord = this.records.find(item => item.reference.sourceId === sourceId && item.reference.nativeSessionId === hook.sessionId && item.reference.path);
+        const actingRef = direct.path ? direct : (actingRecord?.reference ?? direct);
+        for (const spawn of this.source.antigravitySpawnsFor(actingRef)) {
+          if (!spawn.subagentId || spawn.subagentId === hook.sessionId) continue;
+          const converted: NormalizedSubagentSpawn = {
+            subagentId: spawn.subagentId,
+            ...(spawn.label ? { label: spawn.label } : {}),
+            ...(spawn.role ? { role: spawn.role } : {}),
+            ...(spawn.model ? { model: spawn.model } : {}),
+          };
+          this.recordHookSubagentLink(sourceId, spawn.subagentId, {
+            parentId: hook.sessionId,
+            ...(converted.label ? { label: converted.label } : {}),
+            ...(converted.role ? { role: converted.role } : {}),
+            ...(converted.model ? { model: converted.model } : {}),
+          });
+          if (!knownSpawnIds.has(spawn.subagentId)) {
+            knownSpawnIds.add(spawn.subagentId);
+            discoveredSpawns.push(converted);
+          }
+        }
+      }
       const ownSteps = subagentId
         ? hook.steps.filter(step => step.body.type !== 'session.started' && step.body.type !== 'session.ended')
           .map(step => ({ ...step, agentId: step.agentId && step.agentId !== 'primary' ? step.agentId : subagentId }))
         : hook.steps;
-      if (ownSteps.length === 0 && !hook.subagentSpawns?.length) return;
+      if (ownSteps.length === 0 && !discoveredSpawns.length && !hook.subagentStops?.length) return;
       const at = new Date().toISOString();
       let record = this.records.find(item => sameSession(item.reference, reference));
       // A session the hooks have not reported before may continue a known conversation (Claude Code; see `continuation`).
@@ -1988,6 +2021,74 @@ export class Observations {
       const announced = (live.hook.subagents ??= new Set());
       for (const event of events) if (event.body.type === 'subagent.spawned') announced.add(event.body.subagentId);
 
+      const actorAgentId = subagentId ?? 'primary';
+      for (const spawn of discoveredSpawns) {
+        if (!spawn.subagentId || spawn.subagentId === 'primary' || spawn.subagentId === actorAgentId || announced.has(spawn.subagentId)) continue;
+        announced.add(spawn.subagentId);
+        events.push(createEvent({
+          id: `hook-${record.id}-${++this.hookCounter}-sync-spawn`,
+          at,
+          sessionId: record.id,
+          agentId: actorAgentId,
+          source: hookSource(hook.app),
+          body: {
+            type: 'subagent.spawned',
+            subagentId: spawn.subagentId,
+            ...(spawn.role ? { role: spawn.role } : {}),
+            ...(spawn.label ? { label: spawn.label } : spawn.role ? { label: spawn.role } : {}),
+            ...(spawn.model ? { model: spawn.model } : {}),
+          },
+        }));
+      }
+      if (hook.subagentStops?.length) {
+        const alreadyStopped = new Set<string>();
+        const stoppedEarlier = new Set<string>();
+        for (const existing of live.hook.events) {
+          if (existing.body.type === 'subagent.spawned') stoppedEarlier.delete(existing.body.subagentId);
+          else if (existing.body.type === 'subagent.state') {
+            if (existing.body.state === 'offline') stoppedEarlier.add(existing.body.subagentId);
+            else stoppedEarlier.delete(existing.body.subagentId);
+          }
+        }
+        for (const event of events) {
+          if (event.body.type === 'subagent.state' && event.body.state === 'offline') {
+            alreadyStopped.add(event.body.subagentId);
+          }
+        }
+        const childLinks = [...this.hookSubagentLinks.entries()]
+          .filter(([key, link]) => key.startsWith(`${sourceId}:`) && link.parentId === hook.sessionId)
+          .map(([key, link]) => ({ childId: key.slice(sourceId.length + 1), link }));
+        for (const stop of hook.subagentStops) {
+          let targets: string[] = [];
+          if (stop.subagentId) {
+            targets = [stop.subagentId];
+          } else if (stop.name) {
+            const exact = childLinks
+              .filter(({ link }) => link.label === stop.name || link.role === stop.name)
+              .map(item => item.childId);
+            targets = exact.length
+              ? exact
+              : childLinks
+                  .filter(({ link }) => (link.label ?? link.role ?? '').toLowerCase() === stop.name!.toLowerCase())
+                  .map(item => item.childId);
+          } else if (stop.all) {
+            targets = childLinks.map(item => item.childId).filter(childId => !stoppedEarlier.has(childId));
+          }
+          for (const targetChildId of targets) {
+            if (!targetChildId || targetChildId === 'primary' || targetChildId === hook.sessionId || targetChildId === actorAgentId || alreadyStopped.has(targetChildId)) continue;
+            alreadyStopped.add(targetChildId);
+            events.push(createEvent({
+              id: `hook-${record.id}-${++this.hookCounter}-sync-stop`,
+              at,
+              sessionId: record.id,
+              agentId: actorAgentId,
+              source: hookSource(hook.app),
+              body: { type: 'subagent.state', subagentId: targetChildId, state: 'offline' },
+            }));
+          }
+        }
+      }
+
       // Coalesce any duplicate standalone auto-records created before the parent-child link arrived.
       let foldedAny = false;
       if (subagentId) {
@@ -2000,8 +2101,8 @@ export class Observations {
           }
         }
       }
-      if (hook.subagentSpawns?.length) {
-        const spawnFold = await this.foldStandaloneChildRecords(sourceId, record, hook.subagentSpawns.map(spawn => spawn.subagentId), at, announced);
+      if (discoveredSpawns.length) {
+        const spawnFold = await this.foldStandaloneChildRecords(sourceId, record, discoveredSpawns.map(spawn => spawn.subagentId), at, announced);
         if (spawnFold.folded) {
           foldedAny = true;
           if (spawnFold.events.length) events.push(...spawnFold.events);
@@ -2024,14 +2125,38 @@ export class Observations {
             if (ancestor.subagentId === agent) break;
           }
         } else {
-          const link = this.hookSubagentLinks.get(`${sourceId}:${agent}`);
-          const parent = agent === subagentId ? (parentAgentId ?? 'primary')
-            : link ? (link.parentId === record.reference.nativeSessionId ? 'primary' : link.parentId)
-            : 'primary';
-          const label = agent === subagentId ? (subagentLabel ?? hook.agentType) : (link?.label ?? hook.agentType);
-          const role = agent === subagentId ? (subagentRole ?? hook.agentType) : (link?.role ?? hook.agentType);
-          const model = agent === subagentId ? (subagentModel ?? (hook.model ? safeLabel(hook.model, 120) : undefined)) : link?.model;
-          toAnnounce.push({ subagentId: agent, parentAgentId: parent, ...(label ? { label } : {}), ...(role ? { role } : {}), ...(model ? { model } : {}) });
+          const visitedChain = new Set<string>([agent]);
+          const chain: HookSubagentAncestor[] = [];
+          let cursor = agent;
+          for (let depth = 0; depth < MAX_SUBAGENT_TREE_DEPTH; depth++) {
+            const link = this.hookSubagentLinks.get(`${sourceId}:${cursor}`);
+            const explicitParent = cursor === hook.agentId ? hook.parentAgentId : undefined;
+            const rawParent = cursor === subagentId ? (parentAgentId ?? 'primary') : (explicitParent ?? link?.parentId);
+            const resolvedParent = !rawParent || rawParent === record.reference.nativeSessionId ? 'primary' : rawParent;
+            const label = cursor === subagentId ? (subagentLabel ?? hook.agentType) : (link?.label ?? (cursor === hook.agentId ? hook.agentType : undefined));
+            const role = cursor === subagentId ? (subagentRole ?? hook.agentType) : (link?.role ?? (cursor === hook.agentId ? hook.agentType : undefined));
+            const model = cursor === subagentId
+              ? (subagentModel ?? (hook.model ? safeLabel(hook.model, 120) : undefined))
+              : (link?.model ?? (cursor === hook.agentId && hook.model ? safeLabel(hook.model, 120) : undefined));
+            chain.push({
+              subagentId: cursor,
+              parentAgentId: resolvedParent,
+              ...(label ? { label } : {}),
+              ...(role ? { role } : {}),
+              ...(model ? { model } : {}),
+            });
+            if (resolvedParent === 'primary' || announced.has(resolvedParent) || visitedChain.has(resolvedParent)) break;
+            if (ancestorById.has(resolvedParent)) {
+              for (const ancestor of ancestors) {
+                if (!announced.has(ancestor.subagentId)) toAnnounce.push(ancestor);
+                if (ancestor.subagentId === resolvedParent) break;
+              }
+              break;
+            }
+            visitedChain.add(resolvedParent);
+            cursor = resolvedParent;
+          }
+          toAnnounce.push(...chain.reverse());
         }
         for (const item of toAnnounce) {
           if (announced.has(item.subagentId)) continue;

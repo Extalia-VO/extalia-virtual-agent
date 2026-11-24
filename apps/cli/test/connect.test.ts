@@ -280,18 +280,22 @@ describe('extalia connect / disconnect / connections CLI and Bridge hook route',
     const geminiSettings = JSON.parse(await readFile(path.join(homeDirectory, '.gemini', 'settings.json'), 'utf8')) as { hooks?: Record<string, unknown> };
     expect(geminiSettings.hooks?.BeforeAgent).toBeDefined();
     expect(geminiSettings.hooks?.BeforeTool).toBeDefined();
+    expect(geminiSettings.hooks?.PreCompress).toBeDefined();
 
     const agyIo = makeHost();
     expect(await run(['connect', 'antigravity', '--yes'], agyIo.value)).toBe(0);
     const agyHooks = JSON.parse(await readFile(path.join(homeDirectory, '.gemini', 'config', 'hooks.json'), 'utf8')) as {
       extalia?: {
+        SessionStart?: Array<{ command: string }>;
         PreInvocation?: Array<{ command: string }>;
         PostToolUse?: Array<{ hooks: Array<{ command: string }> }>;
       };
     };
+    expect(agyHooks.extalia?.SessionStart).toBeDefined();
     expect(agyHooks.extalia?.PreInvocation).toBeDefined();
     expect(agyHooks.extalia?.PostToolUse).toBeDefined();
     if (process.platform !== 'win32') {
+      expect(agyHooks.extalia?.SessionStart?.[0]?.command).toContain(forwardLauncherPath(extaliaHome));
       expect(agyHooks.extalia?.PreInvocation?.[0]?.command).toContain(forwardLauncherPath(extaliaHome));
       expect((await stat(forwardLauncherPath(extaliaHome))).mode & 0o777).toBe(0o755);
       expect((await stat(nodePathFile(extaliaHome))).mode & 0o777).toBe(0o600);

@@ -1,7 +1,7 @@
 import { EFFORTS, literalProjectPath, safeLabel, safeText, stopReasonOf, type Effort, type StopReason } from '@extalia/core';
 import {
   commandHead, explicitToolFailure, extractAntigravityInvokeSpawns, extractAntigravityJsonValues, extractAntigravitySwarmSpawns,
-  extractWrittenFiles, outputText, statedSuccess, stepOutput, toolHints,
+  extractWrittenFiles, isInjectedContext, outputText, statedSuccess, stepOutput, toolHints,
 } from '@extalia/importers';
 import { AGENT_APP_IDS, type AgentAppId } from '@extalia/platform';
 import { createEvent, type AgentPhase, type EventBody, type EventSource, type ExtaliaEvent } from '@extalia/protocol';
@@ -41,6 +41,12 @@ export interface NormalizedSubagentSpawn {
   model?: string;
 }
 
+export interface NormalizedSubagentStop {
+  subagentId?: string;
+  name?: string;
+  all?: boolean;
+}
+
 export interface NormalizeHookOptions {
   /** Drop prompt/reply/tool output and meeting content, keeping activity and meeting presence only. */
   labelsOnly?: boolean;
@@ -52,6 +58,8 @@ export interface NormalizedHook {
   sessionId: string;
   /** Explicit parent native session/conversation id when reported by a child hook payload. */
   parentSessionId?: string;
+  /** Explicit parent sub-agent id within the same session when reported by nested child hooks. */
+  parentAgentId?: string;
   /** Native hook event name as reported (bounded label). */
   event: string;
   /** The app reports a new or resumed session. */
@@ -76,6 +84,8 @@ export interface NormalizedHook {
   steps: HookStep[];
   /** Child conversations spawned by this hook event, for linking subsequent child hooks into the parent tree. */
   subagentSpawns?: NormalizedSubagentSpawn[];
+  /** Child conversations or named workers explicitly terminated by this hook event. */
+  subagentStops?: NormalizedSubagentStop[];
   /** Ephemeral lead suggestions; never projected as protocol events or saved. */
   followupPrompts?: string[];
 }
@@ -212,7 +222,10 @@ const geminiDelegateCounters = new Map<string, number>();
 
 const GEMINI_DELEGATE_TOOLS = new Set([
   'delegate_to_agent',
+  'invoke_agent',
   'codebase_investigator',
+  'browser_agent',
+  'remote_agent',
   'generalist',
   'cli_help',
   'invoke_subagent',
@@ -222,12 +235,16 @@ const GEMINI_DELEGATE_TOOLS = new Set([
 
 function isGeminiDelegateTool(rawName: string): boolean {
   const normalized = rawName.trim().toLowerCase().replace(/^(?:default_api:|functions\.)/, '');
-  return Boolean(normalized) && (GEMINI_DELEGATE_TOOLS.has(normalized) || /^delegate_/.test(normalized));
+  return Boolean(normalized) && (GEMINI_DELEGATE_TOOLS.has(normalized) || /^delegate_/.test(normalized) || /^(?:invoke|spawn)_.*agent$/.test(normalized));
 }
 
 function geminiDelegateMeta(toolName: string, input: unknown): { label?: string; role?: string; model?: string; explicitId?: string } {
   const parsed = typeof input === 'string' ? (() => { try { return obj(JSON.parse(input)); } catch { return {}; } })() : obj(input);
-  const rawRole = first(parsed.agent_name, parsed.agentName, parsed.agent, parsed.name, parsed.Role, parsed.subagent_type, parsed.subagentType, parsed.role, toolName);
+  const rawRole = first(
+    parsed.agent_name, parsed.agentName, parsed.subagent_name, parsed.subagentName,
+    parsed.target_agent, parsed.targetAgent, parsed.agent, parsed.name,
+    parsed.Role, parsed.subagent_type, parsed.subagentType, parsed.role, toolName,
+  );
   const role = safeLabel(rawRole, 80) || undefined;
   const label = safeLabel(first(parsed.label, rawRole), 80) || undefined;
   const rawModel = first(parsed.model, parsed.Model);
@@ -263,11 +280,13 @@ function pushGeminiPendingDelegate(sessionId: string, toolName: string, entry: G
   }
 }
 
-function shiftGeminiPendingDelegate(sessionId: string, toolName: string): GeminiPendingDelegate | undefined {
+function shiftGeminiPendingDelegate(sessionId: string, toolName: string, preferredRole?: string): GeminiPendingDelegate | undefined {
   const key = `${sessionId}:${toolName.trim().toLowerCase()}`;
   const queue = geminiPendingDelegates.get(key);
-  const entry = queue?.shift();
-  if (queue && queue.length === 0) geminiPendingDelegates.delete(key);
+  if (!queue || queue.length === 0) return undefined;
+  const matchIdx = preferredRole ? queue.findIndex(item => item.role === preferredRole || item.label === preferredRole) : -1;
+  const entry = matchIdx >= 0 ? queue.splice(matchIdx, 1)[0] : queue.shift();
+  if (queue.length === 0) geminiPendingDelegates.delete(key);
   return entry;
 }
 
@@ -300,7 +319,7 @@ function claudeStyle(app: HookApp, raw: unknown, options: NormalizeHookOptions =
   const sessionId = id(payload.session_id ?? payload.sessionId ?? payload.conversationId ?? payload.conversation_id, SESSION_ID);
   if (!sessionId) return undefined;
   const event = safeLabel(payload.hook_event_name ?? payload.hookEventName, 80);
-  const cwd = pathField(payload.cwd);
+  const cwd = pathField(payload.cwd ?? payload.workspace_dir ?? payload.workspaceDir);
   const transcriptPath = pathField(payload.transcript_path ?? payload.transcriptPath);
   const model = safeLabel(typeof payload.model === 'string' ? payload.model : str(obj(payload.model).id) || str(obj(payload.model).display_name), 120) || undefined;
   // Claude Code / Gemini CLI mark hooks fired inside a sub-agent with `agent_id` / `agentId`.
@@ -308,6 +327,8 @@ function claudeStyle(app: HookApp, raw: unknown, options: NormalizeHookOptions =
   const explicitSubagentId = id(payload.subagent_id ?? payload.subagentId, AGENT_ID);
   const parentSessionIdRaw = id(payload.parent_session_id ?? payload.parentSessionId ?? payload.parent_conversation_id ?? payload.parentConversationId, SESSION_ID);
   const parentSessionId = parentSessionIdRaw && parentSessionIdRaw !== sessionId ? parentSessionIdRaw : undefined;
+  const parentAgentIdRaw = id(payload.parent_agent_id ?? payload.parentAgentId, AGENT_ID);
+  const explicitParentAgentId = parentAgentIdRaw && parentAgentIdRaw !== (inner ?? explicitSubagentId) ? parentAgentIdRaw : undefined;
   const agentId = inner ?? 'primary';
   const steps: HookStep[] = [];
   const subagentSpawns: NormalizedSubagentSpawn[] = [];
@@ -412,8 +433,8 @@ function claudeStyle(app: HookApp, raw: unknown, options: NormalizeHookOptions =
       add(completed(tool, ok, out));
       if (ok && tool.kind === 'edit') for (const file of extractWrittenFiles(effectiveToolName, effectiveToolInput, response, effectiveCwd)) add({ type: 'file.written', path: file.path, change: file.change, ...(tool.toolCallId ? { toolCallId: tool.toolCallId } : {}) });
       if (app === 'gemini' && isGeminiDelegateTool(effectiveToolName)) {
-        const pendingDelegate = cached?.geminiDelegate ?? (!rawCallId ? shiftGeminiPendingDelegate(sessionId, effectiveToolName) : undefined);
         const meta = geminiDelegateMeta(effectiveToolName, effectiveToolInput);
+        const pendingDelegate = cached?.geminiDelegate ?? (!rawCallId ? shiftGeminiPendingDelegate(sessionId, effectiveToolName, meta.role ?? meta.label) : undefined);
         const label = pendingDelegate?.label ?? meta.label;
         const role = pendingDelegate?.role ?? meta.role;
         const subModel = pendingDelegate?.model ?? meta.model;
@@ -463,10 +484,10 @@ function claudeStyle(app: HookApp, raw: unknown, options: NormalizeHookOptions =
     const subagentId = inner ?? explicitSubagentId;
     const role = safeLabel(first(payload.agent_type, payload.agentType, payload.subagent_type, payload.subagentType), 80);
     const label = safeLabel(first(payload.agent_name, payload.agentName, role), 80);
-    if (subagentId) add({ type: 'subagent.spawned', subagentId, ...(role ? { role } : {}), ...(label ? { label } : {}) }, 'primary');
+    if (subagentId) add({ type: 'subagent.spawned', subagentId, ...(role ? { role } : {}), ...(label ? { label } : {}) }, explicitParentAgentId ?? 'primary');
   } else if (event === 'SubagentStop') {
     const subagentId = inner ?? explicitSubagentId;
-    if (subagentId) add({ type: 'subagent.state', subagentId, state: 'offline' }, 'primary');
+    if (subagentId) add({ type: 'subagent.state', subagentId, state: 'offline' }, explicitParentAgentId ?? 'primary');
   } else if (STOP.has(event)) {
     const reply = first(payload.last_assistant_message, payload.prompt_response);
     if (!options.labelsOnly && reply) add({ type: 'model.completed', text: safeText(reply, REPLY_LIMIT), ...(model ? { model } : {}) });
@@ -479,7 +500,7 @@ function claudeStyle(app: HookApp, raw: unknown, options: NormalizeHookOptions =
   }
   const agentType = inner ? safeLabel(first(payload.agent_type, payload.agentType, payload.subagent_type, payload.subagentType, payload.agent_name, payload.agentName), 80) : '';
   return {
-    app, sessionId, ...(parentSessionId ? { parentSessionId } : {}), ...reportedSettings(payload), event: event || 'unknown', starts: START.has(event), ends: END.has(event), steps,
+    app, sessionId, ...(parentSessionId ? { parentSessionId } : {}), ...(explicitParentAgentId ? { parentAgentId: explicitParentAgentId } : {}), ...reportedSettings(payload), event: event || 'unknown', starts: START.has(event), ends: END.has(event), steps,
     ...(subagentSpawns.length ? { subagentSpawns } : {}), ...(followupPrompts ? { followupPrompts } : {}), ...(agentType ? { agentType } : {}),
     ...(cwd ? { cwd } : {}), ...(transcriptPath ? { transcriptPath } : {}), ...(model ? { model } : {}), ...(titleHint ? { titleHint } : {}),
   };
@@ -488,10 +509,10 @@ function claudeStyle(app: HookApp, raw: unknown, options: NormalizeHookOptions =
 export const normalizeClaudeHook = (payload: unknown, options?: NormalizeHookOptions) => claudeStyle('claude', payload, options);
 /** Codex 0.16x command hooks use Claude Code's payload fields (`apply_patch`, `Bash`, … as tool names). */
 export const normalizeCodexHook = (payload: unknown, options?: NormalizeHookOptions) => claudeStyle('codex', payload, options);
-/** Gemini CLI: SessionStart/End, BeforeAgent/AfterAgent, BeforeTool/AfterTool, Notification. */
+/** Gemini CLI: SessionStart/End, BeforeAgent/AfterAgent, BeforeTool/AfterTool, PreCompress, Notification. */
 export const normalizeGeminiHook = (payload: unknown, options?: NormalizeHookOptions) => claudeStyle('gemini', payload, options);
 
-const antigravityPendingTools = new Map<string, Array<{ callId?: string; name: string; input: unknown; cwd?: string }>>();
+const antigravityPendingTools = new Map<string, Array<{ callId?: string; toolCallId?: string; name: string; input: unknown; cwd?: string }>>();
 const antigravityBackgroundTasks = new Map<string, Map<string, Tool>>();
 const antigravitySwarmWorkers = new Map<string, Map<string, string>>();
 const antigravityTrackedChildren = new Map<string, Set<string>>();
@@ -589,10 +610,11 @@ export function hasAntigravityBackgroundTasks(sessionId: string): boolean {
 /**
  * Antigravity command hooks (`~/.gemini/config/hooks.json`):
  * - `conversationId` identifies the session; `workspacePaths` (string[]) gives the project folder.
+ * - `SessionStart`: once when a new conversation session starts.
  * - `PreInvocation` / `PostInvocation`: before/after each LLM call.
- * - `PreToolUse`: `toolCall: { name, args }`, `stepIdx: number`.
- * - `PostToolUse`: `stepIdx: number`, `error: string` (tool name and args are recalled from `PreToolUse` by `stepIdx`).
- * - `Stop`: `terminationReason` (`"completed"` | `"error"`), `error: string`.
+ * - `PreToolUse`: `toolCall: { id, name, args }`, `stepIdx: number`.
+ * - `PostToolUse`: `toolCall: { id, name, args }`, `stepIdx: number`, `error?: string`.
+ * - `Stop`: `terminationReason` (`"NO_TOOL_CALL"` | `"USER_CANCELED"` | `"ERROR"` | ...), `fullyIdle?: boolean`, `error?: string`.
  */
 export function normalizeAntigravityHook(raw: unknown, options: NormalizeHookOptions = {}): NormalizedHook | undefined {
   const payload = obj(raw);
@@ -607,13 +629,21 @@ export function normalizeAntigravityHook(raw: unknown, options: NormalizeHookOpt
   const model = rawModel && rawModel.toLowerCase() !== 'none' && rawModel.toLowerCase() !== 'auto'
     ? safeLabel(rawModel, 120) || undefined
     : undefined;
+  const rawLastUserInput = !options.labelsOnly ? str(payload.lastUserInput ?? payload.last_user_input) : '';
+  const cleanedUserInput = rawLastUserInput.replace(/^<USER_REQUEST>\s*/i, '').replace(/\s*<\/USER_REQUEST>[\s\S]*$/i, '').trim();
+  const titleHint = cleanedUserInput && !isInjectedContext(rawLastUserInput) && !isInjectedContext(cleanedUserInput)
+    ? titleOf(cleanedUserInput)
+    : undefined;
   const inner = id(payload.agent_id ?? payload.agentId, AGENT_ID);
   const agentId = inner ?? 'primary';
   const parentSessionIdRaw = id(payload.parentConversationId ?? payload.parent_conversation_id ?? payload.parentSessionId ?? payload.parent_session_id, SESSION_ID);
   const parentSessionId = parentSessionIdRaw && parentSessionIdRaw !== sessionId ? parentSessionIdRaw : undefined;
+  const parentAgentIdRaw = id(payload.parentAgentId ?? payload.parent_agent_id, AGENT_ID);
+  const explicitParentAgentId = parentAgentIdRaw && parentAgentIdRaw !== inner ? parentAgentIdRaw : undefined;
   const agentType = inner ? safeLabel(first(payload.agent_type, payload.agentType, payload.subagent_type, payload.subagentType, payload.agent_name, payload.agentName), 80) : '';
   const steps: HookStep[] = [];
   const subagentSpawns: NormalizedSubagentSpawn[] = [];
+  const subagentStops: NormalizedSubagentStop[] = [];
   let followupPrompts: string[] | undefined;
   const add = (body: EventBody, agent = agentId) => steps.push({ body, agentId: agent });
   const stepIdx = typeof payload.stepIdx === 'number' && Number.isInteger(payload.stepIdx) && payload.stepIdx >= 0 ? payload.stepIdx : undefined;
@@ -624,12 +654,16 @@ export function normalizeAntigravityHook(raw: unknown, options: NormalizeHookOpt
     const report = sourceMcpReport(mcpEventTool, reportEventInput(mcpEventTool, payload.tool_input ?? obj(payload.toolCall).args ?? payload, payload), payload, sessionId, options);
     if (report) { steps.push(...report.steps); followupPrompts = report.followupPrompts; }
     return {
-      app: 'antigravity', sessionId, ...(parentSessionId ? { parentSessionId } : {}), ...reportedSettings(payload), event: event || 'unknown', starts: false, ends: false, steps, ...(followupPrompts ? { followupPrompts } : {}),
-      ...(agentType ? { agentType } : {}), ...(cwd ? { cwd } : {}), ...(transcriptPath ? { transcriptPath } : {}), ...(model ? { model } : {}),
+      app: 'antigravity', sessionId, ...(parentSessionId ? { parentSessionId } : {}), ...(explicitParentAgentId ? { parentAgentId: explicitParentAgentId } : {}), ...reportedSettings(payload), event: event || 'unknown', starts: false, ends: false, steps, ...(followupPrompts ? { followupPrompts } : {}),
+      ...(agentType ? { agentType } : {}), ...(cwd ? { cwd } : {}), ...(transcriptPath ? { transcriptPath } : {}), ...(model ? { model } : {}), ...(titleHint ? { titleHint } : {}),
     };
   }
 
   switch (event) {
+    case 'SessionStart':
+      add({ type: 'session.started', control: 'observed', ...(model ? { model } : {}), ...(cwd ? { cwd } : {}) }, 'primary');
+      add({ type: 'agent.state', state: 'idle' }, 'primary');
+      break;
     case 'PreInvocation':
     case 'PostInvocation':
       add({ type: 'agent.state', state: 'thinking' });
@@ -638,6 +672,7 @@ export function normalizeAntigravityHook(raw: unknown, options: NormalizeHookOpt
       const toolCall = obj(payload.toolCall);
       const rawName = (first(toolCall.name, payload.tool_name, payload.toolName) || 'tool').replace(/^default_api:/, '');
       const rawInput = toolCall.args ?? payload.tool_input ?? payload.toolInput;
+      const rawToolCallId = id(toolCall.id ?? payload.tool_use_id ?? payload.tool_call_id ?? payload.toolUseId ?? payload.toolCallId, AGENT_ID);
       const mcpTool = mcpReportToolName(rawName);
       if (mcpTool) {
         const report = sourceMcpReport(mcpTool, rawInput, payload, sessionId, options);
@@ -647,7 +682,13 @@ export function normalizeAntigravityHook(raw: unknown, options: NormalizeHookOpt
         const key = `${sessionId}:${callId ?? 'last'}`;
         const queue = antigravityPendingTools.get(key) ?? [];
         if (callId && queue.length > 0) effectiveCallId = `${callId}-${queue.length + 1}`;
-        queue.push({ ...(effectiveCallId ? { callId: effectiveCallId } : {}), name: rawName, input: rawInput, ...(cwd ? { cwd } : {}) });
+        queue.push({
+          ...(effectiveCallId ? { callId: effectiveCallId } : {}),
+          ...(rawToolCallId ? { toolCallId: rawToolCallId } : {}),
+          name: rawName,
+          input: rawInput,
+          ...(cwd ? { cwd } : {}),
+        });
         if (queue.length > 50) queue.shift();
         antigravityPendingTools.set(key, queue);
         while (antigravityPendingTools.size > 400) {
@@ -661,11 +702,16 @@ export function normalizeAntigravityHook(raw: unknown, options: NormalizeHookOpt
       break;
     }
     case 'PostToolUse': {
+      const toolCall = obj(payload.toolCall);
+      const rawPostToolCallId = id(toolCall.id ?? payload.tool_use_id ?? payload.tool_call_id ?? payload.toolUseId ?? payload.toolCallId, AGENT_ID);
       const key = `${sessionId}:${callId ?? 'last'}`;
       const queue = antigravityPendingTools.get(key);
-      const cached = queue?.shift();
+      let cached: { callId?: string; toolCallId?: string; name: string; input: unknown; cwd?: string } | undefined;
+      if (queue?.length) {
+        const matchIndex = rawPostToolCallId ? queue.findIndex(item => item.toolCallId === rawPostToolCallId) : -1;
+        cached = matchIndex >= 0 ? queue.splice(matchIndex, 1)[0] : queue.shift();
+      }
       if (!queue || queue.length === 0) antigravityPendingTools.delete(key);
-      const toolCall = obj(payload.toolCall);
       const rawName = (first(toolCall.name, payload.tool_name, payload.toolName, cached?.name) || 'tool').replace(/^default_api:/, '');
       const rawInput = toolCall.args ?? payload.tool_input ?? payload.toolInput ?? cached?.input;
       const effectiveCwd = cwd ?? cached?.cwd;
@@ -722,6 +768,9 @@ export function normalizeAntigravityHook(raw: unknown, options: NormalizeHookOpt
               add({ type: 'subagent.state', subagentId: childId, state: 'offline' });
               forgetAntigravityChild(sessionId, childId);
             }
+            if (childId || workerName) {
+              subagentStops.push({ ...(childId ? { subagentId: childId } : {}), ...(workerName ? { name: workerName } : {}) });
+            }
           }
         } else if (ok && rawName === 'invoke_subagent') {
           for (const spawn of extractAntigravityInvokeSpawns(rawInput, response, sessionId)) {
@@ -743,6 +792,7 @@ export function normalizeAntigravityHook(raw: unknown, options: NormalizeHookOpt
             for (const childId of ids) {
               add({ type: 'subagent.state', subagentId: childId, state: 'offline' });
               forgetAntigravityChild(sessionId, childId);
+              subagentStops.push({ subagentId: childId });
             }
           } else if (action === 'kill_all') {
             const allTracked = new Set<string>([
@@ -754,6 +804,7 @@ export function normalizeAntigravityHook(raw: unknown, options: NormalizeHookOpt
             }
             antigravityTrackedChildren.delete(sessionId);
             antigravitySwarmWorkers.delete(sessionId);
+            subagentStops.push({ all: true });
           }
         }
         if (ok && rawName === 'manage_task') {
@@ -778,7 +829,11 @@ export function normalizeAntigravityHook(raw: unknown, options: NormalizeHookOpt
     case 'Stop': {
       const errText = str(payload.error).trim();
       const reasonText = str(payload.terminationReason).trim().toLowerCase();
-      if (errText || reasonText === 'error') {
+      if (reasonText === 'user_canceled' || reasonText === 'user_cancelled') {
+        antigravityBackgroundTasks.delete(sessionId);
+        add({ type: 'turn.failed', error: 'Interrupted', reason: 'interrupted' });
+        add(stopped('interrupted', undefined, 'interrupted'));
+      } else if (errText || reasonText === 'error') {
         antigravityBackgroundTasks.delete(sessionId);
         const error = safeLabel(errText || 'The turn failed.', 300) || 'The turn failed.';
         for (const body of failedTurn(error, stopReasonOf(errText || error))) add(body);
@@ -787,6 +842,8 @@ export function normalizeAntigravityHook(raw: unknown, options: NormalizeHookOpt
         if (bgTasks && bgTasks.size > 0) {
           const activeTool = [...bgTasks.values()].at(-1)!;
           add(working(activeTool));
+        } else if (payload.fullyIdle === false) {
+          add({ type: 'agent.state', state: 'working', summary: 'Waiting on background tasks' });
         } else {
           add({ type: 'turn.completed', ...(model ? { model } : {}) });
           add({ type: 'agent.state', state: 'idle' });
@@ -799,9 +856,9 @@ export function normalizeAntigravityHook(raw: unknown, options: NormalizeHookOpt
   }
 
   return {
-    app: 'antigravity', sessionId, ...(parentSessionId ? { parentSessionId } : {}), ...reportedSettings(payload), event: event || 'unknown', starts: event === 'PreInvocation', ends: false, steps,
-    ...(subagentSpawns.length ? { subagentSpawns } : {}), ...(followupPrompts ? { followupPrompts } : {}), ...(agentType ? { agentType } : {}),
-    ...(cwd ? { cwd } : {}), ...(transcriptPath ? { transcriptPath } : {}), ...(model ? { model } : {}),
+    app: 'antigravity', sessionId, ...(parentSessionId ? { parentSessionId } : {}), ...(explicitParentAgentId ? { parentAgentId: explicitParentAgentId } : {}), ...reportedSettings(payload), event: event || 'unknown', starts: event === 'SessionStart' || event === 'PreInvocation', ends: false, steps,
+    ...(subagentSpawns.length ? { subagentSpawns } : {}), ...(subagentStops.length ? { subagentStops } : {}), ...(followupPrompts ? { followupPrompts } : {}), ...(agentType ? { agentType } : {}),
+    ...(cwd ? { cwd } : {}), ...(transcriptPath ? { transcriptPath } : {}), ...(model ? { model } : {}), ...(titleHint ? { titleHint } : {}),
   };
 }
 

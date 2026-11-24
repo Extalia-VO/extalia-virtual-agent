@@ -7,19 +7,21 @@ import { ConnectError, quoteArgument } from './util.js';
  * Antigravity organizes hooks by top-level group name (for example `"extalia"`).
  * Tool events (`PreToolUse`, `PostToolUse`) use matcher groups
  * (`[{ matcher: "*", hooks: [...] }]`), while lifecycle events
- * (`PreInvocation`, `PostInvocation`, `Stop`) use a flat array of command hooks.
- * Because Antigravity does not include `hook_event_name` in its stdin JSON payload,
- * each command passes the event name as the second argument to `forward.mjs`
- * (`<node> <forward.mjs> antigravity <EventName>`).
+ * (`SessionStart`, `PreInvocation`, `PostInvocation`, `Stop`) use a flat array
+ * of command hooks. Each command passes the event name as the second argument
+ * to the forwarder (`<command> antigravity <EventName>`) so the host always
+ * knows the event even if `hookEventName` is absent.
  *
  * Antigravity's `PreToolUse` contract requires a `decision`; a `{}` reply is
  * read as a deny, so the forwarder prints nothing for that event (an observer
- * must never decide). Other events receive `{}`.
+ * must never decide). Other events (`SessionStart`, `PreInvocation`,
+ * `PostInvocation`, `PostToolUse`, `Stop`) receive `{}`.
  */
 
 export const ANTIGRAVITY_GROUPED_EVENTS = ['PreToolUse', 'PostToolUse'] as const;
-export const ANTIGRAVITY_FLAT_EVENTS = ['PreInvocation', 'PostInvocation', 'Stop'] as const;
+export const ANTIGRAVITY_FLAT_EVENTS = ['SessionStart', 'PreInvocation', 'PostInvocation', 'Stop'] as const;
 export const ANTIGRAVITY_EVENTS = [
+  'SessionStart',
   'PreInvocation',
   'PostInvocation',
   'PreToolUse',
@@ -58,7 +60,7 @@ export function isExtaliaAntigravityHook(hook: unknown): boolean {
 
 /** Strip a trailing event argument from a full hook command so `commandValid` can inspect `<node> <forward.mjs> antigravity`. */
 function baseAntigravityCommand(fullCommand: string): string {
-  return fullCommand.replace(/\s+(?:PreInvocation|PostInvocation|PreToolUse|PostToolUse|Stop)\s*$/, '');
+  return fullCommand.replace(/\s+(?:SessionStart|PreInvocation|PostInvocation|PreToolUse|PostToolUse|Stop)\s*$/, '');
 }
 
 function parseHooksFile(text: string | undefined, file: string): Json {

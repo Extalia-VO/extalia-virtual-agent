@@ -17,6 +17,7 @@ export const GEMINI_EVENTS = [
   'AfterAgent',
   'BeforeTool',
   'AfterTool',
+  'PreCompress',
   'Notification',
 ] as const;
 

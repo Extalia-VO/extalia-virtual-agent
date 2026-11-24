@@ -155,7 +155,7 @@ describe('Connect service and hook forwarder', () => {
     const payload = JSON.stringify({ toolCall: { name: 'run_command', args: {} }, stepIdx: 1 });
 
     expect(await runForwarder(script, 'antigravity', payload, 'PreToolUse')).toEqual({ code: 0, stdout: '', stderr: '' });
-    for (const event of ['PreInvocation', 'PostInvocation', 'PostToolUse', 'Stop']) {
+    for (const event of ['SessionStart', 'PreInvocation', 'PostInvocation', 'PostToolUse', 'Stop']) {
       expect(await runForwarder(script, 'antigravity', payload, event)).toEqual({ code: 0, stdout: '{}\n', stderr: '' });
     }
   });
@@ -344,6 +344,7 @@ describe('Connect service and hook forwarder', () => {
     expect(written.hooks.BeforeTool?.[1]?.hooks[0]?.timeout).toBe(2000);
     expect(written.hooks.BeforeAgent?.[0]?.hooks[0]?.command).toContain('gemini');
     expect(written.hooks.AfterAgent?.[0]?.hooks[0]?.command).toContain('gemini');
+    expect(written.hooks.PreCompress?.[0]?.hooks[0]?.command).toContain('gemini');
 
     const connections = await service.connections();
     const geminiConn = connections.find(c => c.app === 'gemini');
@@ -384,11 +385,13 @@ describe('Connect service and hook forwarder', () => {
     const written = JSON.parse(await readFile(hooksPath, 'utf8')) as {
       customGroup?: Record<string, unknown>;
       extalia?: {
+        SessionStart?: Array<{ type: string; command: string; timeout: number }>;
         PreInvocation?: Array<{ type: string; command: string; timeout: number }>;
         PostToolUse?: Array<{ matcher: string; hooks: Array<{ type: string; command: string; timeout: number }> }>;
       };
     };
     expect(written.customGroup).toBeDefined();
+    expect(written.extalia?.SessionStart?.[0]?.command).toContain('antigravity SessionStart');
     expect(written.extalia?.PreInvocation?.[0]?.command).toContain('antigravity PreInvocation');
     expect(written.extalia?.PostToolUse?.[0]?.hooks[0]?.command).toContain('antigravity PostToolUse');
     expect(written.extalia?.PostToolUse?.[0]?.hooks[0]?.timeout).toBe(5);
@@ -397,6 +400,18 @@ describe('Connect service and hook forwarder', () => {
     const agyConn = connections.find(c => c.app === 'antigravity');
     expect(agyConn?.state).toBe('connected');
     expect(agyConn?.connected).toBe(true);
+    expect(agyConn?.events).toEqual(['SessionStart', 'PreInvocation', 'PostInvocation', 'PreToolUse', 'PostToolUse', 'Stop']);
+
+    // Partial install missing SessionStart is detected and repaired cleanly.
+    const partial = JSON.parse(await readFile(hooksPath, 'utf8')) as { extalia?: Record<string, unknown> };
+    delete partial.extalia?.SessionStart;
+    await writeFile(hooksPath, `${JSON.stringify(partial, null, 2)}\n`);
+    const partialConn = (await service.connections()).find(c => c.app === 'antigravity');
+    expect(partialConn?.state).toBe('partial');
+    expect(partialConn?.warnings.some(w => w.includes('SessionStart'))).toBe(true);
+    await service.apply('antigravity');
+    const repaired = JSON.parse(await readFile(hooksPath, 'utf8')) as { extalia?: { SessionStart?: Array<{ command: string }> } };
+    expect(repaired.extalia?.SessionStart?.[0]?.command).toContain('antigravity SessionStart');
 
     const disconnected = await service.disconnect('antigravity');
     expect(disconnected.changed).toBe(true);
@@ -566,13 +581,13 @@ describe('Connect service and hook forwarder', () => {
     const port = (server.address() as AddressInfo).port;
     await writeFile(endpointFile(spacedHome), JSON.stringify({ port, pid: process.pid, kind: 'bridge' }));
 
-    // 1. Direct delivery using recorded node-path (Antigravity PreToolUse/PostToolUse/PreInvocation/Stop + Gemini CLI).
+    // 1. Direct delivery using recorded node-path (Antigravity SessionStart/PreToolUse/PostToolUse/PreInvocation/Stop + Gemini CLI).
     await writeRecordedNodePath(spacedHome, process.execPath);
     expect((await stat(nodePathFile(spacedHome))).mode & 0o777).toBe(0o600);
     const agyPayload = JSON.stringify({ toolCall: { name: 'run_command', args: {} }, stepIdx: 1 });
     expect(await runLauncher(launcher, ['antigravity', 'PreToolUse'], agyPayload, { PATH: '', HOME: homeDirectory, EXTALIA_HOOK_SKIP_SYSTEM_NODE: '1' }))
       .toEqual({ code: 0, stdout: '', stderr: '' });
-    for (const event of ['PostToolUse', 'PreInvocation', 'Stop']) {
+    for (const event of ['SessionStart', 'PostToolUse', 'PreInvocation', 'Stop']) {
       expect(await runLauncher(launcher, ['antigravity', event], agyPayload, { PATH: '', HOME: homeDirectory, EXTALIA_HOOK_SKIP_SYSTEM_NODE: '1' }))
         .toEqual({ code: 0, stdout: '{}\n', stderr: '' });
     }
@@ -581,6 +596,7 @@ describe('Connect service and hook forwarder', () => {
       .toEqual({ code: 0, stdout: '', stderr: '' });
     expect(received.map(entry => ({ url: entry.url, auth: entry.auth, event: entry.body.hook_event_name }))).toEqual([
       { url: '/api/hooks/antigravity', auth: `Bearer ${token}`, event: 'PreToolUse' },
+      { url: '/api/hooks/antigravity', auth: `Bearer ${token}`, event: 'SessionStart' },
       { url: '/api/hooks/antigravity', auth: `Bearer ${token}`, event: 'PostToolUse' },
       { url: '/api/hooks/antigravity', auth: `Bearer ${token}`, event: 'PreInvocation' },
       { url: '/api/hooks/antigravity', auth: `Bearer ${token}`, event: 'Stop' },
@@ -669,7 +685,7 @@ describe('Connect service and hook forwarder', () => {
     await writeRecordedNodePath(extaliaHome, '/opt/homebrew/Cellar/node/24.0.0-gone/bin/node');
     const noNodeEnv = { PATH: '', HOME: emptyHome, EXTALIA_HOOK_SKIP_SYSTEM_NODE: '1' };
     expect(await runLauncher(launcher, ['antigravity', 'PreToolUse'], payload, noNodeEnv)).toEqual({ code: 0, stdout: '', stderr: '' });
-    for (const event of ['PostToolUse', 'PreInvocation', 'PostInvocation', 'Stop']) {
+    for (const event of ['SessionStart', 'PostToolUse', 'PreInvocation', 'PostInvocation', 'Stop']) {
       expect(await runLauncher(launcher, ['antigravity', event], payload, noNodeEnv)).toEqual({ code: 0, stdout: '{}\n', stderr: '' });
     }
     for (const app of ['gemini', 'codex', 'claude']) {
