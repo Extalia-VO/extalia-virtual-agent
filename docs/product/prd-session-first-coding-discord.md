@@ -861,6 +861,7 @@ Sebuah work package hanya dianggap **Done** jika seluruh syarat berlaku terpenuh
 - [ADR 0095 — Unassigned session context (Proposed)](../adr/0095-unassigned-session-context.md): arsitektur sesi *unassigned* tanpa izin filesystem (menjawab `OQ-01`).
 - [ADR 0096 — Session-first Chat landing page (Proposed)](../adr/0096-session-first-chat-landing.md): amandemen Phase A1 untuk default landing Chat composer (menjawab `OQ-02`).
 - [Schedule & Automation vNext (`Rev 1.1`, Proposed)](prd-schedule-automation-vnext.md): ledger eksekusi terjadwal, per-job IANA timezone, layanan host headless, serta pemisahan *general schedules* (`workspaceId` wajib saat ini) dari kurator otonom Knowledge/Skills.
+- [Universal Gateway Module v2 (`Rev 2.0`, Proposed)](prd-universal-gateway-v2.md): memperluas spesifikasi gateway Discord (`Slice D` / `DIS-*`) ke arsitektur provider-neutral (`M0`–`M5`: Discord bot + webhook per-agent portraits & reply routing, Telegram, WhatsApp policy-gated reporting, dan laporan otonom Knowledge/Skills ke Chat terbaru yang berhak pada workspace sumber).
 
 ### Suggested canonical FR crosswalk
 

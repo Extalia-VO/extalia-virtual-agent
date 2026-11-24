@@ -27,8 +27,9 @@ Knowledge acceptance. There is no evidence-based aggregate completion percentage
 | Document | Role |
 | --- | --- |
 | [App flow and live agents](prd-app-flow-and-live-agents.md) | Current app-flow requirements and implementation tracker |
-| [Session-first workspace, coding workers and Discord](prd-session-first-coding-discord.md) | Proposed planning spec (`PRD-SF-1.0`, baseline `v0.4.353`; Slice A local); no unverified runtime claims |
+| [Session-first workspace, coding workers and Discord](prd-session-first-coding-discord.md) | Proposed planning spec (`PRD-SF-1.0`, baseline `v0.4.353`; Slice A1 local); no unverified runtime claims |
 | [Schedule and Automation vNext](prd-schedule-automation-vnext.md) | Proposed scheduler specification (Rev 1.1, baseline `v0.4.353`): durable execution ledger, per-job IANA timezone, headless host service, and Gateway alignment |
+| [Universal Gateway Module v2](prd-universal-gateway-v2.md) | Proposed Universal Gateway specification (Rev 2.0, baseline `v0.4.353`, superseding v1): Discord collaboration/portraits, Telegram ops, WhatsApp policy-gated monitoring, and workspace autonomous Knowledge/Skills Chat reports |
 | [Observed agent control](prd-observed-agent-control.md) | Source-bound control requirements and provider acceptance |
 | [Repeatable Observe handover](prd-repeatable-handover.md) | Active checkpoints, repeated lineage, destination setup and runtime-specific acceptance |
 | [Master PRD v1.1 / patch v1.1.1](master-prd-v1.1/README.md) | Preserved imported specification; use the gap map for current implementation |
