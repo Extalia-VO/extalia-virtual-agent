@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AgentAppId } from '@extalia/platform';
 import { createConnectService, type ConnectContext } from '../src/connect/service.js';
-import { forwarderPath } from '../src/connect/forwarder.js';
+import { forwarderPath, forwardLauncherPath, nodePathFile } from '../src/connect/forwarder.js';
 
 const COMMAND_APPS = ['codex', 'claude', 'gemini', 'antigravity'] as const;
 const CONFIGS: Record<AgentAppId, string[]> = {
@@ -158,9 +158,12 @@ describe('agent-app Node prerequisites', () => {
     const configs = await Promise.all(COMMAND_APPS.map(original));
     const installed = createConnectService(context({ nodePath: process.execPath }));
     for (const app of COMMAND_APPS) await installed.apply(app);
+    const fragmentToCorrupt = process.platform === 'win32'
+      ? JSON.stringify(process.execPath).slice(1, -1)
+      : JSON.stringify(extaliaHome).slice(1, -1);
     for (const config of configs) {
       const content = await readFile(config.file, 'utf8');
-      await writeFile(config.file, content.replaceAll(JSON.stringify(process.execPath).slice(1, -1), ''));
+      await writeFile(config.file, content.replaceAll(fragmentToCorrupt, ''));
     }
     const service = createConnectService(context());
     const states = await service.connections();
@@ -197,8 +200,29 @@ describe('agent-app Node prerequisites', () => {
     resolveNodePath.mockResolvedValue(standalone);
     const plan = await service.plan('gemini');
     expect(plan).toMatchObject({ nodeStatus: 'ready' });
-    expect(plan.diff).toContain(standalone);
+    expect(plan.diff).toContain(forwardLauncherPath(extaliaHome));
     await service.apply('gemini', { expectedPreviewDigest: plan.previewDigest });
-    expect(await readFile(path.join(homeDirectory, ...CONFIGS.gemini), 'utf8')).toContain(forwarderPath(extaliaHome));
+    expect(await readFile(path.join(homeDirectory, ...CONFIGS.gemini), 'utf8')).toContain(forwardLauncherPath(extaliaHome));
+    expect(await readFile(nodePathFile(extaliaHome), 'utf8')).toBe(`${standalone}\n`);
+  });
+
+  it.skipIf(process.platform === 'win32')('reports malformed legacy forward.mjs commands as stale and removes them without Node', async () => {
+    const geminiFile = path.join(homeDirectory, ...CONFIGS.gemini);
+    await mkdir(path.dirname(geminiFile), { recursive: true });
+    await writeFile(geminiFile, JSON.stringify({
+      userSetting: true,
+      hooks: {
+        BeforeTool: [
+          { matcher: '*', hooks: [{ type: 'command', command: `'' '${forwarderPath(extaliaHome)}' gemini`, timeout: 2000 }] },
+        ],
+      },
+    }, null, 2) + '\n');
+
+    const service = createConnectService(context());
+    const gemini = (await service.connections()).find(state => state.app === 'gemini');
+    expect(gemini).toMatchObject({ nodeStatus: 'missing', state: 'stale' });
+    await expect(service.apply('gemini')).rejects.toThrow('standalone Node.js');
+    expect(await service.disconnect('gemini')).toMatchObject({ changed: true, removed: 1 });
+    expect(JSON.parse(await readFile(geminiFile, 'utf8'))).toEqual({ userSetting: true });
   });
 });

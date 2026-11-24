@@ -16,6 +16,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.354] - 2026-11-24
+
+- Replace hardcoded POSIX Node command paths in Antigravity, Gemini CLI, Codex, and Claude Code hooks with a fail-open POSIX launcher (`hooks/forward.sh`) alongside `hooks/forward.mjs` and a `hooks/node-path` hint, resolving standalone Node at runtime across `PATH`, Homebrew/system paths, Volta, fnm, nvm, and macOS Herd directories while preferring stable Homebrew symlinks over versioned Cellar paths so Node upgrades cannot fail with `exit status 127` or block Antigravity `PreToolUse`. Legacy `forward.mjs` hook configs remain recognized for status, upgrade, and surgical `disconnect`.
+- Support live multi-level Antigravity (`swarm`, `invoke_subagent`, `send_message`, `manage_subagents`, `post_message`) and Gemini CLI (`invoke_agent`, `browser_agent`, `remote_agent`, `generalist`, `cli_help`) orchestrator/subagent delegation trees across `packages/importers`, `packages/protocol`, `packages/host`, and `apps/web/src/host/mockHost.ts`.
+- Align built-in Antigravity and Gemini CLI hooks with their real event contracts: register Antigravity `SessionStart` (`connect/antigravity.ts`) and Gemini CLI `PreCompress` (`connect/gemini.ts`); sync real Antigravity `PostToolUse` hooks (which omit `toolOutput` on stdin) with fresh transcript spawn edges via `NativeImportService.antigravitySpawnsFor` (including `transcript_full.jsonl` hydration of truncated `swarm`/`invoke_subagent` `GENERIC` responses); resolve `swarm(kill)` and `manage_subagents(kill/kill_all)` `subagentStops` against `hookSubagentLinks`; handle `lastUserInput` title hints, `toolCall.id`-matched parallel tool completions, and `Stop` (`USER_CANCELED`, `fullyIdle === false`); and classify/route nested `parent_agent_id` subagent chains (`Observations.receiveHook`).
+
 ## [0.4.353] - 2026-11-16
 
 - Refresh the GitHub and npm README previews with current-UI animated WebP demos

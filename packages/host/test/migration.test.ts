@@ -6,7 +6,7 @@ import path from 'node:path';
 import { legacyDataDirectories, resolveDataDirectory } from '@extalia/platform';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
-  FORWARDER_SOURCE, MIGRATION_NOTE, createAgentHost, createConnectService, endpointFile, forwarderPath, migrateLegacyDataDirectory, readMigrationMarker,
+  FORWARDER_SOURCE, MIGRATION_NOTE, createAgentHost, createConnectService, endpointFile, forwarderPath, forwardLauncherPath, migrateLegacyDataDirectory, readMigrationMarker,
 } from '../src/index.js';
 import { useTempDirs } from './helpers.js';
 
@@ -177,10 +177,36 @@ describe('legacy data migration', () => {
     expect(before.warnings[0]).toContain('extalia connect gemini');
     expect(before.warnings[0]).toContain(target);
     await service.apply('gemini');
-    expect(await readFile(path.join(home, '.gemini', 'settings.json'), 'utf8')).toContain(forwarderPath(target).replace(/\\/g, '\\\\'));
+    const expectedHookScript = process.platform === 'win32' ? forwarderPath(target) : forwardLauncherPath(target);
+    expect(await readFile(path.join(home, '.gemini', 'settings.json'), 'utf8')).toContain(expectedHookScript.replace(/\\/g, '\\\\'));
     const after = (await service.connections()).find(item => item.app === 'gemini')!;
     expect(after.state).toBe('connected');
     expect(after.warnings.join(' ')).not.toContain('extalia connect gemini');
+  });
+
+  it.skipIf(process.platform === 'win32')('detects pre-migration direct forward.mjs hooks and upgrades them to forward.sh', async () => {
+    const { home, legacy } = await legacyFixture();
+    const geminiFile = path.join(home, '.gemini', 'settings.json');
+    await mkdir(path.dirname(geminiFile), { recursive: true });
+    await writeFile(geminiFile, JSON.stringify({
+      hooks: {
+        BeforeTool: [{ matcher: '*', hooks: [{ type: 'command', command: `'${process.execPath}' '${forwarderPath(legacy)}' gemini`, timeout: 2000 }] }],
+      },
+    }, null, 2) + '\n');
+    const target = path.join(home, '.extalia-vo');
+    await migrateLegacyDataDirectory({ target, platform: 'darwin', env: {}, homeDirectory: home });
+    const service = createConnectService({
+      platform: process.platform, env: {}, homeDirectory: home, extaliaHome: target, nodePath: process.execPath,
+      findBinary: async (name: string) => `/usr/local/bin/${name}`,
+      run: async () => ({ code: 0, stdout: 'gemini-cli 0.5.0\n', stderr: '' }),
+    });
+    const before = (await service.connections()).find(item => item.app === 'gemini')!;
+    expect(before.state).toBe('partial');
+    expect(before.warnings[0]).toContain('extalia connect gemini');
+    expect(before.warnings[0]).toContain(target);
+    await service.apply('gemini');
+    expect(await readFile(geminiFile, 'utf8')).toContain(forwardLauncherPath(target));
+    expect((await service.connections()).find(item => item.app === 'gemini')?.state).toBe('connected');
   });
 });
 

@@ -1,9 +1,9 @@
-import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { request, type IncomingHttpHeaders } from 'node:http';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { Readable } from 'node:stream';
-import { createAgentHost, createConnectService, type AgentHostRuntime, type ConnectService } from '@extalia/host';
+import { createAgentHost, createConnectService, forwardLauncherPath, nodePathFile, type AgentHostRuntime, type ConnectService } from '@extalia/host';
 import type { AgentHostApi, UpdateStatus } from '@extalia/platform';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { startBridgeServer, type BridgeServer } from '../src/bridge/server';
@@ -280,12 +280,31 @@ describe('extalia connect / disconnect / connections CLI and Bridge hook route',
     const geminiSettings = JSON.parse(await readFile(path.join(homeDirectory, '.gemini', 'settings.json'), 'utf8')) as { hooks?: Record<string, unknown> };
     expect(geminiSettings.hooks?.BeforeAgent).toBeDefined();
     expect(geminiSettings.hooks?.BeforeTool).toBeDefined();
+    expect(geminiSettings.hooks?.PreCompress).toBeDefined();
 
     const agyIo = makeHost();
     expect(await run(['connect', 'antigravity', '--yes'], agyIo.value)).toBe(0);
-    const agyHooks = JSON.parse(await readFile(path.join(homeDirectory, '.gemini', 'config', 'hooks.json'), 'utf8')) as { extalia?: Record<string, unknown> };
+    const agyHooks = JSON.parse(await readFile(path.join(homeDirectory, '.gemini', 'config', 'hooks.json'), 'utf8')) as {
+      extalia?: {
+        SessionStart?: Array<{ command: string }>;
+        PreInvocation?: Array<{ command: string }>;
+        PostToolUse?: Array<{ hooks: Array<{ command: string }> }>;
+      };
+    };
+    expect(agyHooks.extalia?.SessionStart).toBeDefined();
     expect(agyHooks.extalia?.PreInvocation).toBeDefined();
     expect(agyHooks.extalia?.PostToolUse).toBeDefined();
+    if (process.platform !== 'win32') {
+      expect(agyHooks.extalia?.SessionStart?.[0]?.command).toContain(forwardLauncherPath(extaliaHome));
+      expect(agyHooks.extalia?.PreInvocation?.[0]?.command).toContain(forwardLauncherPath(extaliaHome));
+      expect((await stat(forwardLauncherPath(extaliaHome))).mode & 0o777).toBe(0o755);
+      expect((await stat(nodePathFile(extaliaHome))).mode & 0o777).toBe(0o600);
+    }
+
+    // Default resolveService (without injected connectService) resolves Node cleanly on dry-run.
+    const defaultServiceIo = makeHost({ connectService: undefined });
+    expect(await run(['connect', 'antigravity', '--dry-run'], defaultServiceIo.value)).toBe(0);
+    expect(defaultServiceIo.out.join('\n')).toContain('Dry run complete.');
 
     const hermesIo = makeHost();
     expect(await run(['connect', 'hermes', '--yes', '--port', '4317'], hermesIo.value)).toBe(0);

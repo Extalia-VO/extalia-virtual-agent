@@ -17,6 +17,7 @@ export const GEMINI_EVENTS = [
   'AfterAgent',
   'BeforeTool',
   'AfterTool',
+  'PreCompress',
   'Notification',
 ] as const;
 
@@ -31,6 +32,9 @@ type Json = Record<string, unknown>;
 const isObject = (value: unknown): value is Json => typeof value === 'object' && value !== null && !Array.isArray(value);
 
 export function geminiCommand(nodePath: string, forwarderPath: string, platform: string): string {
+  if (platform !== 'win32' && (!nodePath || /(?:^|[\\/])forward\.sh$/.test(forwarderPath))) {
+    return `${quoteArgument(forwarderPath, platform)} gemini`;
+  }
   return `${quoteArgument(nodePath, platform)} ${quoteArgument(forwarderPath, platform)} gemini`;
 }
 
@@ -41,7 +45,7 @@ function desiredHook(desired: GeminiDesired): Json {
 /** Whether a hook entry in `~/.gemini/settings.json` was added by Extalia. */
 export function isExtaliaGeminiHook(hook: unknown): boolean {
   if (!isObject(hook)) return false;
-  return hook.type === 'command' && typeof hook.command === 'string' && /forward\.mjs['"]?\s+gemini\s*$/.test(hook.command);
+  return hook.type === 'command' && typeof hook.command === 'string' && /forward\.(?:mjs|sh)['"]?\s+gemini\s*$/.test(hook.command);
 }
 
 function parseSettings(text: string | undefined, file: string): Json {

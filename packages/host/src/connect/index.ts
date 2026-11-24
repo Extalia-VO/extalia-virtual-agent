@@ -2,10 +2,14 @@ export {
   createConnectService, splitCommand, VERIFIED_VERSIONS,
   type ConnectContext, type ConnectService, type RunCommand, type RunResult,
 } from './service.js';
-export { resolveNodePath } from './nodeRuntime.js';
+export { preferStableNodePath, resolveNodePath } from './nodeRuntime.js';
 export type { InterruptedConnectOperation, RecoveryAction, RecoveryEntryState, RecoveryReport } from './operationJournal.js';
 export { ConnectError, displayPath, findOnPath } from './util.js';
-export { FORWARDER_SOURCE, FORWARDER_VERSION, forwarderPath, installForwarder } from './forwarder.js';
+export {
+  FORWARDER_SOURCE, FORWARDER_VERSION, FORWARD_LAUNCHER_SOURCE, FORWARD_LAUNCHER_VERSION,
+  forwarderPath, forwarderStatus, forwardLauncherPath, forwardLauncherStatus, installForwarder, installForwardLauncher,
+  nodePathFile, readRecordedNodePath, writeRecordedNodePath,
+} from './forwarder.js';
 export { DEFAULT_HOOK_PORT, ensureToken, readEndpoint, readToken, tokenFile, endpointFile } from './endpoint.js';
 export { GEMINI_EVENTS, GEMINI_HOOK_TIMEOUT_MS, geminiCommand, inspectGeminiSettings, planGeminiSettings, removeGeminiEntries } from './gemini.js';
 export { ANTIGRAVITY_EVENTS, ANTIGRAVITY_HOOK_TIMEOUT_SEC, antigravityCommand, inspectAntigravityHooks, planAntigravityHooks, removeAntigravityEntries } from './antigravity.js';

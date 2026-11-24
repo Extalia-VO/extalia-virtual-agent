@@ -585,6 +585,29 @@ describe('normalizers (hooks/normalize.ts)', () => {
     });
     expect(geminiPrompt?.titleHint).toBe('Fix the bug');
     expect(geminiPrompt?.steps.map(s => s.body.type)).toEqual(['prompt.submitted', 'agent.state']);
+
+    // Gemini nested SubagentStart / SubagentStop with parent_agent_id and invoke_agent
+    const geminiSubStart = normalizeGeminiHook({
+      session_id: 'session-gemini-1',
+      hook_event_name: 'SubagentStart',
+      agent_id: 'sub-leaf-1',
+      parent_agent_id: 'sub-parent-1',
+      agent_type: 'verifier',
+      agent_name: 'Leaf Verifier',
+    });
+    expect(geminiSubStart?.parentAgentId).toBe('sub-parent-1');
+    expect(geminiSubStart?.steps).toEqual([
+      { agentId: 'sub-parent-1', body: { type: 'subagent.spawned', subagentId: 'sub-leaf-1', role: 'verifier', label: 'Leaf Verifier' } },
+    ]);
+    const geminiSubStop = normalizeGeminiHook({
+      session_id: 'session-gemini-1',
+      hook_event_name: 'SubagentStop',
+      agent_id: 'sub-leaf-1',
+      parent_agent_id: 'sub-parent-1',
+    });
+    expect(geminiSubStop?.steps).toEqual([
+      { agentId: 'sub-parent-1', body: { type: 'subagent.state', subagentId: 'sub-leaf-1', state: 'offline' } },
+    ]);
   });
 
   it('classifies PreToolUse / BeforeTool calls (Bash command/test, Edit, Write, apply_patch, Read, Grep, Web, Task)', () => {
@@ -877,7 +900,33 @@ describe('normalizers (hooks/normalize.ts)', () => {
     expect(endInterrupted!.steps.map(s => s.body.type)).toEqual(['turn.failed', 'agent.state']);
   });
 
-  it('normalizes Antigravity PreInvocation, PreToolUse, PostToolUse, and Stop hooks', () => {
+  it('normalizes Antigravity SessionStart, PreInvocation, PreToolUse, PostToolUse, and Stop hooks', () => {
+    const sessionStart = normalizeAntigravityHook({
+      conversationId: 'agy-conv-1',
+      hookEventName: 'SessionStart',
+      workspacePaths: ['/Users/<name>/project'],
+      modelName: 'gemini-3-pro',
+      lastUserInput: 'Inspect subagent hooks',
+    });
+    expect(sessionStart).toMatchObject({
+      app: 'antigravity',
+      sessionId: 'agy-conv-1',
+      starts: true,
+      ends: false,
+      cwd: '/Users/<name>/project',
+      model: 'gemini-3-pro',
+      titleHint: 'Inspect subagent hooks',
+    });
+    expect(sessionStart!.steps.map(s => s.body)).toEqual([
+      { type: 'session.started', control: 'observed', model: 'gemini-3-pro', cwd: '/Users/<name>/project' },
+      { type: 'agent.state', state: 'idle' },
+    ]);
+    expect(normalizeAntigravityHook({
+      conversationId: 'agy-conv-1',
+      hookEventName: 'SessionStart',
+      lastUserInput: 'Sensitive prompt sk-ant-secret123',
+    }, { labelsOnly: true })?.titleHint).toBeUndefined();
+
     const preInvoke = normalizeAntigravityHook({
       conversationId: 'agy-conv-1',
       hook_event_name: 'PreInvocation',
@@ -923,6 +972,38 @@ describe('normalizers (hooks/normalize.ts)', () => {
       change: 'add',
     });
 
+    // Parallel tool calls on the same stepIdx match by toolCall.id even when completing out of order.
+    normalizeAntigravityHook({
+      conversationId: 'agy-conv-parallel',
+      hookEventName: 'PreToolUse',
+      stepIdx: 9,
+      toolCall: { id: 'toolu_a', name: 'read_file', args: { Path: '/projects/demo/a.ts' } },
+    });
+    normalizeAntigravityHook({
+      conversationId: 'agy-conv-parallel',
+      hookEventName: 'PreToolUse',
+      stepIdx: 9,
+      toolCall: { id: 'toolu_b', name: 'write_to_file', args: { TargetFile: '/projects/demo/b.ts' } },
+    });
+    const outOfOrderB = normalizeAntigravityHook({
+      conversationId: 'agy-conv-parallel',
+      hookEventName: 'PostToolUse',
+      stepIdx: 9,
+      workspacePaths: ['/projects/demo'],
+      toolCall: { id: 'toolu_b', name: 'write_to_file', args: { TargetFile: '/projects/demo/b.ts' } },
+    })!;
+    expect(outOfOrderB.steps).toEqual([
+      expect.objectContaining({ body: expect.objectContaining({ type: 'tool.completed', tool: 'write_to_file', toolCallId: 'step-9-2', ok: true }) }),
+      expect.objectContaining({ body: expect.objectContaining({ type: 'file.written', path: 'b.ts', toolCallId: 'step-9-2' }) }),
+    ]);
+    const outOfOrderA = normalizeAntigravityHook({
+      conversationId: 'agy-conv-parallel',
+      hookEventName: 'PostToolUse',
+      stepIdx: 9,
+      toolCall: { id: 'toolu_a', name: 'read_file', args: { Path: '/projects/demo/a.ts' } },
+    })!;
+    expect(outOfOrderA.steps[0]?.body).toMatchObject({ type: 'tool.completed', tool: 'read_file', toolCallId: 'step-9', ok: true });
+
     const stop = normalizeAntigravityHook({
       conversationId: 'agy-conv-1',
       hook_event_name: 'Stop',
@@ -930,6 +1011,26 @@ describe('normalizers (hooks/normalize.ts)', () => {
       terminationReason: 'FINAL_RESPONSE',
     });
     expect(stop!.steps.map(s => s.body.type)).toEqual(['turn.completed', 'agent.state']);
+
+    const stopBusy = normalizeAntigravityHook({
+      conversationId: 'agy-conv-1',
+      hookEventName: 'Stop',
+      fullyIdle: false,
+      terminationReason: 'NO_TOOL_CALL',
+    });
+    expect(stopBusy!.steps.map(s => s.body)).toEqual([
+      { type: 'agent.state', state: 'working', summary: 'Waiting on background tasks' },
+    ]);
+
+    const stopCanceled = normalizeAntigravityHook({
+      conversationId: 'agy-conv-1',
+      hookEventName: 'Stop',
+      terminationReason: 'USER_CANCELED',
+    });
+    expect(stopCanceled!.steps.map(s => s.body)).toEqual([
+      { type: 'turn.failed', error: 'Interrupted', reason: 'interrupted' },
+      { type: 'agent.state', state: 'idle', phase: 'interrupted', reason: 'interrupted' },
+    ]);
   });
 
   it('points Antigravity hooks at the compact transcript.jsonl that observation reads', () => {

@@ -9,7 +9,7 @@ import { open, rm, stat, type FileHandle } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import path from 'node:path';
 import { HermesDashboardClient, parseHermesDashboardUrl } from './hermesDashboard.js';
-import { HOOK_APP_LABELS, HOOK_SOURCE_IDS, clearAntigravityBackgroundTasks, hookProtocolEvents, hookSource, isHookApp, type HookApp, type NormalizedHook } from './hooks/normalize.js';
+import { HOOK_APP_LABELS, HOOK_SOURCE_IDS, clearAntigravityBackgroundTasks, hookProtocolEvents, hookSource, isHookApp, type HookApp, type NormalizedHook, type NormalizedSubagentSpawn } from './hooks/normalize.js';
 import { readJson, writeJsonAtomic } from './jsonStore.js';
 import type { NativeImportService, NativeObservationRef, ObservedRead } from './nativeImport.js';
 import { sessionContext } from './sessionContext.js';
@@ -170,7 +170,31 @@ export interface ObservationHooks {
 }
 const digest = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const sourceKey = (ref: NativeObservationRef) => `${ref.locationId}:${ref.nativeSessionId}`;
+const plainRef = (ref: NativeObservationRef): NativeObservationRef => ({
+  locationId: ref.locationId,
+  sourceId: ref.sourceId,
+  nativeSessionId: ref.nativeSessionId,
+  path: ref.path,
+});
 const sameSession = (a: NativeObservationRef, b: NativeObservationRef) => a.sourceId === b.sourceId && a.nativeSessionId === b.nativeSessionId;
+
+interface HookSubagentLink {
+  parentId: string;
+  label?: string;
+  role?: string;
+  model?: string;
+}
+
+interface HookSubagentAncestor {
+  subagentId: string;
+  parentAgentId: string;
+  label?: string;
+  role?: string;
+  model?: string;
+}
+
+const MAX_HOOK_SUBAGENT_LINKS = 500;
+const MAX_SUBAGENT_TREE_DEPTH = 8;
 const isMeeting = (body: EventBody) => body.type === 'meeting.started' || body.type === 'meeting.contribution' || body.type === 'meeting.completed';
 /** Lifecycle envelopes and idle reports alone do not establish a conversation. */
 function substantiveObservationBody(body: EventBody): boolean {
@@ -514,6 +538,8 @@ export class Observations {
   private hookCounter = 0;
   private hookSaveTimer?: ReturnType<typeof setTimeout>;
   private skippedHooks = new Set<string>();
+  /** Runtime parent-child links learned from live hooks (`${sourceId}:${childId}` -> immediate parent + metadata). */
+  private hookSubagentLinks = new Map<string, HookSubagentLink>();
   private constructor(private directory: string, private source: NativeImportService, private emit: (event: ExtaliaEvent) => void, private hooks: ObservationHooks) {}
 
   static async create(directory: string, source: NativeImportService, emit: (event: ExtaliaEvent) => void, intervalMs = 2000, hooks: ObservationHooks = {}): Promise<Observations> {
@@ -1381,16 +1407,29 @@ export class Observations {
         }
         // Hook-only sessions have no transcript to read.
         if (!record.reference.path) continue;
-        // Records made before v0.0.37 may point at a Codex sub-agent thread: they now follow its root session.
-        if (record.reference.sourceId === 'codex') {
-          const { subagentId, ...root } = this.source.rootReference(record.reference);
-          if (subagentId) {
+        // Records made before v0.0.37 or created before a spawn link may point at a sub-agent thread/conversation: fold into root.
+        if (record.reference.sourceId === 'codex' || record.reference.sourceId === 'antigravity') {
+          const resolved = this.source.rootReference(record.reference);
+          if (resolved.subagentId) {
+            const root = plainRef(resolved);
             if (this.records.some(item => item !== record && sameSession(item.reference, root))) {
+              const live = this.live.get(record.id);
               this.records = this.records.filter(item => item !== record); this.live.delete(record.id);
               await this.save(); await rm(this.file(record.id), { force: true });
               this.imageStores.delete(record.id);
               await rm(this.attachmentFolder(record.id), { recursive: true, force: true });
+              if (live) {
+                this.emit(createEvent({
+                  sessionId: record.id,
+                  source: { runtime: record.reference.sourceId, channel: 'transcript', adapter: 'native-transcript' },
+                  body: { type: 'session.updated', revision: digest(['retired', live.revision]), messageCount: live.snapshot?.messages.length ?? 0 },
+                }));
+              }
               continue;
+            }
+            if (!record.titleRenamed && Object.values(HOOK_APP_LABELS).some(label => record.title === `${label} · ${record.reference.nativeSessionId.slice(0, 24)}`)) {
+              const app = (Object.keys(HOOK_SOURCE_IDS) as HookApp[]).find(key => HOOK_SOURCE_IDS[key] === root.sourceId);
+              if (app) record.title = `${HOOK_APP_LABELS[app]} · ${root.nativeSessionId.slice(0, 24)}`;
             }
             this.invalidateControl(record); record.reference = root; await this.save();
           }
@@ -1504,6 +1543,210 @@ export class Observations {
       await rm(this.attachmentFolder(id), { recursive: true, force: true });
     });
   }
+  private recordHookSubagentLink(sourceId: string, childId: string, link: HookSubagentLink): void {
+    if (!childId || !link.parentId || childId === link.parentId) return;
+    // Reject links that would create a cycle in the parent chain.
+    let cursor: string | undefined = link.parentId;
+    const seen = new Set<string>([childId]);
+    for (let depth = 0; cursor && depth < MAX_SUBAGENT_TREE_DEPTH; depth++) {
+      if (seen.has(cursor)) return;
+      seen.add(cursor);
+      cursor = this.hookSubagentLinks.get(`${sourceId}:${cursor}`)?.parentId;
+    }
+    const key = `${sourceId}:${childId}`;
+    const existing = this.hookSubagentLinks.get(key);
+    const merged: HookSubagentLink = {
+      parentId: link.parentId,
+      ...((link.label ?? existing?.label) ? { label: link.label ?? existing?.label } : {}),
+      ...((link.role ?? existing?.role) ? { role: link.role ?? existing?.role } : {}),
+      ...((link.model ?? existing?.model) ? { model: link.model ?? existing?.model } : {}),
+    };
+    this.hookSubagentLinks.delete(key);
+    this.hookSubagentLinks.set(key, merged);
+    while (this.hookSubagentLinks.size > MAX_HOOK_SUBAGENT_LINKS) {
+      const oldest = this.hookSubagentLinks.keys().next().value;
+      if (oldest !== undefined) this.hookSubagentLinks.delete(oldest); else break;
+    }
+  }
+
+  private lookupSessionRef(sourceId: string, app: HookApp, nativeSessionId: string): NativeObservationRef {
+    const existing = this.records.find(item => item.reference.sourceId === sourceId && item.reference.nativeSessionId === nativeSessionId);
+    return existing
+      ? plainRef(existing.reference)
+      : { locationId: `hook-${app}`, sourceId, nativeSessionId, path: '' };
+  }
+
+  /**
+   * Resolve the root session reference for a hook by combining transcript-level `rootReference`
+   * and runtime `hookSubagentLinks` (walking parent links up to depth 8 with cycle protection),
+   * preserving immediate parent and ancestor metadata for multi-level trees.
+   */
+  private resolveHookTarget(
+    sourceId: string,
+    app: HookApp,
+    sessionId: string,
+    direct: NativeObservationRef,
+  ): {
+    reference: NativeObservationRef;
+    subagentId?: string;
+    parentAgentId?: string;
+    subagentLabel?: string;
+    subagentRole?: string;
+    subagentModel?: string;
+    ancestors: HookSubagentAncestor[];
+  } {
+    const hops: Array<{ childId: string; parentId: string; label?: string; role?: string; model?: string }> = [];
+    const visited = new Set<string>([sessionId]);
+    let cursorId = sessionId;
+    let cursorRef: NativeObservationRef = plainRef(direct);
+    let bestRootRef: NativeObservationRef | undefined;
+
+    for (let depth = 0; depth < MAX_SUBAGENT_TREE_DEPTH; depth++) {
+      const runtimeLink = this.hookSubagentLinks.get(`${sourceId}:${cursorId}`);
+      const sourceResolved = this.source.rootReference(cursorRef);
+
+      if (sourceResolved.subagentId) {
+        const effectiveChildId = sourceResolved.subagentId;
+        const resolvedRoot = plainRef(sourceResolved);
+        bestRootRef = resolvedRoot;
+        const label = runtimeLink?.label ?? sourceResolved.subagentLabel;
+        const role = runtimeLink?.role ?? sourceResolved.subagentRole;
+        const model = runtimeLink?.model ?? sourceResolved.subagentModel;
+        const immediateParentId = sourceResolved.parentAgentId && sourceResolved.parentAgentId !== 'primary'
+          ? sourceResolved.parentAgentId
+          : resolvedRoot.nativeSessionId;
+        if (visited.has(immediateParentId)) break;
+        hops.push({
+          childId: effectiveChildId,
+          parentId: immediateParentId,
+          ...(label ? { label } : {}),
+          ...(role ? { role } : {}),
+          ...(model ? { model } : {}),
+        });
+        visited.add(immediateParentId);
+        cursorId = immediateParentId;
+        cursorRef = immediateParentId === resolvedRoot.nativeSessionId
+          ? resolvedRoot
+          : this.lookupSessionRef(sourceId, app, immediateParentId);
+        continue;
+      }
+
+      if (runtimeLink) {
+        if (visited.has(runtimeLink.parentId)) break;
+        hops.push({
+          childId: cursorId,
+          parentId: runtimeLink.parentId,
+          ...(runtimeLink.label ? { label: runtimeLink.label } : {}),
+          ...(runtimeLink.role ? { role: runtimeLink.role } : {}),
+          ...(runtimeLink.model ? { model: runtimeLink.model } : {}),
+        });
+        visited.add(runtimeLink.parentId);
+        cursorId = runtimeLink.parentId;
+        cursorRef = this.lookupSessionRef(sourceId, app, cursorId);
+        continue;
+      }
+
+      break;
+    }
+
+    if (hops.length === 0) {
+      return { reference: cursorRef, ancestors: [] };
+    }
+
+    let rootRef = cursorRef;
+    if (bestRootRef && cursorId !== bestRootRef.nativeSessionId && !visited.has(bestRootRef.nativeSessionId)) {
+      hops.push({ childId: cursorId, parentId: bestRootRef.nativeSessionId });
+      rootRef = bestRootRef;
+    }
+    const existingRoot = this.records.find(item => item.reference.sourceId === sourceId && item.reference.nativeSessionId === rootRef.nativeSessionId);
+    if (existingRoot && !rootRef.path && existingRoot.reference.path) {
+      rootRef = plainRef(existingRoot.reference);
+    }
+
+    const ancestors: HookSubagentAncestor[] = [...hops].reverse().map(hop => ({
+      subagentId: hop.childId,
+      parentAgentId: hop.parentId === rootRef.nativeSessionId ? 'primary' : hop.parentId,
+      ...(hop.label ? { label: hop.label } : {}),
+      ...(hop.role ? { role: hop.role } : {}),
+      ...(hop.model ? { model: hop.model } : {}),
+    }));
+    const leaf = ancestors.at(-1)!;
+    return {
+      reference: rootRef,
+      subagentId: leaf.subagentId,
+      parentAgentId: leaf.parentAgentId,
+      ...(leaf.label ? { subagentLabel: leaf.label } : {}),
+      ...(leaf.role ? { subagentRole: leaf.role } : {}),
+      ...(leaf.model ? { subagentModel: leaf.model } : {}),
+      ancestors,
+    };
+  }
+
+  /**
+   * Race-condition coalescing: if a child conversation's hook arrived before its parent registered
+   * the spawn link (creating an automatic standalone record), fold its buffered hook events under
+   * the root session and remove the duplicate standalone record so it never lingers in the Office.
+   */
+  private async foldStandaloneChildRecords(
+    sourceId: string,
+    rootRecord: ObservationRecord,
+    childSessionIds: readonly string[],
+    at: string,
+    announced: Set<string>,
+  ): Promise<{ events: ExtaliaEvent[]; folded: boolean }> {
+    const foldedEvents: ExtaliaEvent[] = [];
+    let folded = false;
+    for (const childNativeId of new Set(childSessionIds)) {
+      if (!childNativeId || childNativeId === rootRecord.reference.nativeSessionId) continue;
+      const childRecord = this.records.find(item =>
+        item.id !== rootRecord.id
+        && item.reference.sourceId === sourceId
+        && item.reference.nativeSessionId === childNativeId
+        && item.auto === true
+        && !item.titleRenamed,
+      );
+      if (!childRecord) continue;
+      folded = true;
+      const childLive = this.live.get(childRecord.id);
+      if (childLive?.hook?.events.length) {
+        for (const ev of childLive.hook.events) {
+          if (ev.body.type === 'session.started' || ev.body.type === 'session.ended' || ev.body.type === 'session.updated' || isMeeting(ev.body)) continue;
+          if (this.labelsOnly() && (ev.body.type === 'prompt.submitted' || ev.body.type === 'model.completed')) continue;
+          const body: EventBody = this.labelsOnly() && ev.body.type === 'tool.completed' && 'output' in ev.body
+            ? (({ output: _out, ...rest }) => rest)(ev.body)
+            : ev.body;
+          if (body.type === 'subagent.spawned') {
+            if (announced.has(body.subagentId)) continue;
+            announced.add(body.subagentId);
+          }
+          const agentId = ev.agentId && ev.agentId !== 'primary' ? ev.agentId : childNativeId;
+          const eventAt = ev.at < at ? at : ev.at;
+          try {
+            foldedEvents.push(createEvent({
+              id: `hook-${rootRecord.id}-${++this.hookCounter}-fold`,
+              at: eventAt,
+              sessionId: rootRecord.id,
+              agentId,
+              source: ev.source,
+              body,
+            }));
+          } catch { /* skip invalid event */ }
+        }
+      }
+      this.records = this.records.filter(item => item.id !== childRecord.id);
+      this.live.delete(childRecord.id);
+      this.imageStores.delete(childRecord.id);
+      await rm(this.file(childRecord.id), { force: true });
+      await rm(this.attachmentFolder(childRecord.id), { recursive: true, force: true });
+      this.emit(createEvent({
+        sessionId: childRecord.id,
+        source: { runtime: childRecord.reference.sourceId, channel: 'transcript', adapter: 'native-transcript' },
+        body: { type: 'session.updated', revision: digest(['retired', childLive?.revision ?? 'empty']), messageCount: childLive?.snapshot?.messages.length ?? 0 },
+      }));
+    }
+    return { events: foldedEvents, folded };
+  }
+
   receiveHook(hook: NormalizedHook): Promise<void> {
     if (this.closed) return Promise.resolve();
     const task = () => this.serialize(async () => {
@@ -1522,12 +1765,37 @@ export class Observations {
         if (added) await this.saveSettings();
         return;
       }
+      const sourceId = HOOK_SOURCE_IDS[hook.app];
+      if (hook.parentSessionId && hook.parentSessionId !== hook.sessionId) {
+        this.recordHookSubagentLink(sourceId, hook.sessionId, {
+          parentId: hook.parentSessionId,
+          ...(hook.agentType ? { role: hook.agentType, label: hook.agentType } : {}),
+          ...(hook.model ? { model: safeLabel(hook.model, 120) } : {}),
+        });
+      }
+      if (hook.agentId && hook.agentId !== 'primary' && hook.parentAgentId && hook.parentAgentId !== hook.agentId) {
+        this.recordHookSubagentLink(sourceId, hook.agentId, {
+          parentId: hook.parentAgentId,
+          ...(hook.agentType ? { role: hook.agentType, label: hook.agentType } : {}),
+          ...(hook.model ? { model: safeLabel(hook.model, 120) } : {}),
+        });
+      }
+      if (hook.subagentSpawns?.length) {
+        for (const spawn of hook.subagentSpawns) {
+          this.recordHookSubagentLink(sourceId, spawn.subagentId, {
+            parentId: hook.sessionId,
+            ...(spawn.label ? { label: spawn.label } : {}),
+            ...(spawn.role ? { role: spawn.role } : {}),
+            ...(spawn.model ? { model: spawn.model } : {}),
+          });
+        }
+      }
       // No normalized report means no session/activity evidence to register.
       if (hook.followupPrompts !== undefined) {
         // Resolve the reported native source without creating/linking observations.
-        const direct = this.source.hookReference(HOOK_SOURCE_IDS[hook.app], hook.sessionId, hook.transcriptPath, hook.profile)
-          ?? { locationId: `hook-${hook.app}`, sourceId: HOOK_SOURCE_IDS[hook.app], nativeSessionId: hook.sessionId, path: '' };
-        const { subagentId, ...reference } = this.source.rootReference(direct);
+        const direct = this.source.hookReference(sourceId, hook.sessionId, hook.transcriptPath, hook.profile)
+          ?? { locationId: `hook-${hook.app}`, sourceId, nativeSessionId: hook.sessionId, path: '' };
+        const { subagentId, reference } = this.resolveHookTarget(sourceId, hook.app, hook.sessionId, direct);
         const record = this.records.find(item => sameSession(item.reference, reference));
         if (!subagentId && reference.nativeSessionId === hook.sessionId && record?.watching && !this.labelsOnly()) {
           const prompts = hook.followupPrompts;
@@ -1539,7 +1807,6 @@ export class Observations {
         return;
       }
       if (hook.steps.length === 0) return;
-      const sourceId = HOOK_SOURCE_IDS[hook.app];
       const skipKey = `${sourceId}:${hook.sessionId}`;
       if (this.skippedHooks.has(skipKey)) return;
       if (!this.records.some(r => r.reference.sourceId === sourceId && r.reference.nativeSessionId === hook.sessionId)) {
@@ -1554,15 +1821,47 @@ export class Observations {
       }
       const direct = this.source.hookReference(sourceId, hook.sessionId, hook.transcriptPath, hook.profile)
         ?? { locationId: `hook-${hook.app}`, sourceId, nativeSessionId: hook.sessionId, path: '' };
-      // A Codex sub-agent thread reports into the session that spawned it, as that session's sub-agent.
-      const { subagentId, ...reference } = this.source.rootReference(direct);
+      // Sub-agent threads and child conversations report into their root session as nested sub-agents.
+      const resolved = this.resolveHookTarget(sourceId, hook.app, hook.sessionId, direct);
+      const { reference, subagentId, parentAgentId, subagentLabel, subagentRole, subagentModel, ancestors } = resolved;
+      const discoveredSpawns: NormalizedSubagentSpawn[] = [...(hook.subagentSpawns ?? [])];
+      const knownSpawnIds = new Set(discoveredSpawns.map(spawn => spawn.subagentId));
+      // Real Antigravity PostToolUse hooks omit toolOutput from stdin; read fresh spawn edges from the acting transcript.
+      if (hook.app === 'antigravity' && (hook.event === 'PostToolUse' || hook.event === 'PostInvocation' || hook.event === 'Stop')) {
+        const actingRecord = this.records.find(item => item.reference.sourceId === sourceId && item.reference.nativeSessionId === hook.sessionId && item.reference.path);
+        const actingRef = direct.path ? direct : (actingRecord?.reference ?? direct);
+        for (const spawn of this.source.antigravitySpawnsFor(actingRef)) {
+          if (!spawn.subagentId || spawn.subagentId === hook.sessionId) continue;
+          const converted: NormalizedSubagentSpawn = {
+            subagentId: spawn.subagentId,
+            ...(spawn.label ? { label: spawn.label } : {}),
+            ...(spawn.role ? { role: spawn.role } : {}),
+            ...(spawn.model ? { model: spawn.model } : {}),
+          };
+          this.recordHookSubagentLink(sourceId, spawn.subagentId, {
+            parentId: hook.sessionId,
+            ...(converted.label ? { label: converted.label } : {}),
+            ...(converted.role ? { role: converted.role } : {}),
+            ...(converted.model ? { model: converted.model } : {}),
+          });
+          if (!knownSpawnIds.has(spawn.subagentId)) {
+            knownSpawnIds.add(spawn.subagentId);
+            discoveredSpawns.push(converted);
+          }
+        }
+      }
+      const ownSteps = subagentId
+        ? hook.steps.filter(step => step.body.type !== 'session.started' && step.body.type !== 'session.ended')
+          .map(step => ({ ...step, agentId: step.agentId && step.agentId !== 'primary' ? step.agentId : subagentId }))
+        : hook.steps;
+      if (ownSteps.length === 0 && !discoveredSpawns.length && !hook.subagentStops?.length) return;
       const at = new Date().toISOString();
       let record = this.records.find(item => sameSession(item.reference, reference));
       // A session the hooks have not reported before may continue a known conversation (Claude Code; see `continuation`).
       if (!record && !subagentId) record = await this.linkHook(reference);
       const firstDiscovery = !record;
       // Meeting reports alone cannot establish a new session or agent identity.
-      if (!record && hook.steps.every(step => isMeeting(step.body))) return;
+      if (!record && ownSteps.every(step => isMeeting(step.body))) return;
       // Sessions in ignored folders are not observed automatically (a session picked by hand still is).
       if (this.ignoredPath(hook.cwd) && (!record || record.auto)) return;
       const titleHint = this.labelsOnly() || hook.titleHint && isInjectedContext(hook.titleHint) ? undefined : hook.titleHint;
@@ -1586,7 +1885,7 @@ export class Observations {
         if (!record.reference.path && reference.path) { this.invalidateControl(record); record.reference = reference; }
         record.hook = { app: hook.app };
         record.lastActiveAt = at;
-        if (hook.cwd && record.projectPath !== hook.cwd) { this.invalidateControl(record); record.projectPath = hook.cwd; }
+        if (hook.cwd && (!subagentId || !record.projectPath) && record.projectPath !== hook.cwd) { this.invalidateControl(record); record.projectPath = hook.cwd; }
         if (titleHint && !subagentId && !record.titleRenamed && record.title === `${HOOK_APP_LABELS[hook.app]} · ${reference.nativeSessionId.slice(0, 24)}`) record.title = titleHint;
       }
       if (sourceId === 'codex' && !subagentId && !record.userConversation) {
@@ -1607,10 +1906,6 @@ export class Observations {
         if (hook.effortReported || hook.effort !== undefined) reportEffort(record, hook.effort, at, hook.model);
       }
       const live = this.live.get(record.id)!;
-      const ownSteps = subagentId
-        ? hook.steps.filter(step => step.body.type !== 'session.started' && step.body.type !== 'session.ended')
-          .map(step => ({ ...step, agentId: step.agentId && step.agentId !== 'primary' ? step.agentId : subagentId }))
-        : hook.steps;
       const filteredSteps = this.labelsOnly()
         ? ownSteps
             .filter(step => step.body.type !== 'prompt.submitted' && step.body.type !== 'model.completed')
@@ -1636,7 +1931,7 @@ export class Observations {
       }
       if (!live.hook) {
         live.hook = { app: hook.app, since: at, lastAt: at, events: [] };
-        if (!hook.starts && !events.some(e => e.body.type === 'session.started')) {
+        if ((!hook.starts || Boolean(subagentId)) && !events.some(e => e.body.type === 'session.started')) {
           events.unshift(createEvent({
             id: `hook-${record.id}-${++this.hookCounter}-start`,
             at,
@@ -1648,7 +1943,7 @@ export class Observations {
               control: 'observed',
               title: record.title,
               ...(record.projectPath ? { cwd: record.projectPath } : {}),
-              ...(hook.model ? { model: hook.model } : {}),
+              ...(!subagentId && hook.model ? { model: hook.model } : {}),
             },
           }));
         }
@@ -1657,7 +1952,7 @@ export class Observations {
       if (substantive) delete record.lifecycleOnly;
       if (substantive
         || this.labelsOnly() && (hook.event === 'UserPromptSubmit' || hook.event === 'BeforeAgent')) live.hook.substantive = true;
-      if (hook.app === 'antigravity' && (hook.event === 'PostToolUse' || hook.event === 'Stop') && record.reference.path
+      if (hook.app === 'antigravity' && !subagentId && (hook.event === 'PostToolUse' || hook.event === 'Stop') && record.reference.path
         && !events.some(event => event.body.type === 'turn.failed')
         && events.some(event => event.body.type === 'tool.completed' || event.body.type === 'turn.completed')) {
         let read: ObservedRead | undefined;
@@ -1721,20 +2016,168 @@ export class Observations {
         }
         events = accepted;
       }
-      // v0.0.38: every sub-agent is announced once under its lead, before its own events, also when its start hook
-      // was missed (a background Claude Code agent started before this host, or a Codex sub-agent thread).
+      // v0.0.38: every sub-agent is announced once under its parent, before its own events, also when its start hook
+      // was missed (a background Claude Code agent started before this host, a Codex thread, or an Antigravity/Gemini child).
       const announced = (live.hook.subagents ??= new Set());
       for (const event of events) if (event.body.type === 'subagent.spawned') announced.add(event.body.subagentId);
+
+      const actorAgentId = subagentId ?? 'primary';
+      for (const spawn of discoveredSpawns) {
+        if (!spawn.subagentId || spawn.subagentId === 'primary' || spawn.subagentId === actorAgentId || announced.has(spawn.subagentId)) continue;
+        announced.add(spawn.subagentId);
+        events.push(createEvent({
+          id: `hook-${record.id}-${++this.hookCounter}-sync-spawn`,
+          at,
+          sessionId: record.id,
+          agentId: actorAgentId,
+          source: hookSource(hook.app),
+          body: {
+            type: 'subagent.spawned',
+            subagentId: spawn.subagentId,
+            ...(spawn.role ? { role: spawn.role } : {}),
+            ...(spawn.label ? { label: spawn.label } : spawn.role ? { label: spawn.role } : {}),
+            ...(spawn.model ? { model: spawn.model } : {}),
+          },
+        }));
+      }
+      if (hook.subagentStops?.length) {
+        const alreadyStopped = new Set<string>();
+        const stoppedEarlier = new Set<string>();
+        for (const existing of live.hook.events) {
+          if (existing.body.type === 'subagent.spawned') stoppedEarlier.delete(existing.body.subagentId);
+          else if (existing.body.type === 'subagent.state') {
+            if (existing.body.state === 'offline') stoppedEarlier.add(existing.body.subagentId);
+            else stoppedEarlier.delete(existing.body.subagentId);
+          }
+        }
+        for (const event of events) {
+          if (event.body.type === 'subagent.state' && event.body.state === 'offline') {
+            alreadyStopped.add(event.body.subagentId);
+          }
+        }
+        const childLinks = [...this.hookSubagentLinks.entries()]
+          .filter(([key, link]) => key.startsWith(`${sourceId}:`) && link.parentId === hook.sessionId)
+          .map(([key, link]) => ({ childId: key.slice(sourceId.length + 1), link }));
+        for (const stop of hook.subagentStops) {
+          let targets: string[] = [];
+          if (stop.subagentId) {
+            targets = [stop.subagentId];
+          } else if (stop.name) {
+            const exact = childLinks
+              .filter(({ link }) => link.label === stop.name || link.role === stop.name)
+              .map(item => item.childId);
+            targets = exact.length
+              ? exact
+              : childLinks
+                  .filter(({ link }) => (link.label ?? link.role ?? '').toLowerCase() === stop.name!.toLowerCase())
+                  .map(item => item.childId);
+          } else if (stop.all) {
+            targets = childLinks.map(item => item.childId).filter(childId => !stoppedEarlier.has(childId));
+          }
+          for (const targetChildId of targets) {
+            if (!targetChildId || targetChildId === 'primary' || targetChildId === hook.sessionId || targetChildId === actorAgentId || alreadyStopped.has(targetChildId)) continue;
+            alreadyStopped.add(targetChildId);
+            events.push(createEvent({
+              id: `hook-${record.id}-${++this.hookCounter}-sync-stop`,
+              at,
+              sessionId: record.id,
+              agentId: actorAgentId,
+              source: hookSource(hook.app),
+              body: { type: 'subagent.state', subagentId: targetChildId, state: 'offline' },
+            }));
+          }
+        }
+      }
+
+      // Coalesce any duplicate standalone auto-records created before the parent-child link arrived.
+      let foldedAny = false;
+      if (subagentId) {
+        const selfFold = await this.foldStandaloneChildRecords(sourceId, record, [hook.sessionId], at, announced);
+        if (selfFold.folded) {
+          foldedAny = true;
+          if (selfFold.events.length) {
+            const insertAt = events[0]?.body.type === 'session.started' ? 1 : 0;
+            events.splice(insertAt, 0, ...selfFold.events);
+          }
+        }
+      }
+      if (discoveredSpawns.length) {
+        const spawnFold = await this.foldStandaloneChildRecords(sourceId, record, discoveredSpawns.map(spawn => spawn.subagentId), at, announced);
+        if (spawnFold.folded) {
+          foldedAny = true;
+          if (spawnFold.events.length) events.push(...spawnFold.events);
+        }
+      }
+      if (foldedAny && events.some(event => substantiveObservationBody(event.body))) {
+        delete record.lifecycleOnly;
+        live.hook.substantive = true;
+      }
+
+      const ancestorById = new Map(ancestors.map(item => [item.subagentId, item]));
       for (let index = 0; index < events.length; index++) {
         const agent = events[index]!.agentId;
         if (!agent || agent === 'primary' || announced.has(agent)) continue;
-        announced.add(agent);
-        const role = subagentId ? undefined : hook.agentType;
-        events.splice(index, 0, createEvent({
-          id: `hook-${record.id}-${++this.hookCounter}-spawn`, at, sessionId: record.id, agentId: 'primary', source: hookSource(hook.app),
-          body: { type: 'subagent.spawned', subagentId: agent, ...(role ? { role, label: role } : {}), ...(subagentId && hook.model ? { model: safeLabel(hook.model, 120) } : {}) },
-        }));
-        index++;
+        const toAnnounce: HookSubagentAncestor[] = [];
+        if (ancestorById.has(agent)) {
+          // Ensure intermediate ancestors from the root down to `agent` are announced first.
+          for (const ancestor of ancestors) {
+            if (!announced.has(ancestor.subagentId)) toAnnounce.push(ancestor);
+            if (ancestor.subagentId === agent) break;
+          }
+        } else {
+          const visitedChain = new Set<string>([agent]);
+          const chain: HookSubagentAncestor[] = [];
+          let cursor = agent;
+          for (let depth = 0; depth < MAX_SUBAGENT_TREE_DEPTH; depth++) {
+            const link = this.hookSubagentLinks.get(`${sourceId}:${cursor}`);
+            const explicitParent = cursor === hook.agentId ? hook.parentAgentId : undefined;
+            const rawParent = cursor === subagentId ? (parentAgentId ?? 'primary') : (explicitParent ?? link?.parentId);
+            const resolvedParent = !rawParent || rawParent === record.reference.nativeSessionId ? 'primary' : rawParent;
+            const label = cursor === subagentId ? (subagentLabel ?? hook.agentType) : (link?.label ?? (cursor === hook.agentId ? hook.agentType : undefined));
+            const role = cursor === subagentId ? (subagentRole ?? hook.agentType) : (link?.role ?? (cursor === hook.agentId ? hook.agentType : undefined));
+            const model = cursor === subagentId
+              ? (subagentModel ?? (hook.model ? safeLabel(hook.model, 120) : undefined))
+              : (link?.model ?? (cursor === hook.agentId && hook.model ? safeLabel(hook.model, 120) : undefined));
+            chain.push({
+              subagentId: cursor,
+              parentAgentId: resolvedParent,
+              ...(label ? { label } : {}),
+              ...(role ? { role } : {}),
+              ...(model ? { model } : {}),
+            });
+            if (resolvedParent === 'primary' || announced.has(resolvedParent) || visitedChain.has(resolvedParent)) break;
+            if (ancestorById.has(resolvedParent)) {
+              for (const ancestor of ancestors) {
+                if (!announced.has(ancestor.subagentId)) toAnnounce.push(ancestor);
+                if (ancestor.subagentId === resolvedParent) break;
+              }
+              break;
+            }
+            visitedChain.add(resolvedParent);
+            cursor = resolvedParent;
+          }
+          toAnnounce.push(...chain.reverse());
+        }
+        for (const item of toAnnounce) {
+          if (announced.has(item.subagentId)) continue;
+          announced.add(item.subagentId);
+          const model = item.model ?? (item.subagentId === subagentId && hook.model ? safeLabel(hook.model, 120) : undefined);
+          events.splice(index, 0, createEvent({
+            id: `hook-${record.id}-${++this.hookCounter}-spawn`,
+            at,
+            sessionId: record.id,
+            agentId: item.parentAgentId,
+            source: hookSource(hook.app),
+            body: {
+              type: 'subagent.spawned',
+              subagentId: item.subagentId,
+              ...(item.role ? { role: item.role } : {}),
+              ...(item.label ? { label: item.label } : item.role ? { label: item.role } : {}),
+              ...(model ? { model } : {}),
+            },
+          }));
+          index++;
+        }
       }
       const outputChanged = this.hookOutput(record, events, firstDiscovery);
       live.hook.events.push(...events);
@@ -1753,7 +2196,7 @@ export class Observations {
         this.notify(record);
       }
       await this.trim();
-      if (outputChanged) await this.save();
+      if (outputChanged || foldedAny) await this.save();
       if (!this.hookSaveTimer) {
         this.hookSaveTimer = setTimeout(() => {
           this.hookSaveTimer = undefined;
