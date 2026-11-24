@@ -3,13 +3,16 @@ import type {
   AgentAppConnection, AgentAppConnectOptions, AgentAppConnectPlan, AgentAppConnectResult, AgentAppDisconnectResult,
   AgentAppId, AgentAppRecoveryReport, AgentAppTestResult, AgentHostApi, ApprovalDecisionInput, ConnectionInput, ConnectionView,
   GeneralSchedule, GeneralScheduleCatalog, HookIngestStatus, HostState, ModelChoices, ModelSelectionGuide, NextRunPreview,
-  Platform, ProfilePreferences, SaveGeneralScheduleInput, ScheduleDeliveryV1, ScheduleReviewDecision,
+  Platform, ProfilePreferences, ProjectGitInspection, ProjectPlannedAction, ProjectProvisionApplyInput,
+  ProjectProvisionPreview, ProjectProvisionPreviewInput, ProjectProvisionReceipt, ProjectProvisionStepReceipt,
+  ProjectProvisionWarning, SaveGeneralScheduleInput, ScheduleDeliveryV1, ScheduleReviewDecision,
   ScheduleRunDetail, ScheduleRunFilter, ScheduleRunPage, ScheduleRunV1, ScheduleTrigger,
   SessionMovePreview, SessionSummary, UpdateCapability, UpdateStatus, UserProfile,
 } from '@extalia/platform';
 import {
-  nextScheduleRunAt, normalizeModelSelectionGuideInput, normalizeSaveGeneralSchedule, normalizeScheduleReviewDecision,
-  normalizeScheduleRunFilter, previewScheduleNextRuns as computeSchedulePreview,
+  isProtectedBranchName, nextScheduleRunAt, normalizeModelSelectionGuideInput, normalizeSaveGeneralSchedule,
+  normalizeScheduleReviewDecision, normalizeScheduleRunFilter, previewScheduleNextRuns as computeSchedulePreview,
+  PROJECT_SCAFFOLD_TEMPLATES, validateProjectFolderName,
   attachmentLimit, classifyAttachment, normalizeAgentTeam, normalizeIntegrationGate, normalizePromptLearnSkill,
   normalizeSessionOptions, normalizeTeamPlanRequest, sanitizeAttachmentName, type PromptAttachment,
 } from '@extalia/platform';
@@ -264,6 +267,7 @@ function createMockAgents(options: MockOptions): AgentHostApi {
   const PREFERENCE_KEYS = ['language', 'theme', 'material', 'font', 'sidebar', 'landingPage'] as const;
   const createdRequests = new Map<string, { fingerprint: string; summary: SessionSummary }>();
   const moveReviews = new Map<string, { sessionId: string; destinationId: string; sourceId: string | null; expiresAt: number }>();
+  const projectProvisionReviews = new Map<string, { preview: ProjectProvisionPreview; expiresAt: number }>();
   const imports = createMockLibrary(async library => { state.library = library; return snapshot(); }, options.seed === 'ready');
   state.library = imports.summaries();
   const session = (id: string) => {
@@ -1225,6 +1229,236 @@ function createMockAgents(options: MockOptions): AgentHostApi {
       else if (input.integrationGate !== undefined) workspace.integrationGate = normalizeIntegrationGate(input.integrationGate);
       operatingProfiles.afterWorkspaceSave(workspace);
       return snapshot();
+    },
+    async previewProjectProvision(input: ProjectProvisionPreviewInput): Promise<ProjectProvisionPreview> {
+      await latency();
+      if (input.mode !== 'create' && input.mode !== 'open') throw new Error('Choose whether to create or open a project.');
+      const normalizeMockPath = (raw: string | undefined): string => {
+        const trimmed = (raw ?? '').trim().replace(/^~(?=$|\/)/, '/Users/you');
+        if (trimmed === '/' || /^[A-Za-z]:[\\/]$/.test(trimmed)) return trimmed.replace(/\\$/, '/');
+        return trimmed.replace(/[\\/]+$/, '');
+      };
+      const isProtectedMockPath = (candidate: string): boolean => {
+        const normalized = candidate.replace(/\\/g, '/');
+        if (normalized === '/' || /^[A-Za-z]:\/?$/.test(normalized)) return true;
+        if (/^\/Users\/[^/]+$/.test(normalized) || /^\/home\/[^/]+$/.test(normalized)) return true;
+        const fixedProtected = new Set([
+          '/Users', '/home', '/root', '/System', '/Library', '/Applications',
+          '/etc', '/usr', '/bin', '/sbin', '/var', '/tmp', '/private',
+        ]);
+        if (fixedProtected.has(normalized)) return true;
+        const dataDir = state.dataDirectory.replace(/\\/g, '/').replace(/\/+$/, '');
+        return normalized === dataDir || normalized.startsWith(`${dataDir}/`);
+      };
+      let parentPath: string;
+      let targetPath: string;
+      if (input.mode === 'create') {
+        parentPath = normalizeMockPath(input.parentPath);
+        if (!parentPath || !/^(\/|[A-Za-z]:[\\/])/.test(parentPath)) {
+          throw new Error('Choose an absolute parent folder, such as /Users/<name>/Projects.');
+        }
+        if (/missing|nope/i.test(parentPath)) throw new Error('The chosen parent folder does not exist.');
+        const folderName = input.folderName ?? '';
+        const folderError = validateProjectFolderName(folderName);
+        if (folderError) throw new Error(folderError);
+        targetPath = `${parentPath === '/' ? '' : parentPath}/${folderName}`;
+        if (isProtectedMockPath(targetPath)) {
+          throw new Error('Choose a project folder inside a user directory rather than a protected system path.');
+        }
+      } else {
+        targetPath = normalizeMockPath(input.targetPath);
+        if (!targetPath || !/^(\/|[A-Za-z]:[\\/])/.test(targetPath)) {
+          throw new Error('Choose an absolute project folder, such as /Users/<name>/Projects/app.');
+        }
+        if (isProtectedMockPath(targetPath)) {
+          throw new Error('Choose a specific project folder instead of a root, home, or system directory.');
+        }
+        if (/missing|nope/i.test(targetPath)) throw new Error('No folder exists at this path.');
+        const sep = targetPath.lastIndexOf('/');
+        parentPath = sep > 0 ? targetPath.slice(0, sep) : '/';
+      }
+      const runtimeId = input.runtimeId ?? 'extalia-native';
+      let connectionId: string | undefined;
+      if (runtimeId !== 'hermes') {
+        connectionId = input.connectionId || state.connections[0]?.id;
+        if (!connectionId) throw new Error('Add a model connection first.');
+        if (!state.connections.some(item => item.id === connectionId)) throw new Error('Choose a saved model connection.');
+      }
+      const permissions = {
+        fileWrite: input.permissions?.fileWrite ?? 'ask',
+        commands: input.permissions?.commands ?? 'ask',
+      } as const;
+      const crossWorkspaceAccess = input.crossWorkspaceAccess ?? 'read-only';
+      const templateId = input.mode === 'create' ? (input.templateId ?? 'none') : 'none';
+      const template = PROJECT_SCAFFOLD_TEMPLATES.find(item => item.id === templateId);
+      if (!template) throw new Error('Choose a supported starter template.');
+      const gitInit = input.mode === 'create' ? Boolean(input.gitInit) : false;
+      const folderBase = targetPath.split(/[\\/]/).pop() || targetPath;
+      const workspaceName = input.workspaceName?.trim() || folderBase;
+      let attachSession: ProjectProvisionPreview['attachSession'];
+      if (input.attachSessionId) {
+        const targetSession = session(input.attachSessionId);
+        if (targetSession.control !== 'managed' || targetSession.runtime || targetSession.transient) {
+          throw new Error('Choose a saved Extalia Native session.');
+        }
+        if (targetSession.workspaceId !== null) {
+          throw new Error('This session is already attached to a workspace.');
+        }
+        if (targetSession.running || targetSession.pendingApprovalId) {
+          throw new Error('Wait for this session to finish before attaching it to a project.');
+        }
+        attachSession = {
+          sessionId: targetSession.id,
+          title: targetSession.title || 'New session',
+          transfersHistory: (events.get(targetSession.id)?.length ?? 0) > 0,
+          permissionMode: targetSession.options?.permissionMode ?? 'workspace',
+        };
+      }
+      const existingWorkspace = state.workspaces.find(item => item.projectLocation === targetPath);
+      const lowerPath = targetPath.toLowerCase();
+      const hasDirty = lowerPath.includes('dirty');
+      const hasProtected = lowerPath.includes('protected');
+      const isGitRepo = input.mode === 'open' ? !lowerPath.includes('nogit') : gitInit;
+      const branch = isGitRepo ? (hasProtected ? 'main' : input.mode === 'create' ? 'main' : 'feature/work') : undefined;
+      const dirty = input.mode === 'open' ? (isGitRepo && hasDirty) : false;
+      const dirtyChangeCount = dirty ? 3 : 0;
+      const protectedBranch = input.mode === 'open'
+        ? Boolean(isGitRepo && (hasProtected || isProtectedBranchName(branch)))
+        : hasProtected;
+      const gitInspection: ProjectGitInspection = {
+        isGitRepo,
+        ...(branch ? { branch } : {}),
+        dirty,
+        dirtyChangeCount,
+        protectedBranch,
+      };
+      const warnings: ProjectProvisionWarning[] = [];
+      if (dirty) warnings.push({ code: 'dirty-repository', detail: `${dirtyChangeCount} uncommitted changes in ${targetPath}` });
+      if (protectedBranch) warnings.push({ code: 'protected-branch', detail: `Branch ${branch ?? 'main'} is protected` });
+      if (existingWorkspace) warnings.push({ code: 'already-registered-workspace', detail: existingWorkspace.name });
+      const requiresWarningAcknowledgement = warnings.some(warning => warning.code === 'dirty-repository' || warning.code === 'protected-branch');
+      const plannedActions: ProjectPlannedAction[] = [];
+      if (input.mode === 'create') {
+        plannedActions.push({ kind: 'create-folder', target: targetPath });
+        for (const file of template.files) {
+          plannedActions.push({ kind: 'write-file', target: `${targetPath}/${file}`, detail: `Template: ${template.id}` });
+        }
+        if (gitInit) plannedActions.push({ kind: 'git-init', target: targetPath });
+      }
+      if (!existingWorkspace) {
+        plannedActions.push({ kind: 'register-workspace', target: targetPath, detail: workspaceName });
+      }
+      if (attachSession) {
+        plannedActions.push({ kind: 'attach-session', target: attachSession.sessionId, detail: attachSession.title });
+      }
+      const reviewId = nextId('provision');
+      const expiresAt = Date.now() + 10 * 60_000;
+      const preview: ProjectProvisionPreview = {
+        reviewId,
+        expiresAt: new Date(expiresAt).toISOString(),
+        mode: input.mode,
+        targetPath,
+        parentPath,
+        workspaceName,
+        runtimeId,
+        ...(connectionId ? { connectionId } : {}),
+        permissions,
+        crossWorkspaceAccess,
+        templateId,
+        gitInit,
+        ...(existingWorkspace ? { existingWorkspaceId: existingWorkspace.id } : {}),
+        gitInspection,
+        plannedActions,
+        warnings,
+        requiresWarningAcknowledgement,
+        ...(attachSession ? { attachSession } : {}),
+      };
+      projectProvisionReviews.set(reviewId, { preview, expiresAt });
+      return structuredClone(preview);
+    },
+    async applyProjectProvision(input: ProjectProvisionApplyInput): Promise<ProjectProvisionReceipt> {
+      await latency();
+      const review = projectProvisionReviews.get(input.reviewId);
+      if (!review || review.expiresAt <= Date.now()) {
+        if (review) projectProvisionReviews.delete(input.reviewId);
+        return {
+          ok: false,
+          partial: false,
+          mode: review?.preview.mode ?? 'create',
+          targetPath: review?.preview.targetPath ?? '',
+          steps: [],
+          error: 'This project setup review has expired or was not found. Review the project again.',
+        };
+      }
+      const { preview } = review;
+      if (preview.requiresWarningAcknowledgement && !input.acknowledgeWarnings) {
+        return {
+          ok: false,
+          partial: false,
+          mode: preview.mode,
+          targetPath: preview.targetPath,
+          steps: [],
+          error: 'Acknowledge the repository warnings before applying this project setup.',
+        };
+      }
+      const steps: ProjectProvisionStepReceipt[] = [];
+      let createdWorkspace: Workspace | undefined = preview.existingWorkspaceId
+        ? state.workspaces.find(item => item.id === preview.existingWorkspaceId)
+        : undefined;
+      for (const action of preview.plannedActions) {
+        if (action.kind === 'register-workspace') {
+          if (!createdWorkspace) {
+            createdWorkspace = addWorkspace(preview.workspaceName, preview.targetPath, preview.connectionId ?? '', preview.permissions);
+            createdWorkspace.crossWorkspaceAccess = preview.crossWorkspaceAccess;
+            if (preview.runtimeId === 'hermes') {
+              createdWorkspace.runtimeId = 'hermes';
+              createdWorkspace.runtimeProfileId = 'default';
+            }
+          }
+          steps.push({ step: action.kind, status: 'completed', target: action.target, ...(action.detail ? { detail: action.detail } : {}) });
+        } else if (action.kind === 'attach-session') {
+          const targetSession = state.sessions.find(item => item.id === action.target);
+          if (!targetSession || targetSession.workspaceId !== null || targetSession.running || targetSession.pendingApprovalId || !createdWorkspace) {
+            steps.push({ step: action.kind, status: 'failed', target: action.target, detail: 'Session state changed before attach.' });
+            projectProvisionReviews.delete(input.reviewId);
+            return {
+              ok: false,
+              partial: steps.some(step => step.status === 'completed'),
+              mode: preview.mode,
+              targetPath: preview.targetPath,
+              ...(createdWorkspace ? { workspace: structuredClone(createdWorkspace) } : {}),
+              steps,
+              error: 'Could not attach the conversation because its state changed. Review again.',
+              state: snapshot(),
+            };
+          }
+          const last = events.get(targetSession.id)?.at(-1);
+          if (last) {
+            targetSession.workspaceFileScopes = [...(targetSession.workspaceFileScopes ?? []), {
+              throughEventId: last.id,
+              workspaceId: '',
+              projectLocation: '',
+            }];
+          }
+          targetSession.workspaceId = createdWorkspace.id;
+          delete targetSession.projectLocation;
+          grants.delete(targetSession.id);
+          steps.push({ step: action.kind, status: 'completed', target: action.target, ...(action.detail ? { detail: action.detail } : {}) });
+        } else {
+          steps.push({ step: action.kind, status: 'completed', target: action.target, ...(action.detail ? { detail: action.detail } : {}) });
+        }
+      }
+      projectProvisionReviews.delete(input.reviewId);
+      return {
+        ok: true,
+        partial: false,
+        mode: preview.mode,
+        targetPath: preview.targetPath,
+        ...(createdWorkspace ? { workspace: structuredClone(createdWorkspace) } : {}),
+        ...(preview.attachSession ? { attachedSessionId: preview.attachSession.sessionId } : {}),
+        steps,
+        state: snapshot(),
+      };
     },
     async deleteWorkspace(id) {
       await latency();
