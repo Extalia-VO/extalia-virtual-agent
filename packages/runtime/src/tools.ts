@@ -34,12 +34,16 @@ export interface ToolDescription {
   risk?: RiskLevel;
 }
 
+export type CommandSettlementStatus = 'passed' | 'failed' | 'timed_out' | 'cancelled' | 'unknown';
+
 export interface ToolOutcome {
   ok: boolean;
   /** Text returned to the model. Tools bound their own output. */
   output: string;
   /** Files the tool changed, reported as `file.written` events. */
   files?: { path: string; change: FileChangeKind }[];
+  /** Explicit execution settlement state for command/test tools (`COD-008`, `AC-30`). */
+  settlement?: CommandSettlementStatus;
 }
 
 export interface ToolRunContext {

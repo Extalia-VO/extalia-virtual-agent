@@ -23,6 +23,9 @@ export interface ApprovalRequest {
   action: string;
   detail?: string;
   risk?: RiskLevel;
+  toolName?: string;
+  input?: unknown;
+  target?: string;
 }
 
 export type ApprovalOutcome = 'once' | 'session' | 'reject';
@@ -42,6 +45,8 @@ export interface TurnOptions {
   attachments?: readonly TurnAttachment[];
   emit(body: EventBody, extra?: { parentId?: string }): void;
   requestApproval(request: ApprovalRequest): Promise<ApprovalOutcome>;
+  /** Exact-action effect-time gate checked right before execution after approval is granted (`AC-27`). */
+  verifyApprovalEffect?(request: ApprovalRequest & { decision: ApprovalOutcome }): Promise<{ ok: true } | { ok: false; message: string }>;
   /**
    * External policy decision point (ADR 0026), asked before every tool call instead of `decide()`.
    * A rejection or malformed verdict denies the call with `policy_unavailable`; there is no fallback.
@@ -297,16 +302,34 @@ async function runTool(call: ToolCall, options: TurnOptions, newId: () => string
     emit({ type: 'approval.requested', approvalId, action: description.label, ...(description.detail ? { detail: description.detail } : {}), ...(description.risk ? { risk: description.risk } : {}) });
     let outcome: ApprovalOutcome;
     let answered = false;
+    const request: ApprovalRequest = {
+      approvalId,
+      access: tool.access,
+      action: description.label,
+      ...(description.detail ? { detail: description.detail } : {}),
+      ...(description.risk ? { risk: description.risk } : {}),
+      toolName: tool.name,
+      input: call.input,
+      ...(description.target ? { target: description.target } : {}),
+    };
     try {
-      outcome = await options.requestApproval({ approvalId, access: tool.access, action: description.label, ...(description.detail ? { detail: description.detail } : {}), ...(description.risk ? { risk: description.risk } : {}) });
+      outcome = await options.requestApproval(request);
       answered = !options.signal.aborted;
     } catch {
       outcome = 'reject';
     }
     options.localOperations?.assertOpen();
     emit({ type: 'approval.resolved', approvalId, decision: outcome === 'reject' ? 'rejected' : 'granted', by: 'user', ...(answered ? { choice: outcome } : {}) });
-    if (outcome === 'session') options.sessionGrants.add(tool.access);
     if (outcome === 'reject') return failure('The user declined this action. Do not retry it unchanged; continue without it or ask the user.');
+    if (options.verifyApprovalEffect) {
+      const check = await options.verifyApprovalEffect({ ...request, decision: outcome });
+      if (!check.ok) {
+        emit({ type: 'tool.started', toolCallId: call.id, tool: tool.name, kind: tool.kind, label: description.label, ...(description.target ? { target: description.target } : {}) });
+        emit({ type: 'tool.completed', toolCallId: call.id, tool: tool.name, kind: tool.kind, label: description.label, ok: false, ...(description.target ? { target: description.target } : {}), output: clipText(check.message, EVENT_OUTPUT_LIMIT) });
+        return failure(check.message);
+      }
+    }
+    if (outcome === 'session') options.sessionGrants.add(tool.access);
   }
 
   options.localOperations?.assertOpen();
