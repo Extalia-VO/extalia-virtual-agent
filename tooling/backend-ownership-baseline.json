@@ -3174,7 +3174,7 @@
     {
       "path": "apps/web/src/App.tsx",
       "category": "ui",
-      "runtimeSignature": "1eaefc2590aae05dea288e8a5c9174c7cd395698fffbcb9390951d89d96fea8c"
+      "runtimeSignature": "1486d58ac9a76250978ef40ed60bf6f1fe57c56a4fac9453dc95dddf67882dfc"
     },
     {
       "path": "apps/web/src/appMode.ts",
@@ -3389,7 +3389,7 @@
     {
       "path": "apps/web/src/chat/ResourceUsageDiagram.tsx",
       "category": "ui",
-      "runtimeSignature": "7e4c48f1657df84ef4226f7c0f33aec09b50fa57f180af17b06120126ea1f953"
+      "runtimeSignature": "45133acad80b7c1dca07188bf5f5a8b93ad06fd6164d4d640f6c88ef61e00639"
     },
     {
       "path": "apps/web/src/chat/resourceUsageGraph.ts",
@@ -6134,7 +6134,7 @@
     {
       "path": "apps/web/src/setup/SetupWizard.tsx",
       "category": "ui",
-      "runtimeSignature": "90ea1cbef94a956674b414696003ff89eef2fd440a134a6dcb7699ed0693bc6d"
+      "runtimeSignature": "b04a83cb19bf3d08bb25a53d00ca025107700dfee200635b9561b4cb09f8bca3"
     },
     {
       "path": "apps/web/src/setup/steps.ts",
