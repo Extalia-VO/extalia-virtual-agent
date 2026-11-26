@@ -12,6 +12,7 @@ import {
   type PermissionMode,
   type SaveGeneralScheduleInput,
   type ScheduleAgentAssignment,
+  type ScheduleDeliveryV1,
   type ScheduleReviewDecision,
   type ScheduleRunDetail,
   type ScheduleRunFilter,
@@ -33,6 +34,7 @@ import {
   ScheduleStoreDowngradeError,
   type LegacyMigrationResult,
   type PromptCreationReceipt,
+  type RecordDeliveryInput,
   type RecoveryReceipt,
   type ScheduleRetryContext,
   type TurnBindingInput,
@@ -41,7 +43,7 @@ import {
   type VerificationDetails,
 } from './scheduleStore.js';
 
-export type { LegacyMigrationResult, ScheduleRetryContext, TurnBindingInput, TurnSettlementDetails, TurnSettlementMatch, VerificationDetails };
+export type { LegacyMigrationResult, RecordDeliveryInput, ScheduleRetryContext, TurnBindingInput, TurnSettlementDetails, TurnSettlementMatch, VerificationDetails };
 export { ScheduleStoreCorruptionError, ScheduleStoreDowngradeError };
 
 const CLOCK_RECHECK_MS = 30_000;
@@ -77,6 +79,7 @@ export interface GeneralScheduleHostCallbacks {
     assignment: ScheduleAgentAssignment,
     retryContext?: ScheduleRetryContext,
   ): Promise<void | ScheduleDeferredDispatch | ScheduleDispatchReceipt>;
+  onRunSettled?(run: ScheduleRunV1, schedule: GeneralSchedule | undefined): Promise<void> | void;
   onChange?(): void;
 }
 
@@ -613,6 +616,9 @@ export class GeneralScheduleManager {
       errorMessage = error instanceof Error ? error.message.slice(0, 500) : 'Scheduled run failed.';
     }
 
+    let terminalRun: ScheduleRunV1 | undefined;
+    let terminalSchedule: GeneralSchedule | undefined;
+
     await this.serialized(async () => {
       this.activeRuns = Math.max(0, this.activeRuns - 1);
       const index = this.schedules.findIndex(item => item.id === id);
@@ -710,18 +716,20 @@ export class GeneralScheduleManager {
               nowIso: finishedIso,
             });
           } else {
-            store.markRunBlocked(activeRun!.id, activeRun!.revision, {
+            terminalRun = store.markRunBlocked(activeRun!.id, activeRun!.revision, {
               statusReason: outcome,
               ...(sessionId ? { sessionId } : {}),
               nowIso: finishedIso,
             });
+            terminalSchedule = structuredClone(updated);
           }
         } else {
-          store.markRunFailed(activeRun!.id, activeRun!.revision, {
+          terminalRun = store.markRunFailed(activeRun!.id, activeRun!.revision, {
             statusReason: errorMessage ?? 'Scheduled run failed.',
             ...(sessionId ? { sessionId } : {}),
             nowIso: finishedIso,
           });
+          terminalSchedule = structuredClone(updated);
         }
       } catch (error) {
         this.storageUnavailable = true;
@@ -732,6 +740,13 @@ export class GeneralScheduleManager {
       this.armTimer();
       this.options.callbacks.onChange?.();
     });
+    if (terminalRun && this.options.callbacks.onRunSettled) {
+      try {
+        await this.options.callbacks.onRunSettled(terminalRun, terminalSchedule);
+      } catch {
+        // Delivery/fanout failures never alter the settled run state (GW-AT-091).
+      }
+    }
     if (manual && outcome === 'failed' && errorMessage) {
       throw userError(errorMessage);
     }
@@ -790,25 +805,48 @@ export class GeneralScheduleManager {
     outcome: 'completed' | 'failed' | 'cancelled',
     details: TurnSettlementDetails = {},
   ): Promise<ScheduleRunV1> {
-    return this.serialized(async () => {
+    const { run, schedule } = await this.serialized(async () => {
       this.assertWritable();
       const store = this.assertStoreOpen();
-      const run = store.recordTurnSettled(match, outcome, {
+      const settled = store.recordTurnSettled(match, outcome, {
         ...details,
         nowIso: details.nowIso ?? new Date(this.now()).toISOString(),
       });
-      if (outcome === 'completed') {
-        const index = this.schedules.findIndex(item => item.id === run.scheduleId);
-        if (index >= 0) {
-          const current = this.schedules[index]!;
+      let matchedSchedule: GeneralSchedule | undefined;
+      const index = this.schedules.findIndex(item => item.id === settled.scheduleId);
+      if (index >= 0) {
+        const current = this.schedules[index]!;
+        if (outcome === 'completed') {
           this.schedules[index] = {
             ...current,
             completedRunCount: (current.completedRunCount ?? 0) + 1,
           };
         }
+        matchedSchedule = structuredClone(this.schedules[index]!);
       }
       this.options.callbacks.onChange?.();
-      return run;
+      return { run: settled, schedule: matchedSchedule };
+    });
+    if (this.options.callbacks.onRunSettled) {
+      try {
+        await this.options.callbacks.onRunSettled(run, schedule);
+      } catch {
+        // Delivery/fanout failures never alter the settled run state (GW-AT-091).
+      }
+    }
+    return run;
+  }
+
+  async recordDelivery(input: RecordDeliveryInput): Promise<ScheduleDeliveryV1> {
+    return this.serialized(async () => {
+      this.assertWritable();
+      const store = this.assertStoreOpen();
+      const delivery = store.recordDelivery({
+        ...input,
+        nowIso: input.nowIso ?? new Date(this.now()).toISOString(),
+      });
+      this.options.callbacks.onChange?.();
+      return delivery;
     });
   }
 
