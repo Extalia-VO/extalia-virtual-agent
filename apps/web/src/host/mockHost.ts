@@ -1,8 +1,8 @@
-import { modelPlanningBasis, applyTeamSpec, defaultOrchestration, generateFullName, initialSessionTeam, parseTeamSpec, withDistinctMemberNames, pickTeamModels, planModelOrder, planTeamHeuristic, presetById, type AgentTeam, type Workspace } from '@extalia/core';
+import { DEFAULT_PERMISSIONS, modelPlanningBasis, applyTeamSpec, defaultOrchestration, generateFullName, initialSessionTeam, parseTeamSpec, withDistinctMemberNames, pickTeamModels, planModelOrder, planTeamHeuristic, presetById, workspaceCrossAccess, type AgentTeam, type Workspace } from '@extalia/core';
 import type {
   AgentAppConnection, AgentAppConnectOptions, AgentAppConnectPlan, AgentAppConnectResult, AgentAppDisconnectResult,
   AgentAppId, AgentAppRecoveryReport, AgentAppTestResult, AgentHostApi, ApprovalDecisionInput, ConnectionInput, ConnectionView,
-  HookIngestStatus, HostState, ModelChoices, ModelSelectionGuide, Platform, ProfilePreferences, SessionSummary, UpdateCapability, UpdateStatus, UserProfile,
+  HookIngestStatus, HostState, ModelChoices, ModelSelectionGuide, Platform, ProfilePreferences, SessionMovePreview, SessionSummary, UpdateCapability, UpdateStatus, UserProfile,
 } from '@extalia/platform';
 import { normalizeModelSelectionGuideInput, attachmentLimit, classifyAttachment, normalizeAgentTeam, normalizeIntegrationGate, normalizePromptLearnSkill, normalizeSessionOptions, normalizeTeamPlanRequest, sanitizeAttachmentName, type PromptAttachment } from '@extalia/platform';
 import { createEvent, type EventBody, type ExtaliaEvent, type RiskLevel, type Usage } from '@extalia/protocol';
@@ -253,7 +253,9 @@ function createMockAgents(options: MockOptions): AgentHostApi {
   const snapshot = (): HostState => structuredClone(state);
   // The shared profile (`config/profile.json` on a real host), kept in memory and validated like the host does.
   let profile: UserProfile = { schema: 'extalia.profile.v1', preferences: {}, updatedAt: new Date(0).toISOString() };
-  const PREFERENCE_KEYS = ['language', 'theme', 'material', 'font', 'sidebar'] as const;
+  const PREFERENCE_KEYS = ['language', 'theme', 'material', 'font', 'sidebar', 'landingPage'] as const;
+  const createdRequests = new Map<string, { fingerprint: string; summary: SessionSummary }>();
+  const moveReviews = new Map<string, { sessionId: string; destinationId: string; sourceId: string | null; expiresAt: number }>();
   const imports = createMockLibrary(async library => { state.library = library; return snapshot(); }, options.seed === 'ready');
   state.library = imports.summaries();
   const session = (id: string) => {
@@ -326,7 +328,7 @@ function createMockAgents(options: MockOptions): AgentHostApi {
       send({ type: 'agent.state', state: 'thinking' });
       await step(700);
       if (/fail|error/i.test(text)) throw new Error('The model endpoint answered 429 Too Many Requests. Try again in a minute.');
-      if (/^explain/i.test(text)) {
+      if (/^explain/i.test(text) || summary.workspaceId === null) {
         await say(EXPLAIN, { inputTokens: 2310, outputTokens: 214 });
         send({ type: 'turn.completed', usage: { inputTokens: 2310, outputTokens: 214 }, model });
         return;
@@ -454,6 +456,17 @@ function createMockAgents(options: MockOptions): AgentHostApi {
     };
   }
 
+  function modelChoicesForConnection(connectionId: string): ModelChoices {
+    const efforts = ['low', 'medium', 'high'] as ModelChoices['efforts'];
+    const connection = state.connections.find(item => item.id === connectionId);
+    const defaultModel = connection?.model || 'mock-agent';
+    return {
+      runtime: 'extalia-native', defaultModel, efforts, ...(connection?.effort ? { defaultEffort: connection.effort } : {}),
+      models: [...new Set([defaultModel, 'anthropic/claude-opus-5-5', 'anthropic/claude-sonnet-5-5', 'openai/gpt-5', 'qwen/qwen3-coder'])],
+      permissionModes: ['workspace', 'ask', 'accept-edits', 'plan'],
+    };
+  }
+
   /** Sample model lists (nothing is contacted); the effort control is offered for every mock workspace. */
   function modelChoicesFor(workspace: Workspace): ModelChoices {
     const efforts = ['low', 'medium', 'high'] as ModelChoices['efforts'];
@@ -464,13 +477,7 @@ function createMockAgents(options: MockOptions): AgentHostApi {
           oneshotMaxChildren, maxConcurrentChildren: options.hermesConcurrent ?? 10, workerModel: MOCK_HERMES_DEFAULT_MODEL, workerModelSource: 'delegation', modelRouting: 'shared', source: options.hermesChildren === undefined ? 'defaults' : 'profile' } };
 
     }
-    const connection = state.connections.find(item => item.id === workspace.providerProfileId);
-    const defaultModel = connection?.model || 'mock-agent';
-    return {
-      runtime: 'extalia-native', defaultModel, efforts, ...(connection?.effort ? { defaultEffort: connection.effort } : {}),
-      models: [...new Set([defaultModel, 'anthropic/claude-opus-5-5', 'anthropic/claude-sonnet-5-5', 'openai/gpt-5', 'qwen/qwen3-coder'])],
-      permissionModes: ['workspace', 'ask', 'accept-edits', 'plan'],
-    };
+    return modelChoicesForConnection(workspace.providerProfileId ?? '');
   }
 
   function addWorkspace(name: string, folder: string, connectionId: string, permissions: Workspace['permissions']): Workspace {
@@ -495,12 +502,12 @@ function createMockAgents(options: MockOptions): AgentHostApi {
     try { sessionStorage.setItem(MOCK_WORKSPACE_TEAMS_KEY, JSON.stringify(teamsByFolder)); } catch { /* storage blocked */ }
   }
 
-  function addSession(workspace: Workspace, title = ''): SessionSummary {
+  function addSession(workspace: Workspace | null, title = '', connectionId = ''): SessionSummary {
     const id = nextId('session');
     // The lead's full name and gender, unique in the Office, as the real host assigns at creation.
     const lead = generateFullName(id, new Set(officeNames().map(name => name.toLowerCase())));
     const summary: SessionSummary = {
-      id, workspaceId: workspace.id, connectionId: workspace.providerProfileId ?? '', title, control: 'managed',
+      id, workspaceId: workspace?.id ?? null, connectionId: workspace ? (workspace.providerProfileId ?? '') : connectionId, title, control: 'managed',
       createdAt: iso(), lastActiveAt: iso(), running: false, agentName: lead.name, agentGender: lead.gender,
     };
     state.sessions.unshift(summary);
@@ -932,7 +939,9 @@ function createMockAgents(options: MockOptions): AgentHostApi {
         if (!(PREFERENCE_KEYS as readonly string[]).includes(key)) throw new Error(`Unknown interface preference: ${key}.`);
         const field = key as keyof ProfilePreferences;
         if (value === null || value === undefined) { delete next.preferences[field]; continue; }
-        if (field === 'language' ? value !== 'en' && value !== 'id' : !/^[a-z0-9][a-z0-9-]{0,39}$/.test(String(value))) throw new Error(`The ${key} preference is not valid.`);
+        if (field === 'language' ? value !== 'en' && value !== 'id'
+          : field === 'landingPage' ? value !== 'chat' && value !== 'office'
+            : !/^[a-z0-9][a-z0-9-]{0,39}$/.test(String(value))) throw new Error(`The ${key} preference is not valid.`);
         (next.preferences as Record<string, string>)[field] = String(value);
       }
       if (patch.clientState !== undefined) {
@@ -1047,11 +1056,29 @@ function createMockAgents(options: MockOptions): AgentHostApi {
     async setAutoWatch() { throw new Error('Watching new sessions automatically needs the Desktop host or local Bridge.'); },
     async createSession(workspaceId, sessionOptions) {
       await latency();
+      const { team, connectionId, clientRequestId, operatingProfileId: _operatingProfileId, ...checked } = normalizeSessionOptions(sessionOptions);
+      if (workspaceId === null) {
+        const fingerprint = JSON.stringify({ workspaceId: null, connectionId, team: team ?? null, checked });
+        if (clientRequestId) {
+          const prior = createdRequests.get(clientRequestId);
+          if (prior) {
+            if (prior.fingerprint !== fingerprint) throw new Error('That request id was already used with different session parameters.');
+            return structuredClone(prior.summary);
+          }
+        }
+        const resolvedConnectionId = connectionId ?? (state.connections.length === 1 ? state.connections[0]!.id : undefined);
+        if (!resolvedConnectionId) throw new Error(state.connections.length ? 'Choose a model connection for this session.' : 'Add a model connection first.');
+        if (!state.connections.some(connection => connection.id === resolvedConnectionId)) throw new Error('Choose a saved model connection.');
+        const summary = addSession(null, '', resolvedConnectionId);
+        if (Object.keys(checked).length) summary.options = checked;
+        if (team) setTeam(summary, withDistinctMemberNames(team, new Set(officeNames().map(name => name.toLowerCase())), summary.id));
+        if (clientRequestId) createdRequests.set(clientRequestId, { fingerprint, summary });
+        return structuredClone(summary);
+      }
       const workspace = state.workspaces.find(item => item.id === workspaceId);
       if (!workspace) throw new Error('This workspace no longer exists.');
       if (workspace.mode === 'observe') throw new Error('Enable the full Extalia workspace before starting a managed session.');
       if (workspace.runtimeId !== 'hermes' && !state.connections.some(connection => connection.id === workspace.providerProfileId)) throw new Error('Choose a model connection for this workspace.');
-      const { team, ...checked } = normalizeSessionOptions(sessionOptions);
       const summary = addSession(workspace);
       if (workspace.runtimeId === 'hermes') summary.runtime = { id: 'hermes', profile: workspace.runtimeProfileId || 'default' };
       const savedOptions = { ...(workspace.runtimeId === 'hermes' && workspace.runtimeModel ? { model: workspace.runtimeModel } : {}), ...checked };
@@ -1066,13 +1093,29 @@ function createMockAgents(options: MockOptions): AgentHostApi {
       await latency();
       const summary = session(sessionId);
       if (summary.control !== 'managed') throw new Error('Observed sessions run in their own app; choose the model there.');
-      const { team: _team, ...checked } = normalizeSessionOptions(sessionOptions);
+      const { team: _team, connectionId: _connectionId, operatingProfileId: _operatingProfileId, clientRequestId: _clientRequestId, ...checked } = normalizeSessionOptions(sessionOptions);
       if (Object.keys(checked).length) summary.options = checked; else delete summary.options;
       return structuredClone(summary);
     },
     // Sample model lists (nothing is contacted); the effort control is offered for every mock workspace.
-    async modelChoices(workspaceId, sessionId): Promise<ModelChoices> {
+    async modelChoices(workspaceId, sessionId, connectionId): Promise<ModelChoices> {
       await latency();
+      if (workspaceId === null) {
+        let resolvedConnectionId: string;
+        if (sessionId !== undefined) {
+          const selected = state.sessions.find(item => item.id === sessionId && item.workspaceId === null && item.control === 'managed');
+          if (!selected || selected.runtime) throw new Error('Choose a managed unassigned Extalia Native session.');
+          resolvedConnectionId = selected.connectionId;
+        } else if (connectionId) {
+          resolvedConnectionId = connectionId;
+        } else if (state.connections.length === 1) {
+          resolvedConnectionId = state.connections[0]!.id;
+        } else {
+          throw new Error(state.connections.length ? 'Choose a model connection first.' : 'Add a model connection first.');
+        }
+        if (!state.connections.some(item => item.id === resolvedConnectionId)) throw new Error('That model connection no longer exists.');
+        return modelChoicesForConnection(resolvedConnectionId);
+      }
       const workspace = state.workspaces.find(item => item.id === workspaceId);
       if (!workspace) throw new Error('This workspace no longer exists.');
       if (sessionId === undefined) return modelChoicesFor(workspace);
@@ -1085,6 +1128,14 @@ function createMockAgents(options: MockOptions): AgentHostApi {
     },
     async teamModelChoices(workspaceId, connectionId, sessionId): Promise<ModelChoices> {
       await latency();
+      if (workspaceId === null) {
+        if (sessionId !== undefined) {
+          const selected = state.sessions.find(item => item.id === sessionId && item.workspaceId === null && item.control === 'managed');
+          if (!selected || selected.runtime) throw new Error('Choose a managed unassigned Extalia Native session.');
+        }
+        if (!state.connections.some(item => item.id === connectionId)) throw new Error('That model connection no longer exists.');
+        return modelChoicesForConnection(connectionId);
+      }
       const workspace = state.workspaces.find(item => item.id === workspaceId);
       if (!workspace) throw new Error('This workspace no longer exists.');
       const selected = sessionId === undefined ? undefined : state.sessions.find(item => item.id === sessionId && item.workspaceId === workspaceId && item.control === 'managed');
@@ -1128,9 +1179,24 @@ function createMockAgents(options: MockOptions): AgentHostApi {
     async planTeam(workspaceId, request, sessionId) {
       await latency();
       await sleep(400);
+      const checked = normalizeTeamPlanRequest(request);
+      if (workspaceId === null) {
+        const selected = sessionId === undefined ? undefined : state.sessions.find(item => item.id === sessionId && item.workspaceId === null && item.control === 'managed');
+        if (sessionId !== undefined && (!selected || selected.runtime)) throw new Error('Choose a managed unassigned session.');
+        const connectionId = selected?.connectionId ?? (state.connections.length === 1 ? state.connections[0]!.id : undefined);
+        if (!connectionId) throw new Error(state.connections.length ? 'Choose a model connection before planning a team.' : 'Add a model connection first.');
+        const choices = modelChoicesForConnection(connectionId);
+        const recentTitles = state.sessions.filter(item => item.workspaceId === null && item.title).map(item => item.title).slice(0, 5);
+        const planned = {
+          ...checked, context: { workspace: 'Unassigned', recentTitles },
+          ...(checked.allowedModels.length ? {} : { candidateModels: pickTeamModels(choices.models, choices.defaultModel ? [choices.defaultModel] : []) }),
+        };
+        const members = planTeamHeuristic(planned, () => nextId('member'), officeNames());
+        const choosing = !checked.allowedModels.length && Boolean(planned.candidateModels?.length);
+        return { members, source: 'heuristic', planningBasis: modelPlanningBasis(selectionGuide, 'heuristic'), note: 'A standard split was used: the mock host does not ask a model.', ...(choosing ? { allowedModels: planModelOrder(members) } : {}) };
+      }
       const workspace = state.workspaces.find(item => item.id === workspaceId);
       if (!workspace) throw new Error('This workspace no longer exists.');
-      const checked = normalizeTeamPlanRequest(request);
       const selected = sessionId === undefined ? undefined : state.sessions.find(item => item.id === sessionId && item.workspaceId === workspaceId && item.control === 'managed');
       if (sessionId !== undefined && !selected) throw new Error('Choose a managed session in this workspace.');
       const target = selected ? { ...workspace, runtimeId: selected.runtime ? 'hermes' as const : 'extalia-native' as const, runtimeProfileId: selected.runtime?.profile } : workspace;
@@ -1168,6 +1234,64 @@ function createMockAgents(options: MockOptions): AgentHostApi {
       return structuredClone(summary);
     },
     async renameSession(sessionId, title) { await latency(); session(sessionId).title = title.trim(); return snapshot(); },
+    async previewSessionMove(sessionId, workspaceId): Promise<SessionMovePreview> {
+      await latency();
+      const selected = session(sessionId);
+      if (selected.control !== 'managed' || selected.runtime || selected.transient) throw new Error('Choose a saved Extalia Native session.');
+      if (selected.running || selected.pendingApprovalId) throw new Error('Wait for this session to finish before moving it.');
+      const destination = state.workspaces.find(item => item.id === workspaceId);
+      if (!destination || destination.mode === 'observe' || destination.runtimeId === 'hermes' || !destination.projectLocation) {
+        throw new Error('Choose a managed Extalia Native workspace.');
+      }
+      const source = selected.workspaceId ? state.workspaces.find(item => item.id === selected.workspaceId) ?? null : null;
+      const toViewWorkspace = (workspace: Workspace) => ({
+        id: workspace.id,
+        name: workspace.name,
+        folders: [workspace.projectLocation, ...(workspace.additionalProjectLocations ?? [])].filter((folder): folder is string => Boolean(folder)),
+        crossWorkspaceAccess: workspaceCrossAccess(workspace),
+        permissions: { ...(workspace.permissions ?? DEFAULT_PERMISSIONS) },
+      });
+      const reviewId = nextId('review');
+      const expiresAt = Date.now() + 10 * 60_000;
+      moveReviews.set(reviewId, { sessionId, destinationId: destination.id, sourceId: source?.id ?? null, expiresAt });
+      return {
+        sessionId,
+        reviewId,
+        expiresAt: new Date(expiresAt).toISOString(),
+        kind: source ? 'move' : 'attach',
+        source: source ? toViewWorkspace(source) : null,
+        destination: toViewWorkspace(destination),
+        accessibleFolders: toViewWorkspace(destination).folders.map(path => ({ workspaceId: destination.id, path, access: 'read-write' as const })),
+        transfersHistory: (events.get(sessionId)?.length ?? 0) > 0,
+        permissionMode: selected.options?.permissionMode ?? 'workspace',
+      };
+    },
+    async moveSession(sessionId, request) {
+      await latency();
+      const selected = session(sessionId);
+      const review = moveReviews.get(request.reviewId);
+      if (!review || review.expiresAt <= Date.now() || review.sessionId !== sessionId || review.destinationId !== request.workspaceId || review.sourceId !== (selected.workspaceId ?? null)) {
+        throw new Error('Session or workspace settings changed, or the review expired. Review the destination again.');
+      }
+      if (selected.running || selected.pendingApprovalId) throw new Error('Wait for this session to finish before moving it.');
+      const destination = state.workspaces.find(item => item.id === request.workspaceId);
+      if (!destination || destination.mode === 'observe' || destination.runtimeId === 'hermes' || !destination.projectLocation) {
+        throw new Error('Choose a managed Extalia Native workspace.');
+      }
+      const last = events.get(sessionId)?.at(-1);
+      if (last) {
+        selected.workspaceFileScopes = [...(selected.workspaceFileScopes ?? []), {
+          throughEventId: last.id,
+          workspaceId: selected.workspaceId ?? '',
+          projectLocation: selected.workspaceId ? (selected.projectLocation ?? '') : '',
+        }];
+      }
+      selected.workspaceId = destination.id;
+      delete selected.projectLocation;
+      moveReviews.delete(request.reviewId);
+      grants.delete(sessionId);
+      return snapshot();
+    },
     async setSessionProjectRoot(sessionId, input) {
       await latency();
       const selected = session(sessionId), workspace = state.workspaces.find(item => item.id === selected.workspaceId);

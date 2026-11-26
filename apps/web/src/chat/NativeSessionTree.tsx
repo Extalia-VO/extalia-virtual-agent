@@ -13,7 +13,7 @@ import type { ChatSelection } from './selection';
 import './nativeSessionTree.css';
 
 type Props = {
-  t: Messages; language: string; agents: AgentHostApi; state: HostState; workspaceId: string; activeId?: string; locked?: boolean;
+  t: Messages; language: string; agents: AgentHostApi; state: HostState; workspaceId: string | null; activeId?: string; locked?: boolean;
   onSelect: (selection: ChatSelection) => void; onState: (state: HostState) => void;
   onSettings: (session: SessionSummary) => void; onRename: (id: string, title: string) => Promise<void>; onDelete: (id: string) => Promise<void>;
 };
@@ -81,13 +81,41 @@ function NativeTreeContents({ memory, ...props }: Props & { memory: SessionBrows
       finally { admitting.current = false; if (alive.current) setPending(false); }
     },
   });
+  const unassignedRows = useMemo(() => state.sessions.filter(session => session.workspaceId === null)
+    .sort((a, b) => b.lastActiveAt.localeCompare(a.lastActiveAt) || a.id.localeCompare(b.id)), [state.sessions]);
+  const managedWorkspaces = state.workspaces.filter(workspace => workspace.mode !== 'observe');
   return <div ref={tree} className="session-browser native-session-tree" aria-busy={pending || undefined}>
-    <p className="muted small native-tree-hint">{agents.setSessionProjectRoot ? t.chat.sessionSettings.dragHint : t.chat.sessionSettings.unavailable}</p>
+    <p className="muted small native-tree-hint">{managedWorkspaces.length ? (agents.setSessionProjectRoot ? t.chat.sessionSettings.dragHint : t.chat.sessionSettings.unavailable) : t.chat.unassigned.treeHint}</p>
     {pending && <p className="small" role="status"><span className="session-browser-spinner spin" /> {t.chat.sessionSettings.moving}</p>}
     {error && <p className="form-error" role="alert">{error}</p>}
-    <div className="session-browser-harness-list">{state.workspaces.filter(workspace => workspace.mode !== 'observe').map(workspace =>
-      <NativeWorkspace key={workspace.id} {...props} workspace={workspace} memory={memory} pending={pending} rowDrag={rowDrag} dropProps={dropProps} />)}</div>
+    <div className="session-browser-harness-list">
+      {unassignedRows.length > 0 && <NativeUnassignedGroup {...props} rows={unassignedRows} memory={memory} pending={pending} />}
+      {managedWorkspaces.map(workspace =>
+        <NativeWorkspace key={workspace.id} {...props} workspace={workspace} memory={memory} pending={pending} rowDrag={rowDrag} dropProps={dropProps} />)}
+    </div>
   </div>;
+}
+
+function NativeUnassignedGroup({ rows, memory, ...props }: Props & { rows: SessionSummary[]; memory: SessionBrowserExpansion; pending: boolean }) {
+  const { t, language, agents, activeId, workspaceId, onSelect, onSettings, onRename, onDelete, pending, locked } = props;
+  const [open, setOpen] = useExpanded(memory, sessionBrowserNodeKey('native-unassigned'), workspaceId === null || rows.some(row => row.id === activeId));
+  const [limit, setLimit] = useState(12);
+  const list = useRef<HTMLDivElement>(null);
+  useTreeReorderMotion(list, TREE_ROW_SELECTOR);
+  return <article className={`session-browser-harness native-workspace native-unassigned${workspaceId === null ? ' is-selected' : ''}`}>
+    <div className="native-workspace-heading">
+      <button type="button" className="session-browser-harness-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
+        <Icon name="chevron" /><Icon name="chat" /><span>{t.chat.unassigned.group}</span><SessionBrowserIndicators t={t} running={rows.some(row => row.running)} /><span className="badge">{rows.length}</span>
+      </button>
+      <button type="button" className="icon-button small" aria-label={`${t.chat.newSession}: ${t.chat.unassigned.group}`} title={t.chat.newSession} disabled={pending || locked} onClick={() => onSelect({ workspaceId: null, sessionId: null })}><Icon name="plus" /></button>
+    </div>
+    {open && <div className="session-browser-harness-children"><div ref={list} className="session-browser-rows">
+      <SessionList t={t} language={language} sessions={rows.slice(0, limit)} activeId={activeId} compactIndicators showSource
+        onSelect={id => onSelect({ workspaceId: null, sessionId: id })} onRename={onRename} onDelete={onDelete} actionsDisabled={pending || locked}
+        onSettings={agents.previewSessionMove && agents.moveSession ? onSettings : undefined} />
+      {rows.length > limit && <button type="button" className="session-browser-more" onClick={() => setLimit(value => value + 12)}>{t.sessionBrowser.older}</button>}
+    </div></div>}
+  </article>;
 }
 
 type TreeHandlers = {

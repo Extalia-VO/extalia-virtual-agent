@@ -21,8 +21,11 @@ export function SessionMoveDialog({ t, agents, session, workspaces, currentWorks
   const dialog = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   const request = useRef(0);
-  const [workspaceId, setWorkspaceId] = useState(session.workspaceId);
-  const [section, setSection] = useState<'folder' | 'workspace'>(currentWorkspaceOnly ? 'workspace' : 'folder');
+  const isAttach = session.workspaceId === null;
+  const singleWorkspaceSection = currentWorkspaceOnly || isAttach;
+  const destinations = workspaces.filter(workspace => workspace.mode !== 'observe' && (workspaceRuntime(workspace) === 'extalia-native' || workspace.id === session.workspaceId) && workspace.projectLocation && (!currentWorkspaceOnly || workspace.id === session.workspaceId));
+  const [workspaceId, setWorkspaceId] = useState<string | null>(() => session.workspaceId ?? destinations[0]?.id ?? null);
+  const [section, setSection] = useState<'folder' | 'workspace'>(singleWorkspaceSection ? 'workspace' : 'folder');
   const targetWorkspaceId = currentWorkspaceOnly ? session.workspaceId : workspaceId;
   const context = JSON.stringify([session, workspaces, targetWorkspaceId, currentWorkspaceOnly]);
   const viewContext = useMemo(() => ({ context, agents }), [agents, context]);
@@ -41,7 +44,7 @@ export function SessionMoveDialog({ t, agents, session, workspaces, currentWorks
   const text = t.chat.move;
   const settings = t.chat.sessionSettings;
   const blocked = session.running || Boolean(session.pendingApprovalId) || Boolean(session.transient) || !nativeSession(session);
-  const destinations = workspaces.filter(workspace => workspace.mode !== 'observe' && (workspaceRuntime(workspace) === 'extalia-native' || workspace.id === session.workspaceId) && workspace.projectLocation && (!currentWorkspaceOnly || workspace.id === session.workspaceId));
+  const attachMode = isAttach || preview?.kind === 'attach';
   useEffect(() => {
     const element = dialog.current;
     const requests = request;
@@ -98,35 +101,37 @@ export function SessionMoveDialog({ t, agents, session, workspaces, currentWorks
     event.preventDefault(); if (!locked.current) onClose();
   }}>
     <header className="session-move-header">
-      <h2 id={titleId}>{currentWorkspaceOnly ? text.reviewCurrent : settings.title}</h2>
+      <h2 id={titleId}>{currentWorkspaceOnly ? text.reviewCurrent : isAttach ? text.attachTitle : settings.title}</h2>
       <button type="button" className="icon-button" aria-label={t.common.close} disabled={busy} onClick={onClose}><Icon name="close" /></button>
     </header>
     <p className="session-move-title">{session.title || t.chat.untitled}</p>
-    {!currentWorkspaceOnly && <div className="session-settings-tabs" role="tablist" aria-label={settings.title} onKeyDown={event => {
+    {!singleWorkspaceSection && <div className="session-settings-tabs" role="tablist" aria-label={settings.title} onKeyDown={event => {
       if (busy || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
       event.preventDefault();
       const next = event.key === 'Home' ? 'folder' : event.key === 'End' ? 'workspace' : section === 'folder' ? 'workspace' : 'folder';
       changeSection(next);
       event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next === 'folder' ? 0 : 1]?.focus();
     }}>
-      <button type="button" role="tab" id={`${titleId}-folder-tab`} aria-controls={`${titleId}-folder`} aria-selected={section === 'folder'} tabIndex={!currentWorkspaceOnly && section === 'folder' ? 0 : -1} disabled={busy} onClick={() => changeSection('folder')}>{settings.folder}</button>
+      <button type="button" role="tab" id={`${titleId}-folder-tab`} aria-controls={`${titleId}-folder`} aria-selected={section === 'folder'} tabIndex={!singleWorkspaceSection && section === 'folder' ? 0 : -1} disabled={busy} onClick={() => changeSection('folder')}>{settings.folder}</button>
       <button type="button" role="tab" id={`${titleId}-workspace-tab`} aria-controls={`${titleId}-workspace`} aria-selected={section === 'workspace'} tabIndex={section === 'workspace' ? 0 : -1} disabled={busy} onClick={() => changeSection('workspace')}>{settings.workspace}</button>
     </div>}
     {blocked && <p className="muted small" role="status">{settings.busy}</p>}
-    {!currentWorkspaceOnly && section === 'folder' ? <section role="tabpanel" id={`${titleId}-folder`} aria-labelledby={`${titleId}-folder-tab`}>
+    {!singleWorkspaceSection && section === 'folder' ? <section role="tabpanel" id={`${titleId}-folder`} aria-labelledby={`${titleId}-folder-tab`}>
       <p className="muted small">{settings.folderHint}</p>
       <Select label={settings.folder} value={folder} disabled={busy || blocked || !agents.setSessionProjectRoot}
         options={(source ? registeredSessionFolders(source) : []).map(path => ({ value: path, label: path, icon: 'folder' as const }))}
         onChange={path => { setFolder(path); setError(undefined); }} />
       {!agents.setSessionProjectRoot && <p className="muted small">{settings.unavailable}</p>}
-    </section> : <section role={currentWorkspaceOnly ? undefined : 'tabpanel'} id={`${titleId}-workspace`} aria-labelledby={currentWorkspaceOnly ? titleId : `${titleId}-workspace-tab`}>
-    <p className="muted small">{settings.crossHint} {text.description}</p>
-    <Select label={text.destination} value={targetWorkspaceId ?? ''} disabled={busy || blocked}
-      options={destinations.map(workspace => ({
-        value: workspace.id, label: workspace.name, description: workspace.projectLocation, icon: 'folder' as const,
-      }))} onChange={id => { request.current++; setWorkspaceId(id); setReviewed(undefined); setConfirmed(false); setError(undefined); }} />
+    </section> : <section role={singleWorkspaceSection ? undefined : 'tabpanel'} id={`${titleId}-workspace`} aria-labelledby={singleWorkspaceSection ? titleId : `${titleId}-workspace-tab`}>
+    <p className="muted small">{isAttach ? text.attachDescription : `${settings.crossHint} ${text.description}`}</p>
+    {destinations.length === 0 ? <p className="muted small">{text.noDestinations}</p> : (
+      <Select label={text.destination} value={targetWorkspaceId ?? ''} placeholder={text.chooseDestination} disabled={busy || blocked}
+        options={destinations.map(workspace => ({
+          value: workspace.id, label: workspace.name, description: workspace.projectLocation, icon: 'folder' as const,
+        }))} onChange={id => { request.current++; setWorkspaceId(id); setReviewed(undefined); setConfirmed(false); setError(undefined); }} />
+    )}
     {preview && <section className="session-move-review" aria-label={text.review}>
-      <p>{preview.source ? <><strong>{preview.source.name}</strong> → </> : null}<strong>{preview.destination.name}</strong></p>
+      <p><strong>{preview.source ? preview.source.name : t.chat.unassigned.label}</strong> → <strong>{preview.destination.name}</strong></p>
       <h3>{text.folders}</h3>
       <ul>{preview.accessibleFolders.map(folder => <li key={`${folder.workspaceId}:${folder.path}`}>
         <code>{folder.path}</code><span className="badge">{folder.access === 'read-write' ? text.readWrite : text.readOnly}</span>
@@ -134,15 +139,15 @@ export function SessionMoveDialog({ t, agents, session, workspaces, currentWorks
       <p className="small">{text.crossAccess}: {text.policies[preview.destination.crossWorkspaceAccess]}</p>
       <p className="small">{text.fileWrites}: {text.permissions[preview.destination.permissions.fileWrite]} · {text.commands}: {text.permissions[preview.destination.permissions.commands]}</p>
       <p className="small"><strong>{t.composer.permission}: {t.composer.mode[preview.permissionMode].label}</strong><br />{t.composer.mode[preview.permissionMode].description}</p>
-      <p className="small">{text.context}</p>
-      <label className="session-move-consent"><input type="checkbox" checked={confirmed} disabled={busy} onChange={event => setConfirmed(event.target.checked)} />{text.confirm}</label>
+      <p className="small">{attachMode ? text.attachContext : text.context}</p>
+      <label className="session-move-consent"><input type="checkbox" checked={confirmed} disabled={busy} onChange={event => setConfirmed(event.target.checked)} />{attachMode ? text.attachConfirm : text.confirm}</label>
     </section>}
     </section>}
     {error && <p className="form-error" role="alert">{error}</p>}
     <footer className="row-actions">
       <button type="button" className="button" disabled={busy} onClick={onClose}>{t.common.cancel}</button>
-      {!currentWorkspaceOnly && section === 'folder' ? <button type="button" className="button primary" disabled={busy || blocked || !agents.setSessionProjectRoot || !source || !registeredSessionFolders(source).includes(folder) || folder === currentFolder} onClick={() => { void applyFolder(); }}>{busy ? text.applying : settings.folderApply}</button>
-        : preview ? <button type="button" className="button primary" disabled={busy || blocked || !confirmed} onClick={() => { void move(); }}>{busy ? text.applying : text.apply}</button>
+      {!singleWorkspaceSection && section === 'folder' ? <button type="button" className="button primary" disabled={busy || blocked || !agents.setSessionProjectRoot || !source || !registeredSessionFolders(source).includes(folder) || folder === currentFolder} onClick={() => { void applyFolder(); }}>{busy ? text.applying : settings.folderApply}</button>
+        : preview ? <button type="button" className="button primary" disabled={busy || blocked || !confirmed} onClick={() => { void move(); }}>{attachMode ? (busy ? text.attaching : text.attachApply) : (busy ? text.applying : text.apply)}</button>
           : <button type="button" className="button primary" disabled={busy || blocked || !agents.previewSessionMove || !agents.moveSession || !destinations.some(workspace => workspace.id === targetWorkspaceId)} onClick={() => { void review(); }}>{busy ? text.reviewing : text.review}</button>}
     </footer>
   </dialog>;

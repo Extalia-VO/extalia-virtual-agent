@@ -20,14 +20,16 @@ export function chatTeamEnableBlock(team: AgentTeam | undefined, hermes: boolean
   return undefined;
 }
 
-export function useChatTeam({ agents, state, workspace, session, onState }: {
-  agents: AgentHostApi; state: HostState; workspace?: Workspace; session?: SessionSummary; onState(state: HostState): void;
+export function useChatTeam({ agents, state, workspace, session, connectionId, onState }: {
+  agents: AgentHostApi; state: HostState; workspace?: Workspace; session?: SessionSummary; connectionId?: string; onState(state: HostState): void;
 }) {
-  const workspaceId = workspace?.id;
+  const workspaceId = workspace?.id ?? null;
   const sessionId = session?.id;
   const readOnly = session?.control === 'observed';
-  const supported = !readOnly && teamSupported(agents) && (sessionId ? typeof agents.getSessionTeam === 'function' : workspaceTeamSupported(agents));
-  const catalogKey = modelChoicesKey(state, workspace, session);
+  const supported = !readOnly && teamSupported(agents) && (sessionId
+    ? typeof agents.getSessionTeam === 'function'
+    : workspace ? workspaceTeamSupported(agents) : Boolean(connectionId || state.connections.length === 1));
+  const catalogKey = modelChoicesKey(state, workspace, session, connectionId);
   const scope = useMemo(() => ({ agents, workspaceId, sessionId, catalogKey, readOnly }), [agents, workspaceId, sessionId, catalogKey, readOnly]);
   const current = useRef<typeof scope | undefined>(scope);
   const sequence = useRef(0);
@@ -75,9 +77,14 @@ export function useChatTeam({ agents, state, workspace, session, onState }: {
   }, [agents, scope, workspaceId, sessionId, supported, hermes, revision]);
 
   async function toggle(enabled: boolean) {
-    if (current.current !== scope || !supported || !workspaceId || mutation.current === scope || loading || error || (enabled && enableBlock)) return;
+    if (current.current !== scope || !supported || mutation.current === scope || loading || error || (enabled && enableBlock)) return;
     const next = toggleChatTeam(team, enabled);
     if (!next) return;
+    if (!sessionId && workspaceId === null) {
+      setSavedDefault({ scope, base: undefined, team: next });
+      return;
+    }
+    if (!workspaceId && !sessionId) return;
     const request = ++sequence.current;
     mutation.current = scope;
     setPending(scope); setFailure(undefined);
@@ -88,7 +95,7 @@ export function useChatTeam({ agents, state, workspace, session, onState }: {
         setLoaded({ scope, summaryKey, ...(saved ? { team: saved } : {}) });
         const refreshed = await agents.getState().catch(() => undefined);
         if (refreshed && current.current === scope && sequence.current === request) onState(refreshed);
-      } else {
+      } else if (workspaceId) {
         const refreshed = await agents.saveWorkspaceTeam(workspaceId, next);
         if (current.current !== scope || sequence.current !== request) return;
         setSavedDefault({ scope, base: workspace?.team, team: refreshed.workspaces.find(item => item.id === workspaceId)?.team });

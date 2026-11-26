@@ -39,6 +39,8 @@ import { useChatTeam } from './chatTeam';
 import { ChatSessionInfo } from './ChatSessionInfo';
 import './chatLayout.css';
 
+const UNASSIGNED_WORKSPACE_VALUE = '__unassigned__';
+
 /** Viewport width affects presentation only; keep controls mounted when a drawer opens. */
 function useChatMedia(query: string) {
   const [matches, setMatches] = useState(() => typeof window === 'undefined' || typeof window.matchMedia !== 'function' || window.matchMedia(query).matches);
@@ -117,11 +119,15 @@ export function ChatPage({ t, language, agents, picker, state, onState, selectio
   }, [drawerOpen, inspectorWide]);
   const memoryDetails = useRef<HTMLDetailsElement>(null);
   const memoryDetailsId = useId();
-  const teamControl = useChatTeam({ agents, state, workspace, session, onState });
+  const [chosenConnectionId, setChosenConnectionId] = useState<string>();
+  const selectedConnectionId = session ? session.connectionId
+    : workspace ? undefined
+      : state.connections.find(item => item.id === chosenConnectionId)?.id ?? state.connections[0]?.id;
+  const teamControl = useChatTeam({ agents, state, workspace, session, connectionId: selectedConnectionId, onState });
   const workspaceReview = useWorkspaceReviewRecovery({ agents, session, onState });
+  const hasConnections = state.connections.length > 0;
 
-
-  if (!workspace) {
+  if (!workspace && !session && !hasConnections) {
     return (
       <div className="page">
         <div className="chat-learning-slot" ref={onLearningTarget} />
@@ -168,8 +174,16 @@ export function ChatPage({ t, language, agents, picker, state, onState, selectio
     if (teamControl.isUpdating() || teamControl.open) throw new Error(t.chat.team.updating);
     let id = session?.id;
     if (!id) {
-      id = await createComposerSession({ agents, workspaceId: workspace.id, choice,
-        ...(teamControl.supported ? { team: teamControl.team ?? null } : {}), bindSession, onState, onSelect, interrupted: t.chat.turnInterrupted });
+      const clientRequestId = typeof globalThis.crypto?.randomUUID === 'function' ? globalThis.crypto.randomUUID() : undefined;
+      id = await createComposerSession({
+        agents,
+        workspaceId: workspace?.id ?? null,
+        ...(!workspace && selectedConnectionId ? { connectionId: selectedConnectionId } : {}),
+        choice,
+        ...(teamControl.supported ? { team: teamControl.team ?? null } : {}),
+        ...(clientRequestId ? { clientRequestId } : {}),
+        bindSession, onState, onSelect, interrupted: t.chat.turnInterrupted,
+      });
     }
     try {
       const ids = await uploadAttachments(agents, id, attachments, patch);
@@ -188,8 +202,26 @@ export function ChatPage({ t, language, agents, picker, state, onState, selectio
   };
   const remove = async (id: string) => {
     if (!(await guard(async () => onState(await agents.deleteSession(id))))) throw new Error('delete failed');
-    if (id === session?.id) onSelect({ workspaceId: workspace.id });
+    if (id === session?.id) onSelect({ workspaceId: workspace?.id ?? null });
   };
+
+  const managedWorkspaces = state.workspaces.filter(item => item.mode !== 'observe');
+  const hasUnassignedSessions = state.sessions.some(item => item.workspaceId === null);
+  const showUnassignedOption = hasConnections || hasUnassignedSessions || !workspace;
+  const workspaceOptions = [
+    ...(showUnassignedOption ? [{
+      value: UNASSIGNED_WORKSPACE_VALUE,
+      label: t.chat.unassigned.label,
+      description: t.chat.unassigned.selectorHint,
+      icon: 'chat' as const,
+    }] : []),
+    ...managedWorkspaces.map(item => ({
+      value: item.id,
+      label: item.name,
+      description: item.projectLocation,
+      icon: 'folder' as const,
+    })),
+  ];
 
   return (
     <div className={`chat chat-session-page ${listOpen ? 'list-open' : ''} ${drawerOpen ? 'inspector-open' : ''}`}>
@@ -198,29 +230,38 @@ export function ChatPage({ t, language, agents, picker, state, onState, selectio
         <div className="field">
           <Select
             label={t.chat.workspace}
-            value={workspace.id}
-            options={state.workspaces.filter(item => item.mode !== 'observe').map(item => ({
-              value: item.id,
-              label: item.name,
-              description: item.projectLocation,
-              icon: 'folder' as const
-            }))}
-            onChange={id => onSelect({ workspaceId: id })}
+            value={workspace?.id ?? UNASSIGNED_WORKSPACE_VALUE}
+            options={workspaceOptions}
+            onChange={id => onSelect({ workspaceId: id === UNASSIGNED_WORKSPACE_VALUE ? null : id, sessionId: null })}
           />
         </div>
+        {!workspace && !session && state.connections.length > 1 && (
+          <div className="field">
+            <Select
+              label={t.chat.unassigned.connection}
+              value={selectedConnectionId ?? ''}
+              options={state.connections.map(item => ({
+                value: item.id,
+                label: item.name,
+                description: item.model,
+              }))}
+              onChange={setChosenConnectionId}
+            />
+          </div>
+        )}
         <button type="button" className="button new-session" aria-pressed={!session}
-          onClick={() => { onSelect({ workspaceId: workspace.id, sessionId: null }); setListOpen(false); focusComposer(); }}>
+          onClick={() => { onSelect({ workspaceId: workspace?.id ?? null, sessionId: null }); setListOpen(false); focusComposer(); }}>
           <Icon name="plus" />{t.chat.newSession}
         </button>
         <h2 className="side-heading">{t.chat.sessions}</h2>
-        <NativeSessionTree t={t} agents={agents} state={state} workspaceId={workspace.id} activeId={session?.id} language={language} locked={Boolean(movingSession)} onState={onState}
+        <NativeSessionTree t={t} agents={agents} state={state} workspaceId={workspace?.id ?? null} activeId={session?.id} language={language} locked={Boolean(movingSession)} onState={onState}
           onSelect={next => { onSelect(next); setListOpen(false); if (next.sessionId === null) focusComposer(); }} onRename={rename} onDelete={remove}
           onSettings={row => setMoving({ id: row.id, agents, scope: sourceScope, selectionKey, wasActive: row.id === session?.id })} />
       </aside>
 
       <section className="chat-main chat-session-main" aria-labelledby="chat-title">
         <div className="chat-conversation" ref={transcriptRegion} inert={sessionsOverlayOpen || drawerOpen || undefined}>
-        <MessageFileProvider key={session?.id ?? 'new'} t={t} agents={agents} workspaces={state.workspaces} workspaceId={workspace.id} projectPath={session?.observation?.projectPath ?? session?.projectLocation ?? workspace.projectLocation}>
+        <MessageFileProvider key={session?.id ?? 'new'} t={t} agents={agents} workspaces={workspace ? state.workspaces : []} workspaceId={workspace?.id ?? null} projectPath={session?.observation?.projectPath ?? session?.projectLocation ?? workspace?.projectLocation}>
           <ConversationTabs t={t} language={language} files={changedFiles} header={<div className="chat-head">
             <button type="button" className="button small sessions-toggle" aria-expanded={listOpen} aria-controls="chat-sessions" onClick={() => setListOpen(!listOpen)}>
               <Icon name={listOpen ? 'close' : 'menu'} />{listOpen ? t.chat.hideSessions : t.chat.showSessions}
@@ -229,7 +270,18 @@ export function ChatPage({ t, language, agents, picker, state, onState, selectio
             <h1 id="chat-title" className="chat-title">{session ? session.title || t.chat.untitled : t.chat.newSession}</h1>
             {session?.continuedFrom && <span className="badge">{t.handoff.badge(sourceLabel(session.continuedFrom.sourceId))}</span>}
             {session?.transient && <span className="badge warn" title={t.handoff.notSavedHint}>{t.handoff.notSaved}</span>}
-            <span className="chat-workspace" title={session?.projectLocation ?? workspace.projectLocation}><Icon name="folder" />{workspace.name}</span>
+            {workspace ? (
+              <span className="chat-workspace" title={session?.projectLocation ?? workspace.projectLocation}><Icon name="folder" />{workspace.name}</span>
+            ) : (
+              <>
+                <span className="chat-workspace chat-workspace-unassigned" title={t.chat.unassigned.noFolderAccess}><Icon name="chat" />{t.chat.unassigned.badge}</span>
+                {session && session.workspaceId === null && agents.previewSessionMove && agents.moveSession && (
+                  <button type="button" className="button small chat-attach-workspace" onClick={() => setMoving({ id: session.id, agents, scope: sourceScope, selectionKey, wasActive: true })}>
+                    <Icon name="folder" />{t.chat.unassigned.attach}
+                  </button>
+                )}
+              </>
+            )}
             {session && agents.previewHandover && <button type="button" className="button small" onClick={() => setHandoverOpen(true)}>{t.sessionHandover.title}</button>}
             {!pinned && messageItems.length > 0 && <button type="button" className="button small chat-jump-latest" onClick={() => viewport.jumpToLatest()}>{t.observer.latestMessages}<Icon name="chevron" /></button>}
             {session?.control === 'observed' && <ObservedWorkspaceLinkButton agents={agents} session={session} state={state} t={t} onState={next => {
@@ -238,14 +290,14 @@ export function ChatPage({ t, language, agents, picker, state, onState, selectio
             }} />}
           </div>}>
             {loadError && <p className="form-error" role="alert"><Icon name="alert" />{t.chat.loadFailed} {loadError}</p>}
-            <WorkspaceRuntimeNotice t={t} state={state} workspace={workspace} session={session} onNewSession={() => {
+            {workspace && <WorkspaceRuntimeNotice t={t} state={state} workspace={workspace} session={session} onNewSession={() => {
               onSelect({ workspaceId: workspace.id, sessionId: null }); setListOpen(false); focusComposer();
-            }} />
+            }} />}
             {!loading && messageItems.length === 0 ? (
               <div className="chat-empty">
                 <Icon name="chat" className="empty-icon" />
                 <h2>{t.chat.emptyTitle}</h2>
-                <p className="muted">{t.chat.emptyLead(workspace.name)}</p>
+                <p className="muted">{workspace ? t.chat.emptyLead(workspace.name) : t.chat.unassigned.emptyLead}</p>
               </div>
             ) : (
               <TranscriptView t={t} items={messageItems} language={language} onDecide={decide} previewAttachment={previewAttachment} approvalsEnabled={!readOnly} onOpenWorker={openInspector} selectedWorkerId={currentInspector?.workerId} />
@@ -273,26 +325,27 @@ export function ChatPage({ t, language, agents, picker, state, onState, selectio
             ? <ObservedCodexPromptComposer key={session.id} t={t} agents={agents} session={session} />
             : session?.control === 'observed' && agents.observedControlStatus && agents.dispatchObservedControl
               ? <ObservedSessionControl key={session.id} t={t} agents={agents} session={session} />
-              : <Composer t={t} agents={agents} session={session} workspaceId={workspace.id} hermes={sessionRuntime(workspace, session) === 'hermes'} modelScopeKey={modelChoicesKey(state, workspace, session)}
+              : <Composer t={t} agents={agents} session={session} workspaceId={workspace?.id ?? null} connectionId={!workspace && !session ? selectedConnectionId : undefined}
+            hermes={sessionRuntime(workspace, session) === 'hermes'} modelScopeKey={modelChoicesKey(state, workspace, session, selectedConnectionId)}
             running={running} waiting={waiting} readOnly={readOnly} stopping={activity.stopping} sendBlocked={workspaceReview.required}
             onOpenContext={memoryScope ? openMemoryContext : undefined} contextPanelId={memoryScope ? memoryDetailsId : undefined}
             onSend={send} onStop={() => { if (session) void guard(() => agents.cancel(session.id)); }} onSessionChanged={refreshState} />}
         </div>
         </div>
         {drawerOpen && <button type="button" className="chat-inspector-backdrop" aria-label={t.observer.closeInspector} tabIndex={-1} onClick={closeInspector} />}
-        <MessageFileProvider key={`inspector:${session?.id ?? 'new'}`} t={t} agents={agents} workspaces={state.workspaces} workspaceId={workspace.id} projectPath={session?.observation?.projectPath ?? session?.projectLocation ?? workspace.projectLocation}>
+        <MessageFileProvider key={`inspector:${session?.id ?? 'new'}`} t={t} agents={agents} workspaces={workspace ? state.workspaces : []} workspaceId={workspace?.id ?? null} projectPath={session?.observation?.projectPath ?? session?.projectLocation ?? workspace?.projectLocation}>
         <aside ref={inspectorRegion} tabIndex={-1} className="chat-context-rail" id={inspectorId} aria-label={t.observer.inspector} onKeyDown={event => { if (event.key === 'Escape' && !event.defaultPrevented && drawerOpen) { event.preventDefault(); closeInspector(); } }}>
           <header className="chat-inspector-head"><h2>{t.observer.inspector}</h2><button ref={inspectorClose} type="button" className="icon-button small chat-inspector-close" aria-label={t.observer.closeInspector} onClick={closeInspector}><Icon name="close" /></button></header>
           <div className="chat-inspector-content">
           {currentInspector?.workerId && <button type="button" className="button small native-worker-close" onClick={() => setInspector({ owner: inspectorOwner, open: true })}><Icon name="close" />{t.tool.hideWorkerPreview}</button>}
-          <NativeChatActivity key={session?.id ?? `new:${workspace.id}`} t={t} language={language} items={items} events={events} primaryName={leadName} live={!loading && !loadError && (session?.control !== 'observed' || Boolean(session.observation?.watching && session.observation.status === 'watching'))} sessionId={sessionId} scopeKey={`${sourceScope}:${workspace.id}`} selectedWorkerId={currentInspector?.workerId} onOpenWorker={openInspector} previewAttachment={previewAttachment} team={teamControl.team} />
-          <ProjectSkillsNotice t={t} agents={agents} workspace={workspace} onReview={onReviewSkills} />
-          {memoryScope && <MemoryContextPanel key={memoryScope.key} t={t} language={language} id={memoryDetailsId} detailsRef={memoryDetails}
+          <NativeChatActivity key={session?.id ?? `new:${workspace?.id ?? 'unassigned'}`} t={t} language={language} items={items} events={events} primaryName={leadName} live={!loading && !loadError && (session?.control !== 'observed' || Boolean(session.observation?.watching && session.observation.status === 'watching'))} sessionId={sessionId} scopeKey={`${sourceScope}:${workspace?.id ?? 'unassigned'}`} selectedWorkerId={currentInspector?.workerId} onOpenWorker={openInspector} previewAttachment={previewAttachment} team={teamControl.team} />
+          {workspace && <ProjectSkillsNotice t={t} agents={agents} workspace={workspace} onReview={onReviewSkills} />}
+          {memoryScope && workspace && <MemoryContextPanel key={memoryScope.key} t={t} language={language} id={memoryDetailsId} detailsRef={memoryDetails}
             agents={agents} workspaceId={workspace.id} ownerKey={memoryScope.key} draftKey={memoryScope.draftKey}
             workspaceName={workspace.name} connection={memoryScope.connection} context={memoryScope.context}
             onOpenSettings={onOpenSettings} onOpenSkills={() => onReviewSkills(workspace.id)} onOpenKnowledge={onOpenKnowledge} />}
-          <ChatTeamControls t={t} agents={agents} state={state} workspace={workspace} session={session} running={running} control={teamControl} />
-          <details className="chat-session-information"><summary>{t.chat.sessionInfo.title}</summary><ChatSessionInfo t={t} state={state} workspace={workspace} session={session} status={statusText} files={changedFiles} /></details>
+          <ChatTeamControls t={t} agents={agents} state={state} workspace={workspace} session={session} connectionId={selectedConnectionId} running={running} control={teamControl} />
+          <details className="chat-session-information"><summary>{t.chat.sessionInfo.title}</summary><ChatSessionInfo t={t} state={state} workspace={workspace} session={session} connectionId={selectedConnectionId} status={statusText} files={changedFiles} /></details>
           </div>
         </aside>
 
@@ -315,7 +368,7 @@ export function ChatPage({ t, language, agents, picker, state, onState, selectio
           if (receipt.state === 'native-ready') void guard(async () => {
             const next = await agents.getState();
             setHandoverOpen(false); onState(next);
-            if (receipt.targetSessionId) onSelect({ workspaceId: workspace.id, sessionId: receipt.targetSessionId });
+            if (receipt.targetSessionId) onSelect({ workspaceId: workspace?.id ?? null, sessionId: receipt.targetSessionId });
           });
         }} />}
     </div>

@@ -7,12 +7,14 @@ export const THEMES = ['system', 'solar', 'light', 'dark'] as const;
 export const MATERIALS = ['standard', 'liquid-glass', 'liquid-glass-pro'] as const;
 export const SIDEBARS = ['expanded', 'compact'] as const;
 export const FONTS = ['sf-pro', 'quicksand', 'geist', 'jakarta', 'inter'] as const;
+export const LANDING_PAGES = ['chat', 'office'] as const;
 const LANGUAGE_IDS = ['en', 'id'] as const satisfies readonly Language[];
 
 export type ThemePreference = typeof THEMES[number];
 export type MaterialPreference = typeof MATERIALS[number];
 export type SidebarPreference = typeof SIDEBARS[number];
 export type FontPreference = typeof FONTS[number];
+export type LandingPagePreference = typeof LANDING_PAGES[number];
 
 export interface Preferences {
   theme: ThemePreference;
@@ -21,6 +23,7 @@ export interface Preferences {
   language: Language;
   sidebar: SidebarPreference;
   font: FontPreference;
+  landingPage: LandingPagePreference;
 }
 
 export const DEFAULT_PREFERENCES: Preferences = {
@@ -28,7 +31,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
   material: 'liquid-glass',
   language: 'en',
   sidebar: 'expanded',
-  font: 'quicksand'
+  font: 'quicksand',
+  landingPage: 'chat',
 };
 
 function pick<T extends string>(allowed: readonly T[], value: unknown, fallback: T): T {
@@ -47,7 +51,8 @@ export function decodePreferences(raw: unknown): Preferences {
     material: pick(MATERIALS, value.material, DEFAULT_PREFERENCES.material),
     language: pick(LANGUAGE_IDS, value.language, DEFAULT_PREFERENCES.language),
     sidebar: pick(SIDEBARS, value.sidebar, DEFAULT_PREFERENCES.sidebar),
-    font: pick(FONTS, value.font, DEFAULT_PREFERENCES.font)
+    font: pick(FONTS, value.font, DEFAULT_PREFERENCES.font),
+    landingPage: pick(LANDING_PAGES, value.landingPage, DEFAULT_PREFERENCES.landingPage),
   };
 }
 
@@ -57,6 +62,7 @@ interface PreferencesState extends Preferences {
   setLanguage: (language: Language) => void;
   setSidebar: (sidebar: SidebarPreference) => void;
   setFont: (font: FontPreference) => void;
+  setLandingPage: (landingPage: LandingPagePreference) => void;
   updatePreferences: (next: Partial<Preferences>) => void;
 }
 
@@ -97,6 +103,7 @@ export const usePreferencesStore = create<PreferencesState>()(
       setLanguage: language => set({ language }),
       setSidebar: sidebar => set({ sidebar }),
       setFont: font => set({ font }),
+      setLandingPage: landingPage => set({ landingPage }),
       updatePreferences: next => set(state => ({ ...state, ...next }))
     }),
     {
@@ -119,7 +126,8 @@ export function loadPreferences(): Preferences {
     material: state.material,
     language: state.language,
     sidebar: state.sidebar,
-    font: state.font
+    font: state.font,
+    landingPage: state.landingPage,
   };
 }
 

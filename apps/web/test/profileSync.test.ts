@@ -3,18 +3,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_PREFERENCES, type Preferences } from '../src/preferences.js';
 import { createProfileSaver, mergeProfilePreferences, profileChanges, toProfilePreferences } from '../src/profileSync.js';
 
-const local: Preferences = { theme: 'light', material: 'standard', language: 'en', sidebar: 'expanded', font: 'inter' };
+const local: Preferences = { theme: 'light', material: 'standard', language: 'en', sidebar: 'expanded', font: 'inter', landingPage: 'chat' };
 
 describe('profile preference merge', () => {
   it('takes known host values and defaults for fields missing from the host', () => {
-    const merged = mergeProfilePreferences(local, { language: 'id', theme: 'dark' });
-    expect(merged.preferences).toEqual({ ...DEFAULT_PREFERENCES, language: 'id', theme: 'dark' });
+    const merged = mergeProfilePreferences(local, { language: 'id', theme: 'dark', landingPage: 'office' });
+    expect(merged.preferences).toEqual({ ...DEFAULT_PREFERENCES, language: 'id', theme: 'dark', landingPage: 'office' });
     expect(merged.synced).toEqual(toProfilePreferences(merged.preferences));
     expect(profileChanges(merged.synced, merged.preferences)).toEqual({});
   });
 
   it('returns first-install defaults instead of restoring an old browser mirror into a deleted profile', () => {
-    const previous: Preferences = { theme: 'dark', material: 'standard', language: 'id', sidebar: 'compact', font: 'inter' };
+    const previous: Preferences = { theme: 'dark', material: 'standard', language: 'id', sidebar: 'compact', font: 'inter', landingPage: 'office' };
     const merged = mergeProfilePreferences(previous, {});
     expect(merged.preferences).toEqual(DEFAULT_PREFERENCES);
     expect(profileChanges(merged.synced, merged.preferences)).toEqual({});

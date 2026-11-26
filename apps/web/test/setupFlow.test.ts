@@ -45,12 +45,14 @@ describe('Hermes permissions', () => {
 });
 
 describe('setup wording', () => {
-  it('names every step in both languages and ends in the 3D Office', () => {
+  it('names every step in both languages and keeps Chat and 3D Office final labels honest', () => {
     expect(en.setup.steps).toEqual(['Welcome', 'Profile', 'Connection', 'Workspace', 'Agent apps', 'Done']);
     expect(id.setup.steps[2]).toBe('Koneksi');
     expect(id.setup.steps).toHaveLength(en.setup.steps.length);
-    expect(en.setup.finish).toBe('Enter the 3D Office');
-    expect(id.setup.finish).toContain('Kantor 3D');
+    expect(en.setup.finish).toBe('Open Chat');
+    expect(id.setup.finish).toBe('Mulai Chat');
+    expect(en.setup.finishOffice).toBe('Open 3D Office');
+    expect(id.setup.finishOffice).toContain('Kantor 3D');
     expect(en.setup.welcomePoints).toHaveLength(id.setup.welcomePoints.length);
   });
 });

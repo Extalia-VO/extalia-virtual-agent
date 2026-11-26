@@ -9,7 +9,7 @@ export const registeredSessionFolders = (workspace: Workspace): string[] =>
 
 /** The drag payload identifies a row; current host state owns every decision. */
 export function nativeSessionDrop(sessions: readonly SessionSummary[], workspaces: readonly Workspace[], drag: NativeSessionDrag | undefined, workspaceId: string, projectLocation: string): SessionSummary | undefined {
-  if (!drag || drag.workspaceId !== workspaceId) return undefined;
+  if (!drag || !drag.workspaceId || drag.workspaceId !== workspaceId) return undefined;
   const workspace = workspaces.find(item => item.id === workspaceId && item.mode !== 'observe');
   const session = sessions.find(item => item.id === drag.sessionId);
   if (!workspace || !session || session.workspaceId !== workspaceId || !nativeSession(session) || session.transient || session.running || session.pendingApprovalId) return undefined;

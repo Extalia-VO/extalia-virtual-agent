@@ -7,9 +7,9 @@ import { Icon } from '../ui/Icon';
 import type { ChatTeamController } from './chatTeam';
 
 /** Persistent setup lives beside the composer, with explicit session/default ownership. */
-export function ChatTeamControls({ t, agents, state, workspace, session, running, control }: {
-  t: Messages; agents: AgentHostApi; state: HostState; workspace: Workspace; session?: SessionSummary;
-  running: boolean; control: ChatTeamController;
+export function ChatTeamControls({ t, agents, state, workspace, session, connectionId, running, control }: {
+  t: Messages; agents: AgentHostApi; state: HostState; workspace?: Workspace; session?: SessionSummary;
+  connectionId?: string | undefined; running: boolean; control: ChatTeamController;
 }) {
   const id = useId();
   const m = t.chat.team;
@@ -28,7 +28,7 @@ export function ChatTeamControls({ t, agents, state, workspace, session, running
     <div className="chat-team-heading">
       <span id={`${id}-title`} className="chat-team-title"><Icon name="users" />{m.title}</span>
       <span className="chat-team-status" data-active={active && !loading && !error || undefined} role="status">{status}{team?.members.length && !loading && !error ? ` · ${m.members(team.members.length)}` : ''}</span>
-      <span className="chat-team-scope">{session ? m.sessionScope : m.workspaceScope}</span>
+      <span className="chat-team-scope">{session ? m.sessionScope : workspace ? m.workspaceScope : m.draftScope}</span>
     </div>
     <div className="chat-team-actions">
       <button type="button" className="button small" disabled={busy || loading} onClick={control.openSetup}>
@@ -43,11 +43,12 @@ export function ChatTeamControls({ t, agents, state, workspace, session, running
       {(error || blocked) && <button type="button" className="button small" disabled={busy || loading} onClick={control.retry}><Icon name="refresh" />{m.retry}</button>}
     </div>
     <p id={`${id}-help`} className="chat-team-help">{help}</p>
-    <p className="chat-team-help chat-team-ownership">{session ? running ? m.nextTurn : m.sessionHelp : m.workspaceHelp}</p>
+    <p className="chat-team-help chat-team-ownership">{session ? running ? m.nextTurn : m.sessionHelp : workspace ? m.workspaceHelp : m.draftHelp}</p>
     {control.hermes && <p className="chat-team-help">{m.hermesRuntime}</p>}
     {error && <p className="form-error" role="alert">{error}</p>}
-    {control.open && <TeamSetupDialog t={t} agents={agents} workspaceId={workspace.id} workspaceName={workspace.name}
-      scope={session ? 'session' : 'workspace'} sessionId={session?.id} leadName={session?.agentName} pending={team}
+    {control.open && <TeamSetupDialog t={t} agents={agents} workspaceId={workspace?.id ?? null} workspaceName={workspace?.name}
+      scope={session ? 'session' : workspace ? 'workspace' : 'draft'} sessionId={session?.id} leadName={session?.agentName} pending={team}
+      catalogConnectionId={!workspace && !session ? connectionId : undefined}
       officeNames={names} onSaved={control.onSaved} onState={control.onDialogState} onClose={control.closeSetup} />}
   </section>;
 }

@@ -116,4 +116,32 @@ describe('session workspace review callback ownership', () => {
     const select = elements(h.render()).find(node => Array.isArray(node.props.options))!;
     expect(select.props.options).toEqual([expect.objectContaining({ value: h.props.session.workspaceId })]);
   });
+
+  it('reviews and applies an explicit attach from an unassigned session (null -> workspace)', async () => {
+    const h = harness();
+    const workspace = h.props.workspaces[0]!;
+    const unassigned: SessionSummary = { ...h.props.session, workspaceId: null, workspaceReviewRequired: false };
+    h.props.session = unassigned;
+    h.props.currentWorkspaceOnly = false;
+    const attachPreview: SessionMovePreview = {
+      sessionId: unassigned.id,
+      reviewId: 'review-attach',
+      expiresAt: '2030-01-01T00:00:00.000Z',
+      kind: 'attach',
+      source: null,
+      destination: { id: workspace.id, name: workspace.name, folders: [workspace.projectLocation!], crossWorkspaceAccess: 'read-only', permissions: { fileWrite: 'ask', commands: 'ask' } },
+      accessibleFolders: [{ workspaceId: workspace.id, path: workspace.projectLocation!, access: 'read-write' }],
+      transfersHistory: true,
+      permissionMode: 'workspace',
+    };
+    const attachedState = { sessions: [{ ...unassigned, workspaceId: workspace.id }] } as unknown as HostState;
+    vi.mocked(h.props.agents.previewSessionMove!).mockResolvedValue(attachPreview);
+    vi.mocked(h.props.agents.moveSession!).mockResolvedValue(attachedState);
+
+    await h.review();
+    expect(h.props.agents.previewSessionMove).toHaveBeenCalledExactlyOnceWith(unassigned.id, workspace.id);
+    h.click(MESSAGES.en.chat.move.attachApply);
+    await vi.waitFor(() => expect(h.props.agents.moveSession).toHaveBeenCalledExactlyOnceWith(unassigned.id, { workspaceId: workspace.id, reviewId: 'review-attach' }));
+    await vi.waitFor(() => expect(h.props.onMoved).toHaveBeenCalledExactlyOnceWith(attachedState, workspace.id));
+  });
 });

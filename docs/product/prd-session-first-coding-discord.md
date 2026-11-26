@@ -3,7 +3,7 @@
 
 | Metadata | Nilai |
 | --- | --- |
-| Status | **In progress (Slice A1 verified locally)** — fondasi backend/platform `ADR 0095` & preferensi profil `ADR 0096` terimplementasi; Slice A2 (Chat UI & Chat-first landing) serta Slices B–E belum diimplementasikan |
+| Status | **In progress (Slice A complete & verified locally; Slices B–E pending)** — Slice A1 backend (`ADR 0095` + profile `landingPage` `ADR 0096`) serta Slice A2 (`#127`: zero-workspace Chat UI, `Unassigned` session tree, `null → workspace` attach dialog, Chat-first default landing + lazy 3D Office) telah terimplementasi secara lokal; Slices B–E (project provisioning, isolated coding worker executor/apply, live Discord/Gateway adapters `#138`, shared 3D Office polish) belum diimplementasikan |
 | Versi dokumen | PRD-SF-1.0 |
 | Tanggal | 23 November 2026 |
 | Repository | [Extalia-VO/extalia-virtual-agent](https://github.com/Extalia-VO/extalia-virtual-agent) |

@@ -9,18 +9,27 @@ function memoryStorage(initial: Record<string, string> = {}) {
 }
 
 describe('landing page resolution', () => {
-  it('always lands in the 3D Office once an agent host exists, also right after setup', () => {
-    expect(resolveLandingPage({ agents: true })).toBe('office');
+  it('lands in Chat by default once a managed agent host exists, unless Office is chosen', () => {
+    expect(resolveLandingPage({ agents: true })).toBe('chat');
+    expect(resolveLandingPage({ agents: true, workflow: 'managed' })).toBe('chat');
+    expect(resolveLandingPage({ agents: true, workflow: 'managed', preference: 'chat' })).toBe('chat');
+    expect(resolveLandingPage({ agents: true, workflow: 'managed', preference: 'office' })).toBe('office');
+  });
+
+  it('lands in the 3D Office for Observe-only workflows regardless of Chat preference', () => {
+    expect(resolveLandingPage({ agents: true, workflow: 'observe' })).toBe('office');
+    expect(resolveLandingPage({ agents: true, workflow: 'observe', preference: 'chat' })).toBe('office');
   });
 
   it('keeps Get started where there is no agent host', () => {
     expect(resolveLandingPage({ agents: false })).toBe('start');
+    expect(resolveLandingPage({ agents: false, workflow: 'managed', preference: 'office' })).toBe('start');
   });
 
-  it('ignores a legacy remembered Chat mode', () => {
-    const storage = memoryStorage({ [LEGACY_MODE_STORAGE_KEY]: '{"mode":"agent","workspaceId":"w1"}' });
+  it('ignores a legacy remembered mode and resolves managed landing deterministically', () => {
+    const storage = memoryStorage({ [LEGACY_MODE_STORAGE_KEY]: '{"mode":"office","workspaceId":"w1"}' });
     expect(loadLandingMemory(storage)).toEqual({ workspaceId: 'w1' });
-    expect(resolveLandingPage({ agents: true })).toBe('office');
+    expect(resolveLandingPage({ agents: true, workflow: 'managed' })).toBe('chat');
   });
 });
 
@@ -34,9 +43,9 @@ describe('chat availability', () => {
 });
 
 describe('navigation by purpose', () => {
-  it('keeps primary managed work before collections, activity and system tools', () => {
+  it('keeps primary managed work (Chat first, 3D Office alongside) before collections, activity and system tools', () => {
     expect(navigationGroups({ agents: true, workflow: 'managed', canChat: true })).toEqual([
-      { section: 'work', pages: ['office', 'chat', 'missions', 'schedules', 'observe', 'files', 'git'] },
+      { section: 'work', pages: ['chat', 'office', 'missions', 'schedules', 'observe', 'files', 'git'] },
       { section: 'library', pages: ['knowledge', 'skills'] },
       { section: 'activity', pages: ['history', 'import', 'logs'] },
       { section: 'app', pages: ['settings', 'diagnostics'] },
@@ -51,7 +60,7 @@ describe('navigation by purpose', () => {
       section: 'work', pages: ['office', 'observe'],
     });
     expect(navigationGroups({ agents: true, workflow: 'managed', canChat: false })[0]).toEqual({
-      section: 'work', pages: ['office', 'chat', 'observe'],
+      section: 'work', pages: ['chat', 'office', 'observe'],
     });
   });
 
@@ -69,7 +78,8 @@ describe('navigation by purpose', () => {
       const pages = groups.flatMap(group => group.pages);
       expect(groups.every(group => group.pages.length > 0)).toBe(true);
       expect(new Set(pages).size).toBe(pages.length);
-      expect(pages).toContain(resolveLandingPage({ agents }));
+      expect(pages).toContain(resolveLandingPage({ agents, workflow }));
+      expect(pages).toContain(resolveLandingPage({ agents, workflow, preference: 'office' }));
       if (agents) {
         for (const id of ['knowledge', 'skills', 'chat']) expect(pages.includes(id as typeof pages[number])).toBe(workflow === 'managed');
         expect(pages).not.toContain('start');

@@ -16,6 +16,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.356] - 2026-11-24
+
+- Implement PRD-SF-1.0 Release Slice A2 (`#127`, [ADR 0096](docs/adr/0096-session-first-chat-landing.md) & [ADR 0095](docs/adr/0095-unassigned-session-context.md) UI): switch default `managed` landing page to `'chat'` with Settings `landingPage` selector (`Chat` / `3D Office`) and lazy `OfficePage`, enable zero-workspace unassigned Native session composition in Chat, add the `Unassigned` group to `NativeSessionTree` and reviewed `null → workspace` attach flow in `SessionMoveDialog`, add EN/ID localization strings, and update `mockHost`.
+- Migrate and refine the live **Skills & knowledge** resource usage diagram (`apps/web/src/chat/ResourceUsageDiagram.tsx`, `resourceUsageDiagram.css`) on `@xyflow/react`: custom `agent`/`team`/`resource` nodes with `<Handle>` ports, live `getBezierPath` edges with draggable node persistence (`onNodesChange`), compact 1:1 width-fit vertical scrolling (`PanOnScrollMode.Vertical`), `AgentDetail`/`ResourceDetail` selection side panels, expanded `Controls` (without `MiniMap`), and Rolldown `"use no memo"` directive filter in `apps/web/vite.config.ts` (`U-RESOURCE-FLOW-XYFLOW`).
+
 ## [0.4.355] - 2026-11-24
 
 - Add the proposed master specification [PRD-SF-1.0](docs/product/prd-session-first-coding-discord.md) (*Session-First AI Workspace, Coding Workers & Discord Gateway*), link it from the product docs and app-flow tracker, and record Slice A architecture decisions [ADR 0095](docs/adr/0095-unassigned-session-context.md) (`OQ-01` nullable unassigned session context) and [ADR 0096](docs/adr/0096-session-first-chat-landing.md) (`OQ-02` session-first Chat landing).
