@@ -4,7 +4,6 @@ import { mkdir, mkdtemp, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { CommandSandboxKind, CommandSandboxStatus } from '@extalia/platform';
-import { isWithin } from '../workspaceFs.js';
 
 export interface CommandSandboxSpawnOptions {
   cwd: string;
@@ -62,6 +61,11 @@ function escapeSeatbeltString(value: string): string {
   return value.replaceAll('\\', '\\\\').replaceAll('"', '\\"').replaceAll('\0', '');
 }
 
+function isWithinPosix(parent: string, child: string): boolean {
+  const relative = path.posix.relative(parent, child);
+  return relative === '' || (relative !== '..' && !relative.startsWith('../') && !path.posix.isAbsolute(relative));
+}
+
 async function canonicalPath(target: string): Promise<string> {
   const resolved = path.resolve(target);
   try {
@@ -78,8 +82,8 @@ async function canonicalPath(target: string): Promise<string> {
  * and denies all inbound and outbound network access.
  */
 export function buildSeatbeltProfile(options: SeatbeltProfileOptions): string {
-  const workspaceRoot = path.resolve(options.workspaceRoot);
-  const tempDirectory = path.resolve(options.tempDirectory);
+  const workspaceRoot = path.posix.resolve(options.workspaceRoot);
+  const tempDirectory = path.posix.resolve(options.tempDirectory);
   const lines: string[] = [
     '(version 1)',
     '(allow default)',
@@ -89,16 +93,16 @@ export function buildSeatbeltProfile(options: SeatbeltProfileOptions): string {
 
   const deniedReadPaths: string[] = [];
   if (options.dataDirectory) {
-    const dataDirectory = path.resolve(options.dataDirectory);
-    if (!isWithin(workspaceRoot, dataDirectory)) {
+    const dataDirectory = path.posix.resolve(options.dataDirectory);
+    if (!isWithinPosix(workspaceRoot, dataDirectory)) {
       deniedReadPaths.push(dataDirectory);
     }
   }
   if (options.homeDirectory) {
-    const homeDirectory = path.resolve(options.homeDirectory);
+    const homeDirectory = path.posix.resolve(options.homeDirectory);
     for (const entry of SENSITIVE_HOME_ENTRIES) {
-      const target = path.join(homeDirectory, entry);
-      if (!isWithin(workspaceRoot, target)) {
+      const target = path.posix.join(homeDirectory, entry);
+      if (!isWithinPosix(workspaceRoot, target)) {
         deniedReadPaths.push(target);
       }
     }
@@ -124,8 +128,8 @@ export function buildSeatbeltProfile(options: SeatbeltProfileOptions): string {
  * workspace root.
  */
 export function buildBwrapArgs(options: BwrapArgsOptions): string[] {
-  const workspaceRoot = path.resolve(options.workspaceRoot);
-  const tempDirectory = path.resolve(options.tempDirectory);
+  const workspaceRoot = path.posix.resolve(options.workspaceRoot);
+  const tempDirectory = path.posix.resolve(options.tempDirectory);
   return [
     '--unshare-pid',
     '--unshare-uts',
