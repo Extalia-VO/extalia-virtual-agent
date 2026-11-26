@@ -42,3 +42,4 @@ export * from './operatingProfiles.js';
 export * from './sessionBrowser.js';
 export * from './schedules.js';
 export * from './gateway.js';
+export * from './projectProvisioning.js';

@@ -1317,9 +1317,9 @@
     {
       "path": "packages/host/src/index.ts",
       "category": "legacy-backend",
-      "sha256": "82ad3c0a578b8065980daee02c22995dd90ea0cee4a64639be9375d5d59193af",
-      "loc": 54,
-      "bytes": 4027,
+      "sha256": "1a8835e75d0cf1affab40f7be8e5912568078a6b9abd352441d81ac2163dd43a",
+      "loc": 55,
+      "bytes": 4069,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -1941,6 +1941,17 @@
       "unresolvedRuntimeImports": 0
     },
     {
+      "path": "packages/host/src/projectProvisioning.ts",
+      "category": "legacy-backend",
+      "sha256": "bf7ec920005f001ba7a027e8e6def6ca2997e052740a429ba11a207fc8925f61",
+      "loc": 749,
+      "bytes": 27176,
+      "effectKinds": [
+        "node-builtin"
+      ],
+      "unresolvedRuntimeImports": 0
+    },
+    {
       "path": "packages/host/src/promptLearning.ts",
       "category": "legacy-backend",
       "sha256": "a6e3177482d99df0c5a47683f5a572464f2fc54c02fc4962ccea2f6c826fd706",
@@ -2036,9 +2047,9 @@
     {
       "path": "packages/host/src/service.ts",
       "category": "legacy-backend",
-      "sha256": "3239d7fd204c0183fa08d82561f69d18311376ec3afdf79c7fef82f8088426fa",
-      "loc": 7244,
-      "bytes": 508208,
+      "sha256": "78ecae4dddef92d3d92374b125f0c749532191b858d8fea3d2468551fc72f574",
+      "loc": 7704,
+      "bytes": 530078,
       "effectKinds": [
         "node-builtin",
         "runtime-call"
@@ -2477,9 +2488,9 @@
     {
       "path": "packages/platform/src/agentHost.ts",
       "category": "shared-backend-review",
-      "sha256": "c24e82c8513b423317be73a15b21f6cb1235f2963648b026d11d717f43b5269c",
-      "loc": 1315,
-      "bytes": 79428,
+      "sha256": "affc6a8a0b0c485d48890a403024b83a01663ee85b8ff74ae7b2f5c64ae47de4",
+      "loc": 1318,
+      "bytes": 79830,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -2522,9 +2533,9 @@
     {
       "path": "packages/platform/src/index.ts",
       "category": "shared-backend-review",
-      "sha256": "aaef2c07c5075d05bbf182d929f6a82100028bb68119b0292c22cb6c05d9872f",
-      "loc": 44,
-      "bytes": 1486,
+      "sha256": "7e64c1193ac0a413877fcbb5a6e9a52cff2572e669c536f5fa99dc3b7f54715c",
+      "loc": 45,
+      "bytes": 1528,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -2624,6 +2635,15 @@
       "sha256": "4cb583454019d504aa8065afe1d3ab210fa7b5076b89b630b4d37c02786b5c7b",
       "loc": 30,
       "bytes": 4266,
+      "effectKinds": [],
+      "unresolvedRuntimeImports": 0
+    },
+    {
+      "path": "packages/platform/src/projectProvisioning.ts",
+      "category": "shared-backend-review",
+      "sha256": "aa6ff65637e64b00af107eb0d938bd7f317bddff77f44b62bdcbdc5aa5a5395e",
+      "loc": 159,
+      "bytes": 5239,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -3199,9 +3219,9 @@
     {
       "path": "packages/runtime/src/prompt.ts",
       "category": "legacy-backend",
-      "sha256": "84d0fcd0bd5fa0492af10ae471383ab0359274b28ab6fafc30eb44aa43028b88",
-      "loc": 349,
-      "bytes": 28486,
+      "sha256": "38fd0d64dbf7b049cad4fd5100fdb93e0eb3695e8864f74d8543ac57f72df73f",
+      "loc": 351,
+      "bytes": 28821,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -3402,7 +3422,7 @@
     {
       "path": "apps/web/src/chat/ChatPage.tsx",
       "category": "ui",
-      "runtimeSignature": "3104be8c06d6417ebe22e334411d2afd4c7cca88c02e40cc051549964339ab88"
+      "runtimeSignature": "12bcca90934e390e088f90203100317a7efaca84e678fbc00d2d7f57740ffefd"
     },
     {
       "path": "apps/web/src/chat/ChatSessionInfo.tsx",
@@ -3493,6 +3513,11 @@
       "path": "apps/web/src/chat/nativeSessionTreeModel.ts",
       "category": "ui",
       "runtimeSignature": "0a144d1b52939ff20b1ace05314d2cfb962ed218c4eafd4072bd333f3a812da7"
+    },
+    {
+      "path": "apps/web/src/chat/ProjectProvisionDialog.tsx",
+      "category": "ui",
+      "runtimeSignature": "acae801bb977075b17775496427b7e9b8f54d6ddc13682b90bf0317f9a8a8e69"
     },
     {
       "path": "apps/web/src/chat/PromptDeliveryStatus.tsx",

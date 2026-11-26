@@ -1,11 +1,12 @@
 import { defaultOrchestration, type Workspace } from '@extalia/core';
-import type { AgentHostApi, HostState, SessionMovePreview, SessionSummary } from '@extalia/platform';
+import { AGENT_HOST_METHODS, type AgentHostApi, type HostState, type SessionMovePreview, type SessionSummary } from '@extalia/platform';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import { navigationGroups, resolveLandingPage } from '../src/appMode';
 import { ChatPage } from '../src/chat/ChatPage';
 import { NativeSessionTree } from '../src/chat/NativeSessionTree';
+import { ProjectProvisionDialog } from '../src/chat/ProjectProvisionDialog';
 import { SessionMoveDialog } from '../src/chat/SessionMoveDialog';
 import { composerDraftKey, composerDraftStore } from '../src/chat/composerDrafts';
 import { nativeSessionDrop } from '../src/chat/nativeSessionTreeModel';
@@ -370,5 +371,181 @@ describe('Unassigned session selection, creation, and reviewed attach (ADR 0095)
       expect(html).toContain(MESSAGES[language].chat.move.attachDescription);
       expect(html).not.toContain('role="tablist"');
     }
+  });
+});
+
+describe('Slice B project provisioning UI, mockHost, and host method registry', () => {
+  it('registers previewProjectProvision and applyProjectProvision in AGENT_HOST_METHODS', () => {
+    expect(AGENT_HOST_METHODS).toContain('previewProjectProvision');
+    expect(AGENT_HOST_METHODS).toContain('applyProjectProvision');
+  });
+
+  it('renders ProjectProvisionDialog SSR markup for create & open modes in English and Indonesian', () => {
+    const unassigned = sampleSession('unassigned-1', null);
+    const state = sampleState({ workspaces: [], sessions: [unassigned] });
+    const agents = {
+      previewProjectProvision: vi.fn(),
+      applyProjectProvision: vi.fn(),
+      browseDirectories: vi.fn(),
+    } as unknown as AgentHostApi;
+
+    for (const language of ['en', 'id'] as const) {
+      const msg = MESSAGES[language].chat.provision;
+      const createHtml = renderToStaticMarkup(createElement(ProjectProvisionDialog, {
+        t: MESSAGES[language],
+        agents,
+        state,
+        initialMode: 'create',
+        session: unassigned,
+        onClose: vi.fn(),
+        onProvisioned: vi.fn(),
+      }));
+      expect(createHtml).toContain(msg.createTab);
+      expect(createHtml).toContain(msg.openTab);
+      expect(createHtml).toContain(msg.parentFolder);
+      expect(createHtml).toContain(msg.folderName);
+      expect(createHtml).toContain(msg.templateNotice);
+      expect(createHtml).toContain(msg.gitInit);
+      expect(createHtml).toContain(msg.attachCurrentSession);
+      expect(createHtml).toContain(msg.continueWithoutFiles);
+
+      const openHtml = renderToStaticMarkup(createElement(ProjectProvisionDialog, {
+        t: MESSAGES[language],
+        agents,
+        state,
+        initialMode: 'open',
+        session: unassigned,
+        onClose: vi.fn(),
+        onProvisioned: vi.fn(),
+      }));
+      expect(openHtml).toContain(msg.projectFolder);
+      expect(openHtml).not.toContain(msg.gitInit);
+      expect(openHtml).toContain(msg.attachCurrentSession);
+    }
+  });
+
+  it('renders Create project and Open project buttons in unassigned ChatPage header and empty state', () => {
+    const agents = {
+      sessionEvents: vi.fn(async () => []),
+      modelChoices: vi.fn(async () => ({ runtime: 'extalia-native', models: ['claude-sonnet-5-5'], efforts: [], permissionModes: ['plan'] })),
+      previewSessionMove: vi.fn(),
+      moveSession: vi.fn(),
+      previewProjectProvision: vi.fn(),
+      applyProjectProvision: vi.fn(),
+      getSessionTeam: vi.fn(async () => undefined),
+      planTeam: vi.fn(),
+      saveSessionTeam: vi.fn(),
+    } as unknown as AgentHostApi;
+
+    const html = renderToStaticMarkup(createElement(ChatPage, {
+      t: MESSAGES.en,
+      language: 'en',
+      agents,
+      state: sampleState({ workspaces: [], sessions: [] }),
+      onState: vi.fn(),
+      selection: { workspaceId: null, sessionId: null },
+      onSelect: vi.fn(),
+      onOpenSettings: vi.fn(),
+      onReviewSkills: vi.fn(),
+    }));
+    expect(html).toContain(MESSAGES.en.chat.provision.createButton);
+    expect(html).toContain(MESSAGES.en.chat.provision.openButton);
+    expect(html).toContain(MESSAGES.en.chat.provision.openExistingButton);
+  });
+
+  it('supports mockHost preview -> apply flow with warning gates, path validation, and atomic session attach', async () => {
+    const platform = createMockPlatform({ seed: 'setup', host: 'bridge' });
+    const agents = platform.capabilities.agents!;
+    await agents.saveConnection({
+      name: 'Mock',
+      preset: 'custom',
+      api: 'openai-chat',
+      baseUrl: 'http://mock.test/v1',
+      model: 'mock-agent',
+      credential: { kind: 'none' },
+      features: { memory: 'off', skills: 'off' },
+    });
+    const connectionId = (await agents.getState()).connections[0]!.id;
+
+    // Rejects invalid folder names and protected system/home paths.
+    await expect(agents.previewProjectProvision!({
+      mode: 'create',
+      parentPath: '/Users/<name>/Projects',
+      folderName: '../escape',
+      connectionId,
+    })).rejects.toThrow();
+    await expect(agents.previewProjectProvision!({
+      mode: 'open',
+      targetPath: '/',
+      connectionId,
+    })).rejects.toThrow();
+    await expect(agents.previewProjectProvision!({
+      mode: 'open',
+      targetPath: '/Users/<name>',
+      connectionId,
+    })).rejects.toThrow();
+
+    // Create an unassigned session and send a prompt so it has history events before attaching.
+    const unassigned = await agents.createSession(null, { connectionId });
+    await agents.sendPrompt(unassigned.id, 'Plan project structure');
+    await agents.cancel(unassigned.id);
+    await vi.waitFor(async () => {
+      const current = (await agents.getState()).sessions.find(item => item.id === unassigned.id);
+      expect(current?.running).toBe(false);
+    });
+
+    // Open a dirty + protected-branch project -> requires warning acknowledgement.
+    const dirtyPreview = await agents.previewProjectProvision!({
+      mode: 'open',
+      targetPath: '/Users/<name>/Projects/dirty-protected-repo',
+      connectionId,
+      attachSessionId: unassigned.id,
+    });
+    expect(dirtyPreview.requiresWarningAcknowledgement).toBe(true);
+    expect(dirtyPreview.warnings.map(w => w.code)).toEqual(expect.arrayContaining(['dirty-repository', 'protected-branch']));
+    expect(dirtyPreview.attachSession?.sessionId).toBe(unassigned.id);
+
+    // Fails when acknowledgeWarnings is omitted or false.
+    const rejectedReceipt = await agents.applyProjectProvision!({ reviewId: dirtyPreview.reviewId });
+    expect(rejectedReceipt.ok).toBe(false);
+    expect(rejectedReceipt.error).toBeTruthy();
+
+    // Succeeds with acknowledgeWarnings: true, preserving session ID & recording empty-root workspaceFileScopes cutoff.
+    const appliedReceipt = await agents.applyProjectProvision!({
+      reviewId: dirtyPreview.reviewId,
+      acknowledgeWarnings: true,
+    });
+    expect(appliedReceipt.ok).toBe(true);
+    expect(appliedReceipt.workspace?.projectLocation).toBe('/Users/<name>/Projects/dirty-protected-repo');
+    expect(appliedReceipt.attachedSessionId).toBe(unassigned.id);
+    const attached = appliedReceipt.state?.sessions.find(item => item.id === unassigned.id);
+    expect(attached?.workspaceId).toBe(appliedReceipt.workspace?.id);
+    expect(attached?.workspaceFileScopes?.length).toBeGreaterThan(0);
+    expect(attached?.workspaceFileScopes?.[0]?.workspaceId).toBe('');
+    expect(attached?.workspaceFileScopes?.[0]?.projectLocation).toBe('');
+
+    // Create mode preview -> apply flow with scaffold template.
+    const createPreview = await agents.previewProjectProvision!({
+      mode: 'create',
+      parentPath: '/Users/<name>/Projects',
+      folderName: 'fresh-ts-app',
+      templateId: 'node-ts-minimal',
+      gitInit: true,
+      connectionId,
+    });
+    expect(createPreview.requiresWarningAcknowledgement).toBe(false);
+    expect(createPreview.plannedActions.map(a => a.kind)).toEqual([
+      'create-folder',
+      'write-file',
+      'write-file',
+      'write-file',
+      'write-file',
+      'git-init',
+      'register-workspace',
+    ]);
+    const createReceipt = await agents.applyProjectProvision!({ reviewId: createPreview.reviewId });
+    expect(createReceipt.ok).toBe(true);
+    expect(createReceipt.workspace?.name).toBe('fresh-ts-app');
+    expect(createReceipt.steps.every(step => step.status === 'completed')).toBe(true);
   });
 });

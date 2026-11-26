@@ -1,6 +1,6 @@
 import { ObservedInputCards } from '../observe/ObservedInputCards';
 import { sourceLabel } from '@extalia/core';
-import type { AgentHostApi, ApprovalDecisionInput, FileSystemCapability, HostState, SessionSummary } from '@extalia/platform';
+import type { AgentHostApi, ApprovalDecisionInput, FileSystemCapability, HostState, ProjectProvisionMode, SessionSummary } from '@extalia/platform';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { errorMessage } from '../host/remote';
 import type { Messages } from '../i18n';
@@ -13,6 +13,7 @@ import { ObservedHermesControls } from '../observe/ObservedHermesControls';
 import { attachmentPreviewLoader, sendPromptWithAttachments, uploadAttachments } from './attachments';
 import { resolveChat, type ChatSelection } from './selection';
 import { NativeSessionTree } from './NativeSessionTree';
+import { ProjectProvisionDialog } from './ProjectProvisionDialog';
 import { SessionMoveDialog } from './SessionMoveDialog';
 import { SessionWorkspaceReview } from './SessionWorkspaceReview';
 import { useWorkspaceReviewRecovery } from './workspaceReviewRecovery';
@@ -89,6 +90,7 @@ export function ChatPage({ t, language, agents, picker, state, onState, selectio
   const movingSession = moving?.agents === agents && moving.scope === sourceScope ? state.sessions.find(row => row.id === moving.id) : undefined;
   const moveOwner = useRef({ agents, sourceScope, selectionKey });
   useEffect(() => { moveOwner.current = { agents, sourceScope, selectionKey }; }, [agents, sourceScope, selectionKey]);
+  const [provisioning, setProvisioning] = useState<{ mode: ProjectProvisionMode; session?: SessionSummary }>();
   const [handoverOpen, setHandoverOpen] = useState(false);
   const transcriptRegion = useRef<HTMLDivElement>(null);
   const inspectorClose = useRef<HTMLButtonElement>(null);
@@ -275,7 +277,25 @@ export function ChatPage({ t, language, agents, picker, state, onState, selectio
             ) : (
               <>
                 <span className="chat-workspace chat-workspace-unassigned" title={t.chat.unassigned.noFolderAccess}><Icon name="chat" />{t.chat.unassigned.badge}</span>
-                {session && session.workspaceId === null && agents.previewSessionMove && agents.moveSession && (
+                {agents.previewProjectProvision && agents.applyProjectProvision && (
+                  <>
+                    <button
+                      type="button"
+                      className="button small chat-create-project"
+                      onClick={() => setProvisioning({ mode: 'create', ...(session?.workspaceId === null ? { session } : {}) })}
+                    >
+                      <Icon name="plus" />{t.chat.provision.createButton}
+                    </button>
+                    <button
+                      type="button"
+                      className="button small chat-open-project"
+                      onClick={() => setProvisioning({ mode: 'open', ...(session?.workspaceId === null ? { session } : {}) })}
+                    >
+                      <Icon name="folder" />{t.chat.provision.openButton}
+                    </button>
+                  </>
+                )}
+                {session && session.workspaceId === null && managedWorkspaces.length > 0 && agents.previewSessionMove && agents.moveSession && (
                   <button type="button" className="button small chat-attach-workspace" onClick={() => setMoving({ id: session.id, agents, scope: sourceScope, selectionKey, wasActive: true })}>
                     <Icon name="folder" />{t.chat.unassigned.attach}
                   </button>
@@ -298,6 +318,24 @@ export function ChatPage({ t, language, agents, picker, state, onState, selectio
                 <Icon name="chat" className="empty-icon" />
                 <h2>{t.chat.emptyTitle}</h2>
                 <p className="muted">{workspace ? t.chat.emptyLead(workspace.name) : t.chat.unassigned.emptyLead}</p>
+                {!workspace && agents.previewProjectProvision && agents.applyProjectProvision && (
+                  <div className="chat-unassigned-actions">
+                    <button
+                      type="button"
+                      className="button primary"
+                      onClick={() => setProvisioning({ mode: 'create', ...(session?.workspaceId === null ? { session } : {}) })}
+                    >
+                      <Icon name="plus" />{t.chat.provision.createButton}
+                    </button>
+                    <button
+                      type="button"
+                      className="button"
+                      onClick={() => setProvisioning({ mode: 'open', ...(session?.workspaceId === null ? { session } : {}) })}
+                    >
+                      <Icon name="folder" />{t.chat.provision.openExistingButton}
+                    </button>
+                  </div>
+                )}
               </div>
             ) : (
               <TranscriptView t={t} items={messageItems} language={language} onDecide={decide} previewAttachment={previewAttachment} approvalsEnabled={!readOnly} onOpenWorker={openInspector} selectedWorkerId={currentInspector?.workerId} />
@@ -359,6 +397,28 @@ export function ChatPage({ t, language, agents, picker, state, onState, selectio
           setError(null); onState(next); setMoving(undefined);
           if (moving?.wasActive && owner.selectionKey === moving.selectionKey) { onSelect({ workspaceId, sessionId: movingSession.id }); setListOpen(false); focusComposer(); }
         }} />}
+      {provisioning && (
+        <ProjectProvisionDialog
+          key={`${sourceScope}:${provisioning.mode}:${provisioning.session?.id ?? 'new'}`}
+          t={t}
+          agents={agents}
+          picker={picker}
+          state={state}
+          initialMode={provisioning.mode}
+          session={provisioning.session ? (state.sessions.find(item => item.id === provisioning.session?.id) ?? provisioning.session) : undefined}
+          connectionId={selectedConnectionId}
+          onClose={() => setProvisioning(undefined)}
+          onProvisioned={receipt => {
+            if (receipt.state) onState(receipt.state);
+            if (receipt.attachedSessionId && receipt.attachedSessionId === session?.id) workspaceReview.clear();
+            setProvisioning(undefined);
+            setError(null);
+            onSelect({ workspaceId: receipt.workspace?.id ?? null, sessionId: receipt.attachedSessionId ?? null });
+            setListOpen(false);
+            focusComposer();
+          }}
+        />
+      )}
       {handoverOpen && session && <SessionHandoverDialog agents={agents} state={state} session={session} t={t.sessionHandover} cliResumeMessages={t.observedCliResume} antigravityMessages={t.observedAntigravity}
         workspaceLinkMessages={t.observedWorkspaceLink} onState={next => { onState(next); const updated = next.sessions.find(item => item.id === session.id); if (updated) onSelect({ workspaceId: updated.workspaceId, sessionId: updated.id }); }}
         onOpenSettings={() => { setHandoverOpen(false); onOpenSettings(); }}

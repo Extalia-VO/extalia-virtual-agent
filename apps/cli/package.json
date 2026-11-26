@@ -1,7 +1,7 @@
 {
   "name": "extalia-vo",
   "description": "Open-source 3D virtual office for AI agents — local Bridge and web workspace to coordinate Codex, Claude Code, Gemini CLI, Antigravity, and Hermes.",
-  "version": "0.4.358",
+  "version": "0.4.359",
   "private": true,
   "license": "MIT",
   "type": "module",

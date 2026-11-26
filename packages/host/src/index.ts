@@ -1,4 +1,5 @@
 export { createAgentHost, type AgentHostOptions, type AgentHostRuntime, type WorktreeHostApi } from './service.js';
+export * from './projectProvisioning.js';
 export {
   IntegrationQueue, WorktreeError, WorktreeManager,
   type DiffSummary, type GateResult, type IntegrationGate, type IntegrationProposal, type IntegrationStatus, type WorktreeOrphan, type WorktreeRecord, type WorktreeStatus,
