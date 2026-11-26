@@ -6,3 +6,4 @@ export * from './portraits.js';
 export * from './discord.js';
 export * from './telegram.js';
 export * from './fanout.js';
+export * from './hostBridge.js';

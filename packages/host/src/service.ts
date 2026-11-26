@@ -42,7 +42,8 @@ import { ContinuityAccess } from './continuityAccess.js';
 import { CONTINUITY_RESPONSE_LIMIT, validContinuityInput } from './continuityClient.js';
 import { LearningSchedule } from './learningSchedule.js';
 import { LearningQueueAdmissions, learningQueueBinding, sameLearningObservedScope } from './learningQueue.js';
-import { GeneralScheduleManager, buildScheduledSessionOptions, type ScheduleRetryContext, type ScheduleDeferredDispatch } from './schedules.js';
+import { GeneralScheduleManager, buildScheduledSessionOptions, type ScheduleDispatchReceipt, type ScheduleRetryContext, type ScheduleDeferredDispatch } from './schedules.js';
+import { GatewayHostBridge, type GatewaySessionCandidateInput } from './gateway/index.js';
 import { checkScheduleConnection } from './scheduleConnection.js';
 import { runProjectKnowledgeBuild, type ProjectKnowledgeRoute, type ProjectKnowledgeSummary } from './projectKnowledge.js';
 import { createScheduledProviderGate } from './scheduledProviderGate.js';
@@ -278,17 +279,44 @@ interface HostConfig {
 
 interface ScheduledPromptAdmission {
   retryContext?: ScheduleRetryContext;
-  result: Promise<ScheduleDeferredDispatch | undefined>;
+  correlationId: string;
+  runtimeId: string;
+  executionGeneration: string;
+  result: Promise<ScheduleDeferredDispatch | ScheduleDispatchReceipt>;
   accept(): void;
   defer(context: ScheduleRetryContext): void;
+  settleTurn(outcome: 'completed' | 'failed' | 'cancelled', details?: { statusReason?: string; nowIso?: string }): void;
 }
-function scheduledPromptAdmission(retryContext?: ScheduleRetryContext): ScheduledPromptAdmission {
+function scheduledPromptAdmission(input: {
+  retryContext?: ScheduleRetryContext;
+  correlationId: string;
+  runtimeId: string;
+  executionGeneration: string;
+  onTurnSettled: (outcome: 'completed' | 'failed' | 'cancelled', details?: { statusReason?: string; nowIso?: string }) => void;
+}): ScheduledPromptAdmission {
   let settled = false;
-  let resolve!: (value: ScheduleDeferredDispatch | undefined) => void;
-  const result = new Promise<ScheduleDeferredDispatch | undefined>(done => { resolve = done; });
-  return { ...(retryContext ? { retryContext } : {}), result,
-    accept: () => { if (!settled) { settled = true; resolve(undefined); } },
-    defer: context => { if (!settled) { settled = true; resolve({ deferred: 'connection-unavailable', retryContext: context }); } },
+  let deferred = false;
+  let turnReported = false;
+  let resolve!: (value: ScheduleDeferredDispatch | ScheduleDispatchReceipt) => void;
+  const result = new Promise<ScheduleDeferredDispatch | ScheduleDispatchReceipt>(done => { resolve = done; });
+  const receipt: ScheduleDispatchReceipt = {
+    correlationId: input.correlationId,
+    runtimeId: input.runtimeId,
+    executionGeneration: input.executionGeneration,
+  };
+  return {
+    ...(input.retryContext ? { retryContext: input.retryContext } : {}),
+    correlationId: input.correlationId,
+    runtimeId: input.runtimeId,
+    executionGeneration: input.executionGeneration,
+    result,
+    accept: () => { if (!settled) { settled = true; resolve(receipt); } },
+    defer: context => { if (!settled) { settled = true; deferred = true; resolve({ deferred: 'connection-unavailable', retryContext: context }); } },
+    settleTurn: (outcome, details) => {
+      if (deferred || turnReported) return;
+      turnReported = true;
+      input.onTurnSettled(outcome, details);
+    },
   };
 }
 
@@ -578,8 +606,20 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
   });
   worktreeStore.catch(() => undefined);
   const worktreeFailure = (error: unknown): Error => userError(error instanceof WorktreeError ? error.message : 'The isolated worktree for a write-capable task could not be prepared.');
+  let gatewayBridge: GatewayHostBridge | undefined;
   try {
   await missions.initialize(await savedSessions.list());
+  try {
+    gatewayBridge = await GatewayHostBridge.open({
+      dbPath: path.join(layout.state, 'gateway.sqlite'),
+      validateWorkspace: workspaceId => { findWorkspace(workspaceId); },
+      listRegisteredWorkspaceIds: () => new Set(config.workspaces.map(item => item.id)),
+      defaultPrincipalId: () => `profile:${config.profile.id}`,
+      now,
+    });
+  } catch (error) {
+    console.warn('GatewayHostBridge failed to initialize:', error);
+  }
   // Write-ahead planning blockers follow recorded Rust ownership across backend changes.
   const planningOwnership = await PlanningOwnership.open(path.join(layout.state, 'native-planning.json'), () => recoveryDaemon.connect());
   const preparationOwnership = await PreparationOwnership.open(path.join(layout.state, 'native-preparation.json'), () => recoveryDaemon.connect());
@@ -692,9 +732,54 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
   let workMemory: WorkMemory | undefined = undefined;
   let observedPrivacyChanges = 0;
   const manualKnowledgeRequests = new Map<string, string>();
-  const learningSchedule = new LearningSchedule({ onChange: () => {
+  const fannedOutLearningJobs = new Set<string>();
+  const pendingGatewayFanouts = new Set<Promise<void>>();
+  const pendingScheduleSettlementWork = new Set<Promise<void>>();
+  const learningSchedule = new LearningSchedule({ onChange: snapshot => {
+    if (!closing && gatewayBridge) {
+      for (const job of snapshot.jobs) {
+        if (
+          (job.state === 'completed' || job.state === 'partial' || job.state === 'failed')
+          && job.result
+          && !fannedOutLearningJobs.has(job.id)
+        ) {
+          fannedOutLearningJobs.add(job.id);
+          if (fannedOutLearningJobs.size > 256) {
+            const oldest = fannedOutLearningJobs.values().next().value;
+            if (oldest) fannedOutLearningJobs.delete(oldest);
+          }
+          const task = (async () => {
+            try {
+              if (closing || !gatewayBridge) return;
+              const candidateSessions = await buildGatewaySessionCandidates();
+              gatewayBridge.fanoutLearningOutcome({
+                workspaceId: job.workspaceId,
+                sourceJobId: job.id,
+                sourceSessionId: job.sessionId,
+                learningJob: job,
+                learningResult: job.result!,
+                sessions: candidateSessions,
+                audienceScopeId: `profile:${config.profile.id}`,
+                nowIso: now(),
+              });
+            } catch {
+              // Best-effort fanout: never submit prompts or trigger learning loops.
+            }
+          })();
+          pendingGatewayFanouts.add(task);
+          void task.finally(() => {
+            pendingGatewayFanouts.delete(task);
+            if (!closing && !learningSchedule.isBusy && !runs.size && !persistence.isBusy && !workspaceContextReaders
+              && !nativeStatusRefresh && !nativeMemory.isBusy() && !promptQueues?.isBusy
+              && !pendingGatewayFanouts.size && !pendingScheduleSettlementWork.size)
+              notifyIdleListeners();
+          });
+        }
+      }
+    }
     if (!closing && !learningSchedule.isBusy && !runs.size && !persistence.isBusy && !workspaceContextReaders
-      && !nativeStatusRefresh && !nativeMemory.isBusy() && !promptQueues?.isBusy)
+      && !nativeStatusRefresh && !nativeMemory.isBusy() && !promptQueues?.isBusy
+      && !pendingGatewayFanouts.size && !pendingScheduleSettlementWork.size)
       notifyIdleListeners();
   } });
   let nativeStatusRefresh: Promise<NativeStatus> | undefined;
@@ -6789,6 +6874,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         const expectedScheduledHistory = scheduledAdmission ? continuityDigest([...history, { role: 'user', text: acceptedText }]) : undefined;
         void (async () => {
           let completed: TurnResult | undefined;
+          let turnErrorReason: string | undefined;
           let retryHistory: string | undefined;
           let scheduledFailurePublication: Promise<boolean> | undefined;
           try {
@@ -6843,8 +6929,10 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
               await sessions.update(sessionId, { context: sessionContext({ ...result.context, compactions: (previous?.compactions ?? 0) + (result.compaction?.count ?? 0), at: now(), ...(previous ? { previous } : {}) }) }).catch(() => undefined);
             }
             if (result.outcome === 'completed') completed = result;
+            else if (result.error) turnErrorReason = result.error;
           } catch (error) {
-            publish(sessionId, { type: 'turn.failed', error: error instanceof Error ? error.message : 'The turn failed.' });
+            turnErrorReason = error instanceof Error ? error.message : 'The turn failed.';
+            publish(sessionId, { type: 'turn.failed', error: turnErrorReason });
             publish(sessionId, { type: 'agent.state', state: 'idle' });
           } finally {
             await steering.close();
@@ -6867,6 +6955,14 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
             scheduledAdmission?.accept();
             scheduledProviderGate?.settleAccepted();
             controller.signal.removeEventListener('abort', releaseScheduledAdmission);
+            if (scheduledAdmission && !closing) {
+              const turnOutcome: 'completed' | 'failed' | 'cancelled' =
+                completed ? 'completed' : controller.signal.aborted ? 'cancelled' : 'failed';
+              scheduledAdmission.settleTurn(turnOutcome, {
+                ...(turnErrorReason ? { statusReason: turnErrorReason.slice(0, 500) } : {}),
+                nowIso: now(),
+              });
+            }
             const anchor = followupSuggestions.status(sessionId).anchor;
             const connectionSnapshot = JSON.stringify(saved), workspaceSnapshot = workspace ? JSON.stringify(workspace) : undefined;
             try {
@@ -7366,6 +7462,95 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     if (!closing) for (const listener of listeners) { try { listener(event); } catch { /* disconnected UI */ } }
   };
 
+  async function buildGatewaySessionCandidates(): Promise<GatewaySessionCandidateInput[]> {
+    const saved = await savedSessions.list();
+    const unsaved = await unsavedSessions.list();
+    const candidates: GatewaySessionCandidateInput[] = [];
+    for (const record of saved) {
+      if (!record.workspaceId) continue;
+      const connection = config.connections.find(item => item.id === record.connectionId);
+      const workspace = config.workspaces.find(item => item.id === record.workspaceId);
+      candidates.push({
+        id: record.id,
+        workspaceId: record.workspaceId,
+        lastActiveAt: record.lastActiveAt,
+        historyEnabled: !record.runtime && (!connection || keepsHistory(connection)),
+        isObserved: false,
+        isNative: !record.runtime,
+        ...(workspace?.profileId ? { vaultProfileId: workspace.profileId } : {}),
+      });
+    }
+    for (const record of unsaved) {
+      if (!record.workspaceId) continue;
+      candidates.push({
+        id: record.id,
+        workspaceId: record.workspaceId,
+        lastActiveAt: record.lastActiveAt,
+        historyEnabled: false,
+        isObserved: false,
+        isNative: !record.runtime,
+      });
+    }
+    for (const obs of mapObservedWorkspaces(observations.summaries(), config.workspaces)) {
+      if (!obs.workspaceId) continue;
+      candidates.push({
+        id: obs.id,
+        workspaceId: obs.workspaceId,
+        lastActiveAt: obs.lastActiveAt,
+        historyEnabled: false,
+        isObserved: true,
+        isNative: false,
+      });
+    }
+    return candidates;
+  }
+
+  interface PendingScheduledTurn {
+    sessionId: string;
+    correlationId: string;
+    executionGeneration: string;
+    dispatchReturned: boolean;
+    settled?: {
+      outcome: 'completed' | 'failed' | 'cancelled';
+      statusReason?: string;
+      nowIso?: string;
+    };
+  }
+  const pendingScheduledTurns = new Map<string, PendingScheduledTurn>();
+  const flushScheduledTurnSettlements = () => {
+    if (closing) return;
+    for (const [correlationId, entry] of [...pendingScheduledTurns.entries()]) {
+      if (!entry.dispatchReturned || !entry.settled) continue;
+      pendingScheduledTurns.delete(correlationId);
+      const settled = entry.settled;
+      const task = (async () => {
+        try {
+          await generalSchedules.recordTurnSettled(
+            {
+              sessionId: entry.sessionId,
+              correlationId: entry.correlationId,
+              executionGeneration: entry.executionGeneration,
+            },
+            settled.outcome,
+            {
+              ...(settled.statusReason ? { statusReason: settled.statusReason } : {}),
+              ...(settled.nowIso ? { nowIso: settled.nowIso } : {}),
+            },
+          );
+        } catch {
+          // Best-effort turn correlation; never surface unhandled rejections on shutdown or race.
+        }
+      })();
+      pendingScheduleSettlementWork.add(task);
+      void task.finally(() => {
+        pendingScheduleSettlementWork.delete(task);
+        if (!closing && !generalSchedules?.isBusy && !learningSchedule.isBusy && !runs.size && !persistence.isBusy && !workspaceContextReaders && !nativeStatusRefresh && !nativeMemory.isBusy() && !promptQueues?.isBusy && !pendingGatewayFanouts.size && !pendingScheduleSettlementWork.size) {
+          notifyIdleListeners();
+        }
+      });
+    }
+  };
+
   const generalSchedules = new GeneralScheduleManager({
     directory: layout.config,
     sqlitePath: path.join(layout.state, 'schedules.sqlite'),
@@ -7542,18 +7727,74 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
             : null;
           await host.saveSessionTeam(sessionId, team);
         }
-        const admission = scheduledPromptAdmission(retryContext);
         const target = await sessions.get(sessionId);
+        const correlationId = `sched_${randomUUID()}`;
+        const runtimeId = target?.runtime ? 'hermes' : 'extalia-native';
+        const tracking: PendingScheduledTurn = {
+          sessionId,
+          correlationId,
+          executionGeneration: instanceId,
+          dispatchReturned: false,
+        };
+        pendingScheduledTurns.set(correlationId, tracking);
+        const admission = scheduledPromptAdmission({
+          retryContext,
+          correlationId,
+          runtimeId,
+          executionGeneration: instanceId,
+          onTurnSettled: (turnOutcome, details) => {
+            tracking.settled = {
+              outcome: turnOutcome,
+              ...(details?.statusReason ? { statusReason: details.statusReason } : {}),
+              ...(details?.nowIso ? { nowIso: details.nowIso } : {}),
+            };
+            flushScheduledTurnSettlements();
+          },
+        });
         if (target?.runtime || options.completion) admission.accept();
         scheduledPromptAdmissions.set(sessionId, admission);
         try {
           await host.sendPrompt(sessionId, prompt);
-          return await admission.result;
-        } catch (error) { admission.accept(); throw error; }
+          const result = await admission.result;
+          if ('deferred' in result) {
+            pendingScheduledTurns.delete(correlationId);
+            return result;
+          }
+          tracking.dispatchReturned = true;
+          return result;
+        } catch (error) {
+          pendingScheduledTurns.delete(correlationId);
+          admission.accept();
+          throw error;
+        }
         finally { if (scheduledPromptAdmissions.get(sessionId) === admission) scheduledPromptAdmissions.delete(sessionId); }
       },
+      onRunSettled: async (run, schedule) => {
+        if (closing || !gatewayBridge) return;
+        try {
+          const candidateSessions = await buildGatewaySessionCandidates();
+          const audienceScopeId = `profile:${config.profile.id}`;
+          const { deliveries } = gatewayBridge.fanoutSettledScheduleRun({
+            run,
+            ...(schedule?.name ? { scheduleName: schedule.name } : {}),
+            sessions: candidateSessions,
+            audienceScopeId,
+            nowIso: now(),
+          });
+          for (const delivery of deliveries) {
+            try {
+              await generalSchedules.recordDelivery(delivery);
+            } catch {
+              // Delivery recording failure never alters the settled run state (GW-AT-091).
+            }
+          }
+        } catch {
+          // Fanout failure never alters the settled run state (GW-AT-091).
+        }
+      },
       onChange: () => {
-        if (!closing && !generalSchedules?.isBusy && !learningSchedule.isBusy && !runs.size && !persistence.isBusy && !workspaceContextReaders && !nativeStatusRefresh && !nativeMemory.isBusy() && !promptQueues?.isBusy) {
+        flushScheduledTurnSettlements();
+        if (!closing && !generalSchedules?.isBusy && !learningSchedule.isBusy && !runs.size && !persistence.isBusy && !workspaceContextReaders && !nativeStatusRefresh && !nativeMemory.isBusy() && !promptQueues?.isBusy && !pendingGatewayFanouts.size && !pendingScheduleSettlementWork.size) {
           notifyIdleListeners();
         }
       },
@@ -7661,7 +7902,57 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       await Promise.all(observations.summaries().map(source => observedMemory?.afterPersisted(source.id, observedMemoryHint(source.id))));
       return result;
     }),
-  } satisfies Pick<Required<AgentHostApi>, 'listVaultProfiles' | 'saveVaultProfile' | 'learningSchedule' | 'changeLearningSchedule' | 'requestKnowledgeUpdate' | 'listSchedules' | 'saveSchedule' | 'setScheduleEnabled' | 'runScheduleNow' | 'deleteSchedule' | 'listScheduleRuns' | 'scheduleRunDetail' | 'previewScheduleNextRuns' | 'reviewUnknownScheduleRun'>);
+    gatewayOverview: async () => {
+      assertHostOpen();
+      if (!gatewayBridge) throw userError('Gateway storage is unavailable.');
+      return gatewayBridge.overview(now());
+    },
+    saveGatewayConnector: async input => {
+      assertHostOpen();
+      if (!gatewayBridge) throw userError('Gateway storage is unavailable.');
+      return gatewayBridge.saveConnector(input, now());
+    },
+    setGatewayConnectorStatus: async (connectorId, status) => {
+      assertHostOpen();
+      if (!gatewayBridge) throw userError('Gateway storage is unavailable.');
+      return gatewayBridge.setConnectorStatus(connectorId, status, now());
+    },
+    issueGatewayLinkChallenge: async input => {
+      assertHostOpen();
+      if (!gatewayBridge) throw userError('Gateway storage is unavailable.');
+      return gatewayBridge.issueLinkChallenge(input, now());
+    },
+    confirmGatewayPrincipalLink: async input => {
+      assertHostOpen();
+      if (!gatewayBridge) throw userError('Gateway storage is unavailable.');
+      return gatewayBridge.confirmPrincipalLink(input, now());
+    },
+    revokeGatewayPrincipalLink: async (linkId, reason) => {
+      assertHostOpen();
+      if (!gatewayBridge) throw userError('Gateway storage is unavailable.');
+      return gatewayBridge.revokePrincipalLink(linkId, reason, now());
+    },
+    saveGatewayRoute: async input => {
+      assertHostOpen();
+      if (!gatewayBridge) throw userError('Gateway storage is unavailable.');
+      return gatewayBridge.saveRoute(input, now());
+    },
+    deleteGatewayRoute: async routeId => {
+      assertHostOpen();
+      if (!gatewayBridge) throw userError('Gateway storage is unavailable.');
+      return gatewayBridge.deleteRoute(routeId, now());
+    },
+    listWorkspaceReports: async workspaceId => {
+      assertHostOpen();
+      if (!gatewayBridge) throw userError('Gateway storage is unavailable.');
+      return gatewayBridge.listWorkspaceReports(workspaceId);
+    },
+    listSessionSystemReports: async (workspaceId, sessionId) => {
+      assertHostOpen();
+      if (!gatewayBridge) throw userError('Gateway storage is unavailable.');
+      return gatewayBridge.listSessionSystemReports(workspaceId, sessionId);
+    },
+  } satisfies Pick<Required<AgentHostApi>, 'listVaultProfiles' | 'saveVaultProfile' | 'learningSchedule' | 'changeLearningSchedule' | 'requestKnowledgeUpdate' | 'listSchedules' | 'saveSchedule' | 'setScheduleEnabled' | 'runScheduleNow' | 'deleteSchedule' | 'listScheduleRuns' | 'scheduleRunDetail' | 'previewScheduleNextRuns' | 'reviewUnknownScheduleRun' | 'gatewayOverview' | 'saveGatewayConnector' | 'setGatewayConnectorStatus' | 'issueGatewayLinkChallenge' | 'confirmGatewayPrincipalLink' | 'revokeGatewayPrincipalLink' | 'saveGatewayRoute' | 'deleteGatewayRoute' | 'listWorkspaceReports' | 'listSessionSystemReports'>);
 
   workMemory = new WorkMemory({ backend: rustLearning, directory: path.join(layout.state, 'work-memory-outbox'),
     resolve: resolveWorkMemory, authorizeCapture: authorizeWorkMemoryCapture, persist: operation => persistence.run(operation),
@@ -7688,7 +7979,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     host,
     worktrees: worktreeApi,
     hooks: ingest,
-    isBusy: () => learningAdmissions.isBusy || antigravityHandover.isBusy() || hermesHandover.isBusy() || observedCliResume.isBusy() || Boolean(observedMemory?.isBusy()) || Boolean(workMemory?.isBusy()) || Boolean(generalSchedules?.isBusy) || observedWorkspaceChange || continuityWork > 0 || learningSchedule.isBusy || persistence.isBusy || runs.size > 0 || workspaceContextReaders > 0 || nativeStatusRefresh !== undefined || nativeMemory.isBusy() || !!promptQueues?.isBusy,
+    isBusy: () => learningAdmissions.isBusy || antigravityHandover.isBusy() || hermesHandover.isBusy() || observedCliResume.isBusy() || Boolean(observedMemory?.isBusy()) || Boolean(workMemory?.isBusy()) || Boolean(generalSchedules?.isBusy) || pendingGatewayFanouts.size > 0 || pendingScheduleSettlementWork.size > 0 || observedWorkspaceChange || continuityWork > 0 || learningSchedule.isBusy || persistence.isBusy || runs.size > 0 || workspaceContextReaders > 0 || nativeStatusRefresh !== undefined || nativeMemory.isBusy() || !!promptQueues?.isBusy,
     onIdle(listener) {
       if (closing) return () => undefined;
       idleListeners.add(listener);
@@ -7745,6 +8036,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       // Curator cancellation retains actual provider/registry/file ownership until effects drain.
       await schedulesClosed;
       await learningClosed;
+      await Promise.allSettled([...pendingScheduleSettlementWork, ...pendingGatewayFanouts]);
       await learningAdmissionsClosed;
       await workMemory?.close();
       await continuityClosed;
@@ -7765,6 +8057,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       await memoryClosed;
       await discoveryClosed;
       await marketClosed;
+      try { gatewayBridge?.close(); } catch { /* close SQLite handle cleanly */ }
       try { missions.close(); } finally { await lock.release(); }
       const failed = interruptions.find((result): result is PromiseRejectedResult => result.status === 'rejected');
       if (failed) throw failed.reason;
@@ -7777,6 +8070,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     await recoveryDaemon.stop().catch(() => undefined);
     persistence.seal();
     await persistence.drain();
+    try { gatewayBridge?.close(); } catch { /* close SQLite handle cleanly */ }
     try { missions.close(); } finally { await lock.release(); }
     throw error;
   }

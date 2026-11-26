@@ -4,15 +4,21 @@
  */
 import {
   sanitizeGatewayText,
+  type GatewayAudience,
+  type GatewayBindingState,
   type GatewayCapabilities,
   type GatewayConnectorState,
+  type GatewayPermissionBand,
+  type GatewayPrincipalLinkView,
   type GatewayProvider,
+  type GatewayRouteMode,
 } from '@extalia/platform';
 import { createHash } from 'node:crypto';
 import { chmodSync, closeSync, constants, lstatSync, openSync } from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { ensurePrivateDirectory, PRIVATE_FILE_MODE } from '../paths.js';
+import type { GatewayRouteRecord } from './routing.js';
 
 export const GATEWAY_SCHEMA_VERSION = 1;
 
@@ -729,12 +735,7 @@ export class GatewayStore {
     });
   }
 
-  getConnector(connectorId: string): GatewayConnectorRecord | undefined {
-    this.ensureOpen();
-    const row = this.db
-      .prepare('SELECT * FROM gateway_connectors WHERE id = ?')
-      .get(connectorId) as Record<string, unknown> | undefined;
-    if (!row) return undefined;
+  private mapConnectorRow(row: Record<string, unknown>): GatewayConnectorRecord {
     return {
       id: String(row.id),
       provider: String(row.provider),
@@ -750,6 +751,80 @@ export class GatewayStore {
       createdAt: String(row.created_at),
       updatedAt: String(row.updated_at),
     };
+  }
+
+  getConnector(connectorId: string): GatewayConnectorRecord | undefined {
+    this.ensureOpen();
+    const row = this.db
+      .prepare('SELECT * FROM gateway_connectors WHERE id = ?')
+      .get(connectorId) as Record<string, unknown> | undefined;
+    return row ? this.mapConnectorRow(row) : undefined;
+  }
+
+  listConnectors(): GatewayConnectorRecord[] {
+    this.ensureOpen();
+    const rows = this.db
+      .prepare('SELECT * FROM gateway_connectors ORDER BY created_at ASC, id ASC')
+      .all() as Array<Record<string, unknown>>;
+    return rows.map(row => this.mapConnectorRow(row));
+  }
+
+  listPrincipalLinks(): GatewayPrincipalLinkView[] {
+    this.ensureOpen();
+    const rows = this.db
+      .prepare('SELECT * FROM gateway_principal_links ORDER BY confirmed_at DESC, id ASC')
+      .all() as Array<Record<string, unknown>>;
+    return rows.map(row => ({
+      id: String(row.id),
+      connectorId: String(row.connector_id),
+      providerAccountId: String(row.provider_account_id),
+      externalActorId: String(row.external_actor_id),
+      extaliaPrincipalId: String(row.extalia_principal_id),
+      permissionBands: JSON.parse(String(row.permission_bands_json)) as GatewayPermissionBand[],
+      state: String(row.state) as GatewayPrincipalLinkView['state'],
+      ...(row.expires_at ? { expiresAt: String(row.expires_at) } : {}),
+      confirmedAt: String(row.confirmed_at),
+      ...(row.revoked_at ? { revokedAt: String(row.revoked_at) } : {}),
+      ...(row.revocation_reason ? { revocationReason: String(row.revocation_reason) } : {}),
+    }));
+  }
+
+  listRoutes(): GatewayRouteRecord[] {
+    this.ensureOpen();
+    const rows = this.db
+      .prepare('SELECT * FROM gateway_routes ORDER BY created_at ASC, id ASC')
+      .all() as Array<Record<string, unknown>>;
+    return rows.map(row => {
+      const threadKey = String(row.thread_key);
+      return {
+        id: String(row.id),
+        connectorId: String(row.connector_id),
+        providerAccountId: String(row.provider_account_id),
+        channelId: String(row.channel_id),
+        threadId: threadKey.length ? threadKey : undefined,
+        workspaceId: String(row.workspace_id),
+        mode: String(row.mode) as GatewayRouteMode,
+        audience: String(row.audience) as GatewayAudience,
+        policyRevision: Number(row.policy_revision),
+        inboundEnabled: Number(row.inbound_enabled) === 1,
+        outboundEnabled: Number(row.outbound_enabled) === 1,
+        isDmDefault: Number(row.is_dm_default) === 1,
+        linkedPrincipalId: row.linked_principal_id ? String(row.linked_principal_id) : undefined,
+        state: String(row.state) as GatewayBindingState,
+        createdAt: String(row.created_at),
+        updatedAt: String(row.updated_at),
+      };
+    });
+  }
+
+  deleteRoute(routeId: string): boolean {
+    this.ensureOpen();
+    return this.transaction(() => {
+      const result = this.db
+        .prepare('DELETE FROM gateway_routes WHERE id = ?')
+        .run(routeId);
+      return Number(result.changes) > 0;
+    });
   }
 
   setConnectorStatus(connectorId: string, status: GatewayConnectorState, now: string): GatewayConnectorRecord | undefined {
