@@ -2269,9 +2269,9 @@
     {
       "path": "packages/host/src/tools/commandSandbox.ts",
       "category": "legacy-backend",
-      "sha256": "7464beee1d508aaad49711a00247d432cafd3b0bd4ddf8393b0e444c04070b73",
-      "loc": 320,
-      "bytes": 11392,
+      "sha256": "26619b19f6d9d7b5043821471ff0028dd7851efea7366f918e73c7c2b423c03b",
+      "loc": 324,
+      "bytes": 11637,
       "effectKinds": [
         "node-builtin",
         "runtime-call"
