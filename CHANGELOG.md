@@ -16,6 +16,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.357] - 2026-11-24
+
+- Add [Schedule & Automation vNext](docs/product/prd-schedule-automation-vnext.md) (`Rev 1.1`) and record [ADR 0097](docs/adr/0097-durable-schedule-ledger-and-timezones.md).
+- Implement Schedule & Automation vNext durable ledger & timezone core (`#131`, `#132`, `WP-SCH-01..07`, [ADR 0097](docs/adr/0097-durable-schedule-ledger-and-timezones.md)): add Host-owned transactional `node:sqlite` store (`state/schedules.sqlite`, immutable `schedules.pre-sqlite.json` legacy migration backup, downgrade refusal), atomic occurrence admission + crash `unknown` quarantine (no auto-replay), split dispatch/turn/verification status contracts (`ScheduleRunV1`), deterministic Host IANA `timeZone` + `each-valid-instant` DST previews (`packages/platform/src/schedules.ts`, `packages/host/src/schedule{s,Store}.ts`), Host RPCs (`listScheduleRuns`, `scheduleRunDetail`, `previewScheduleNextRuns`, `reviewUnknownScheduleRun`), and Run History / Timezone UI (`SchedulesPage.tsx`, `ScheduleRunHistoryPanel.tsx`, `ScheduleTimezoneField.tsx`, EN/ID in `i18n.ts`).
+- Implement single-owner headless OS service manager and `extalia service` CLI (`#133`, `WP-SCH-08`): add macOS `launchd`, Linux `systemd --user`, and Windows Task Scheduler dry-run planners, timestamped backups, `0o600` manifests, unmanaged-file guards, loopback-only config, and `state/host.lock` conflict checks across `packages/host/src/serviceManager.ts` and `apps/cli/src/service.ts` (verified against temporary directories and injected runners).
+
 ## [0.4.356] - 2026-11-24
 
 - Implement PRD-SF-1.0 Release Slice A2 (`#127`, [ADR 0096](docs/adr/0096-session-first-chat-landing.md) & [ADR 0095](docs/adr/0095-unassigned-session-context.md) UI): switch default `managed` landing page to `'chat'` with Settings `landingPage` selector (`Chat` / `3D Office`) and lazy `OfficePage`, enable zero-workspace unassigned Native session composition in Chat, add the `Unassigned` group to `NativeSessionTree` and reviewed `null → workspace` attach flow in `SessionMoveDialog`, add EN/ID localization strings, and update `mockHost`.

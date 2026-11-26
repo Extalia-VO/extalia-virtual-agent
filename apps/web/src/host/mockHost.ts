@@ -2,9 +2,17 @@ import { DEFAULT_PERMISSIONS, modelPlanningBasis, applyTeamSpec, defaultOrchestr
 import type {
   AgentAppConnection, AgentAppConnectOptions, AgentAppConnectPlan, AgentAppConnectResult, AgentAppDisconnectResult,
   AgentAppId, AgentAppRecoveryReport, AgentAppTestResult, AgentHostApi, ApprovalDecisionInput, ConnectionInput, ConnectionView,
-  HookIngestStatus, HostState, ModelChoices, ModelSelectionGuide, Platform, ProfilePreferences, SessionMovePreview, SessionSummary, UpdateCapability, UpdateStatus, UserProfile,
+  GeneralSchedule, GeneralScheduleCatalog, HookIngestStatus, HostState, ModelChoices, ModelSelectionGuide, NextRunPreview,
+  Platform, ProfilePreferences, SaveGeneralScheduleInput, ScheduleDeliveryV1, ScheduleReviewDecision,
+  ScheduleRunDetail, ScheduleRunFilter, ScheduleRunPage, ScheduleRunV1, ScheduleTrigger,
+  SessionMovePreview, SessionSummary, UpdateCapability, UpdateStatus, UserProfile,
 } from '@extalia/platform';
-import { normalizeModelSelectionGuideInput, attachmentLimit, classifyAttachment, normalizeAgentTeam, normalizeIntegrationGate, normalizePromptLearnSkill, normalizeSessionOptions, normalizeTeamPlanRequest, sanitizeAttachmentName, type PromptAttachment } from '@extalia/platform';
+import {
+  nextScheduleRunAt, normalizeModelSelectionGuideInput, normalizeSaveGeneralSchedule, normalizeScheduleReviewDecision,
+  normalizeScheduleRunFilter, previewScheduleNextRuns as computeSchedulePreview,
+  attachmentLimit, classifyAttachment, normalizeAgentTeam, normalizeIntegrationGate, normalizePromptLearnSkill,
+  normalizeSessionOptions, normalizeTeamPlanRequest, sanitizeAttachmentName, type PromptAttachment,
+} from '@extalia/platform';
 import { createEvent, type EventBody, type ExtaliaEvent, type RiskLevel, type Usage } from '@extalia/protocol';
 import { createMockAppearances } from './mockAppearances';
 import { createMockLibrary } from './mockLibrary';
@@ -902,6 +910,200 @@ function createMockAgents(options: MockOptions): AgentHostApi {
   const operatingProfiles = createMockOperatingProfiles({ state, snapshot, latency });
   const mockQueues = createMockPromptQueues(session, (id, text) => { startTurn(session(id), text); },
     (id, text) => { emit(id, { type: 'user.intervention', action: 'steer', text }); });
+
+  const scheduleTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  let scheduleCatalogSeq = 1;
+  const mockSchedules: GeneralSchedule[] = [];
+  const mockScheduleRuns: ScheduleRunV1[] = [];
+  const mockScheduleDeliveries = new Map<string, ScheduleDeliveryV1[]>();
+
+  if (options.seed === 'ready' && state.workspaces[0]) {
+    const primaryWorkspace = state.workspaces[0];
+    const primarySessionId = state.sessions.find(item => item.workspaceId === primaryWorkspace.id && item.control === 'managed')?.id;
+    const nowMs = Date.now();
+    const tAgo = (minutes: number) => new Date(nowMs - minutes * 60_000).toISOString();
+    const dailyTrigger: ScheduleTrigger = { kind: 'cron', cron: '0 9 * * 1-5', timeZone: 'America/New_York', dstPolicy: 'each-valid-instant' };
+    const auditTrigger: ScheduleTrigger = { kind: 'cron', cron: '30 1 * * *', timeZone: 'Asia/Jakarta', dstPolicy: 'each-valid-instant' };
+    mockSchedules.push(
+      {
+        id: 'sch_mock_daily_review',
+        revision: 3,
+        workspaceId: primaryWorkspace.id,
+        name: 'Weekday Morning Check',
+        prompt: 'Inspect git status and summarize open test failures.',
+        enabled: true,
+        trigger: dailyTrigger,
+        sessionTarget: primarySessionId ? { mode: 'existing', sessionId: primarySessionId } : { mode: 'create-and-reuse' },
+        assignment: { teamMode: 'workspace' },
+        missedPolicy: 'run-once',
+        state: 'scheduled',
+        nextRunAt: nextScheduleRunAt(dailyTrigger, nowMs),
+        lastRunAt: tAgo(120),
+        lastOutcome: 'succeeded',
+        ...(primarySessionId ? { lastSessionId: primarySessionId } : {}),
+        runCount: 3,
+        completedRunCount: 2,
+        createdAt: tAgo(7200),
+        updatedAt: tAgo(120),
+      },
+      {
+        id: 'sch_mock_dst_audit',
+        revision: 1,
+        workspaceId: primaryWorkspace.id,
+        name: 'Overnight Dependency Audit',
+        prompt: 'Check dependency advisories without modifying files.',
+        enabled: true,
+        trigger: auditTrigger,
+        sessionTarget: { mode: 'new-each-run' },
+        assignment: { teamMode: 'solo' },
+        missedPolicy: 'skip',
+        state: 'scheduled',
+        nextRunAt: nextScheduleRunAt(auditTrigger, nowMs),
+        lastRunAt: tAgo(480),
+        lastOutcome: 'deferred-connection',
+        runCount: 0,
+        createdAt: tAgo(4320),
+        updatedAt: tAgo(480),
+      },
+    );
+    mockScheduleRuns.push(
+      {
+        id: 'run_mock_unknown',
+        revision: 1,
+        scheduleId: 'sch_mock_daily_review',
+        scheduleRevision: 3,
+        occurrenceKey: 'auto:sch_mock_daily_review:2026-11-24T14:00:00.000Z:g1',
+        occurrenceKind: 'automatic',
+        scheduledFor: tAgo(120),
+        workspaceId: primaryWorkspace.id,
+        runtimeId: 'extalia-native',
+        ...(primarySessionId ? { sessionId: primarySessionId } : {}),
+        correlationId: 'corr-mock-102',
+        executionGeneration: 'gen-mock-3',
+        state: 'unknown',
+        admittedAt: tAgo(120),
+        verification: 'not-checked',
+        statusReason: 'Host restarted while scheduled run was in progress; turn outcome is unknown and was not replayed.',
+        attemptCount: 1,
+        createdAt: tAgo(120),
+        updatedAt: tAgo(119),
+      },
+      {
+        id: 'run_mock_completed_unverified',
+        revision: 2,
+        scheduleId: 'sch_mock_daily_review',
+        scheduleRevision: 3,
+        occurrenceKey: 'auto:sch_mock_daily_review:2026-11-23T14:00:00.000Z:g1',
+        occurrenceKind: 'automatic',
+        scheduledFor: tAgo(1560),
+        workspaceId: primaryWorkspace.id,
+        runtimeId: 'extalia-native',
+        ...(primarySessionId ? { sessionId: primarySessionId } : {}),
+        turnId: 'turn-mock-101',
+        correlationId: 'corr-mock-101',
+        executionGeneration: 'gen-mock-2',
+        state: 'completed',
+        admittedAt: tAgo(1560),
+        settledAt: tAgo(1558),
+        verification: 'not-checked',
+        terminalEvidenceRef: 'event:ev_mock_101',
+        attemptCount: 1,
+        createdAt: tAgo(1560),
+        updatedAt: tAgo(1558),
+      },
+      {
+        id: 'run_mock_completed_verified',
+        revision: 3,
+        scheduleId: 'sch_mock_daily_review',
+        scheduleRevision: 2,
+        occurrenceKey: 'auto:sch_mock_daily_review:2026-11-22T14:00:00.000Z:g1',
+        occurrenceKind: 'automatic',
+        scheduledFor: tAgo(3000),
+        workspaceId: primaryWorkspace.id,
+        runtimeId: 'extalia-native',
+        ...(primarySessionId ? { sessionId: primarySessionId } : {}),
+        turnId: 'turn-mock-100',
+        correlationId: 'corr-mock-100',
+        executionGeneration: 'gen-mock-1',
+        state: 'completed',
+        admittedAt: tAgo(3000),
+        settledAt: tAgo(2997),
+        verification: 'passed',
+        verificationEvidenceRef: 'receipt:vitest-suite-sha256-mock',
+        terminalEvidenceRef: 'event:ev_mock_100',
+        attemptCount: 1,
+        createdAt: tAgo(3000),
+        updatedAt: tAgo(2997),
+      },
+      {
+        id: 'run_mock_deferred',
+        revision: 1,
+        scheduleId: 'sch_mock_dst_audit',
+        scheduleRevision: 1,
+        occurrenceKey: 'auto:sch_mock_dst_audit:2026-11-24T06:30:00.000Z:g1',
+        occurrenceKind: 'automatic',
+        scheduledFor: tAgo(480),
+        workspaceId: primaryWorkspace.id,
+        state: 'deferred',
+        admittedAt: tAgo(480),
+        verification: 'not-checked',
+        statusReason: 'deferred-connection',
+        attemptCount: 1,
+        createdAt: tAgo(480),
+        updatedAt: tAgo(480),
+      },
+    );
+    mockScheduleDeliveries.set('run_mock_unknown', [
+      {
+        id: 'del_mock_unknown',
+        runId: 'run_mock_unknown',
+        destinationBindingId: 'bind_mock_1',
+        destinationRevision: 1,
+        notificationKind: 'terminal-summary',
+        targetGuildId: 'guild_mock_1',
+        targetChannelId: 'chan_mock_ops',
+        payloadDigest: 'a'.repeat(64),
+        state: 'unknown',
+        attemptCount: 1,
+        lastErrorCode: 'GATEWAY_TIMEOUT',
+        createdAt: tAgo(119),
+        updatedAt: tAgo(119),
+      },
+    ]);
+    mockScheduleDeliveries.set('run_mock_completed_unverified', [
+      {
+        id: 'del_mock_sent',
+        runId: 'run_mock_completed_unverified',
+        destinationBindingId: 'bind_mock_1',
+        destinationRevision: 1,
+        notificationKind: 'terminal-summary',
+        targetGuildId: 'guild_mock_1',
+        targetChannelId: 'chan_mock_ops',
+        payloadDigest: 'b'.repeat(64),
+        state: 'sent',
+        attemptCount: 1,
+        discordMessageId: 'msg_mock_901',
+        acknowledgedAt: tAgo(1558),
+        createdAt: tAgo(1558),
+        updatedAt: tAgo(1558),
+      },
+    ]);
+  }
+
+  const scheduleCatalog = (): GeneralScheduleCatalog => ({
+    revision: `mock-sch-${scheduleCatalogSeq}`,
+    schedules: structuredClone(mockSchedules),
+    timeZone: scheduleTimeZone,
+  });
+
+  const scheduleDetailFor = (run: ScheduleRunV1): ScheduleRunDetail => {
+    const matchingSchedule = mockSchedules.find(item => item.id === run.scheduleId);
+    return {
+      run: structuredClone(run),
+      deliveries: structuredClone(mockScheduleDeliveries.get(run.id) ?? []),
+      ...(matchingSchedule ? { scheduleName: matchingSchedule.name } : {}),
+    };
+  };
   return {
     ...operatingProfiles.api,
     ...mockQueues,
@@ -1596,6 +1798,194 @@ function createMockAgents(options: MockOptions): AgentHostApi {
     ...createMockSkillRegistry(options.skills ?? 'registry', latency),
     ...createMockBuiltinSkills(latency),
     ...(mockKnowledge ? { ...mockKnowledge, ...mockKnowledgeSettings, ...mockVaultProfiles, ...mockWorkspaceKnowledge } : {}),
+    async listSchedules() {
+      await latency();
+      return scheduleCatalog();
+    },
+    async saveSchedule(raw: SaveGeneralScheduleInput) {
+      await latency();
+      const input = normalizeSaveGeneralSchedule(raw);
+      const workspace = state.workspaces.find(item => item.id === input.workspaceId);
+      if (!workspace || workspace.mode === 'observe') throw new Error('Choose a managed workspace for this schedule.');
+      const nowMs = Date.now();
+      const nowIso = new Date(nowMs).toISOString();
+      const index = input.id ? mockSchedules.findIndex(item => item.id === input.id) : -1;
+      const previous = index >= 0 ? mockSchedules[index] : undefined;
+      if (input.id && (!previous || previous.revision !== input.expectedRevision)) {
+        throw new Error('This schedule changed. Refresh before saving.');
+      }
+      const enabled = input.enabled ?? previous?.enabled ?? true;
+      if (enabled && input.trigger.kind === 'once' && Date.parse(input.trigger.runAt) <= nowMs) {
+        throw new Error('Choose a future date and time for a one-off schedule.');
+      }
+      const nextRunAt = enabled ? nextScheduleRunAt(input.trigger, nowMs) : undefined;
+      const saved: GeneralSchedule = {
+        id: previous?.id ?? nextId('sch'),
+        revision: (previous?.revision ?? 0) + 1,
+        workspaceId: input.workspaceId,
+        name: input.name,
+        prompt: input.prompt,
+        enabled,
+        trigger: input.trigger,
+        sessionTarget: input.sessionTarget,
+        ...(previous?.boundSessionId ? { boundSessionId: previous.boundSessionId } : {}),
+        assignment: input.assignment ?? { teamMode: 'workspace' },
+        missedPolicy: input.missedPolicy ?? 'run-once',
+        state: enabled && nextRunAt ? 'scheduled' : 'paused',
+        ...(nextRunAt ? { nextRunAt } : {}),
+        ...(previous?.lastRunAt ? { lastRunAt: previous.lastRunAt } : {}),
+        ...(previous?.lastOutcome ? { lastOutcome: previous.lastOutcome } : {}),
+        ...(previous?.lastSessionId ? { lastSessionId: previous.lastSessionId } : {}),
+        runCount: previous?.runCount ?? 0,
+        ...(previous?.completedRunCount !== undefined ? { completedRunCount: previous.completedRunCount } : {}),
+        createdAt: previous?.createdAt ?? nowIso,
+        updatedAt: nowIso,
+      };
+      if (previous) mockSchedules[index] = saved;
+      else mockSchedules.push(saved);
+      scheduleCatalogSeq++;
+      return scheduleCatalog();
+    },
+    async setScheduleEnabled(id: string, enabled: boolean, expectedRevision?: number) {
+      await latency();
+      const index = mockSchedules.findIndex(item => item.id === id);
+      const previous = index >= 0 ? mockSchedules[index] : undefined;
+      if (!previous || (expectedRevision !== undefined && previous.revision !== expectedRevision)) {
+        throw new Error('This schedule changed. Refresh before updating.');
+      }
+      const nowMs = Date.now();
+      const nextRunAt = enabled ? nextScheduleRunAt(previous.trigger, nowMs) : undefined;
+      mockSchedules[index] = {
+        ...previous,
+        revision: previous.revision + 1,
+        enabled,
+        state: enabled && nextRunAt ? 'scheduled' : 'paused',
+        ...(nextRunAt ? { nextRunAt } : {}),
+        updatedAt: new Date(nowMs).toISOString(),
+      };
+      if (!nextRunAt) delete mockSchedules[index]!.nextRunAt;
+      scheduleCatalogSeq++;
+      return scheduleCatalog();
+    },
+    async runScheduleNow(id: string, expectedRevision?: number) {
+      await latency();
+      const index = mockSchedules.findIndex(item => item.id === id);
+      const previous = index >= 0 ? mockSchedules[index] : undefined;
+      if (!previous || (expectedRevision !== undefined && previous.revision !== expectedRevision)) {
+        throw new Error('This schedule changed. Refresh before running it.');
+      }
+      const nowMs = Date.now();
+      const nowIso = new Date(nowMs).toISOString();
+      const targetSessionId =
+        previous.sessionTarget.mode === 'existing'
+          ? previous.sessionTarget.sessionId
+          : previous.boundSessionId ?? state.sessions.find(item => item.workspaceId === previous.workspaceId && item.control === 'managed')?.id;
+      const runId = nextId('run');
+      const run: ScheduleRunV1 = {
+        id: runId,
+        revision: 1,
+        scheduleId: previous.id,
+        scheduleRevision: previous.revision,
+        occurrenceKey: `manual:${previous.id}:${runId}`,
+        occurrenceKind: 'manual',
+        scheduledFor: nowIso,
+        requestedAt: nowIso,
+        workspaceId: previous.workspaceId,
+        runtimeId: 'extalia-native',
+        ...(targetSessionId ? { sessionId: targetSessionId } : {}),
+        correlationId: nextId('corr'),
+        turnId: nextId('turn'),
+        state: 'completed',
+        admittedAt: nowIso,
+        settledAt: nowIso,
+        verification: 'not-checked',
+        terminalEvidenceRef: `event:${nextId('ev')}`,
+        attemptCount: 1,
+        createdAt: nowIso,
+        updatedAt: nowIso,
+      };
+      mockScheduleRuns.unshift(run);
+      const oneOff = previous.trigger.kind === 'once';
+      const nextRunAt = !oneOff && previous.enabled ? nextScheduleRunAt(previous.trigger, nowMs) : undefined;
+      mockSchedules[index] = {
+        ...previous,
+        revision: previous.revision + 1,
+        enabled: oneOff ? false : previous.enabled,
+        state: oneOff ? 'completed' : nextRunAt ? 'scheduled' : 'paused',
+        ...(nextRunAt ? { nextRunAt } : {}),
+        lastRunAt: nowIso,
+        lastOutcome: 'succeeded',
+        ...(targetSessionId ? { lastSessionId: targetSessionId } : {}),
+        runCount: previous.runCount + 1,
+        completedRunCount: (previous.completedRunCount ?? 0) + 1,
+        updatedAt: nowIso,
+      };
+      if (!nextRunAt) delete mockSchedules[index]!.nextRunAt;
+      scheduleCatalogSeq++;
+      return scheduleCatalog();
+    },
+    async deleteSchedule(id: string, expectedRevision?: number) {
+      await latency();
+      const index = mockSchedules.findIndex(item => item.id === id);
+      const previous = index >= 0 ? mockSchedules[index] : undefined;
+      if (!previous || (expectedRevision !== undefined && previous.revision !== expectedRevision)) {
+        throw new Error('This schedule changed. Refresh before deleting.');
+      }
+      mockSchedules.splice(index, 1);
+      scheduleCatalogSeq++;
+      return scheduleCatalog();
+    },
+    async listScheduleRuns(rawFilter: ScheduleRunFilter): Promise<ScheduleRunPage> {
+      await latency();
+      const filter = normalizeScheduleRunFilter(rawFilter);
+      const filtered = mockScheduleRuns
+        .filter(run => run.workspaceId === filter.workspaceId)
+        .filter(run => (filter.scheduleId ? run.scheduleId === filter.scheduleId : true))
+        .filter(run => (filter.state ? run.state === filter.state : true))
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id));
+      const limit = filter.limit ?? 50;
+      const startIndex = filter.cursor ? Math.max(0, filtered.findIndex(item => item.id === filter.cursor) + 1) : 0;
+      const slice = filtered.slice(startIndex, startIndex + limit);
+      const hasMore = startIndex + limit < filtered.length;
+      const last = slice.at(-1);
+      return {
+        runs: structuredClone(slice),
+        total: filtered.length,
+        ...(hasMore && last ? { nextCursor: last.id } : {}),
+      };
+    },
+    async scheduleRunDetail(runId: string): Promise<ScheduleRunDetail> {
+      await latency();
+      const found = mockScheduleRuns.find(item => item.id === runId);
+      if (!found) throw new Error('Schedule run not found.');
+      return scheduleDetailFor(found);
+    },
+    async previewScheduleNextRuns(trigger: ScheduleTrigger, count = 5): Promise<NextRunPreview> {
+      await latency();
+      return computeSchedulePreview(trigger, count, Date.now(), scheduleTimeZone);
+    },
+    async reviewUnknownScheduleRun(runId: string, expectedRevision: number, rawDecision: ScheduleReviewDecision): Promise<ScheduleRunDetail> {
+      await latency();
+      const decision = normalizeScheduleReviewDecision(rawDecision);
+      const index = mockScheduleRuns.findIndex(item => item.id === runId);
+      const existing = index >= 0 ? mockScheduleRuns[index] : undefined;
+      if (!existing) throw new Error('Schedule run not found.');
+      if (existing.revision !== expectedRevision) throw new Error('This schedule run changed. Refresh before reviewing.');
+      if (existing.state !== 'unknown') throw new Error(`Only runs in unknown state can be reviewed (current state: "${existing.state}").`);
+      const nowIso = iso();
+      const updated: ScheduleRunV1 = {
+        ...existing,
+        revision: existing.revision + 1,
+        reviewDecision: decision.action,
+        reviewedAt: nowIso,
+        ...(decision.note ? { reviewNote: decision.note } : {}),
+        updatedAt: nowIso,
+      };
+      if (!decision.note) delete updated.reviewNote;
+      mockScheduleRuns[index] = updated;
+      scheduleCatalogSeq++;
+      return scheduleDetailFor(updated);
+    },
     subscribe(listener) {
       listeners.add(listener);
       return () => { listeners.delete(listener); };

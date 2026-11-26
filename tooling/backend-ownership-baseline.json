@@ -16,9 +16,9 @@
     {
       "path": "apps/cli/src/bin.ts",
       "category": "legacy-backend",
-      "sha256": "342c94028ccc70b5e1ec1b6143badaeb492f16b64d07a15bc548df71491d7426",
-      "loc": 91,
-      "bytes": 4012,
+      "sha256": "e4c8dfa402186045cd65804fb7e2e2666b77035ecf60f60693da3e4aaf7851d9",
+      "loc": 92,
+      "bytes": 4023,
       "effectKinds": [
         "node-builtin",
         "runtime-call"
@@ -40,9 +40,9 @@
     {
       "path": "apps/cli/src/cli.ts",
       "category": "legacy-backend",
-      "sha256": "046051828a96e38f7e97be84960728e235f95c86d16006c3f71601d2f130e4bf",
-      "loc": 219,
-      "bytes": 11035,
+      "sha256": "38c4f1b97cbc65948fafd91913ccb0ff9499f19274feff3da509371ea6ae4e1f",
+      "loc": 234,
+      "bytes": 11794,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -95,6 +95,15 @@
       "effectKinds": [
         "node-builtin"
       ],
+      "unresolvedRuntimeImports": 0
+    },
+    {
+      "path": "apps/cli/src/service.ts",
+      "category": "legacy-backend",
+      "sha256": "97418b75540157c11730af934417849a7972badf0319f0b9d43724d21f906623",
+      "loc": 237,
+      "bytes": 8924,
+      "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
     {
@@ -1211,9 +1220,9 @@
     {
       "path": "packages/host/src/index.ts",
       "category": "legacy-backend",
-      "sha256": "9fde8e16dd89315babecb69bca56e400210da160b7a32b3fc5e65c47ef4f263f",
-      "loc": 39,
-      "bytes": 3132,
+      "sha256": "a7a8b49ce0cc5eb1dac85c3d316d9f2d53fef194ed7658a4bcda353461635ac4",
+      "loc": 53,
+      "bytes": 3991,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -1896,9 +1905,20 @@
     {
       "path": "packages/host/src/schedules.ts",
       "category": "legacy-backend",
-      "sha256": "5fde564b31f9cf402f5fdd776d42525109ecdc44058b6a2a1ce8da9c5f03baa1",
-      "loc": 769,
-      "bytes": 41222,
+      "sha256": "ea8b7abb68cd44c90401204f9d233f2378eded7dc523a080c1a3b560d1b3cec0",
+      "loc": 1125,
+      "bytes": 49444,
+      "effectKinds": [
+        "node-builtin"
+      ],
+      "unresolvedRuntimeImports": 0
+    },
+    {
+      "path": "packages/host/src/scheduleStore.ts",
+      "category": "legacy-backend",
+      "sha256": "7387658f502edcae22f52d37aa7d19eb4f46963b430304cc507e65721f7f5d4b",
+      "loc": 1757,
+      "bytes": 74102,
       "effectKinds": [
         "node-builtin"
       ],
@@ -1919,9 +1939,21 @@
     {
       "path": "packages/host/src/service.ts",
       "category": "legacy-backend",
-      "sha256": "3105a8f94de0c10db38fea54768bbf593a883a1cb29067e3edece46347bb1f80",
-      "loc": 7203,
-      "bytes": 505899,
+      "sha256": "3239d7fd204c0183fa08d82561f69d18311376ec3afdf79c7fef82f8088426fa",
+      "loc": 7244,
+      "bytes": 508208,
+      "effectKinds": [
+        "node-builtin",
+        "runtime-call"
+      ],
+      "unresolvedRuntimeImports": 0
+    },
+    {
+      "path": "packages/host/src/serviceManager.ts",
+      "category": "legacy-backend",
+      "sha256": "7bca2326e7543851a957d305f14218b28aa8de7cca03e69ee84522a608853fc2",
+      "loc": 1237,
+      "bytes": 42695,
       "effectKinds": [
         "node-builtin",
         "runtime-call"
@@ -2348,9 +2380,9 @@
     {
       "path": "packages/platform/src/agentHost.ts",
       "category": "shared-backend-review",
-      "sha256": "00773e6f671e2bb1c30a5de3011f29bc212836c68d2dca7733212556c7c4b145",
-      "loc": 1301,
-      "bytes": 78901,
+      "sha256": "c24e82c8513b423317be73a15b21f6cb1235f2963648b026d11d717f43b5269c",
+      "loc": 1315,
+      "bytes": 79428,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -2510,9 +2542,9 @@
     {
       "path": "packages/platform/src/schedules.ts",
       "category": "shared-backend-review",
-      "sha256": "e7c3b529b11caded11070f18b8c617809fce8995cf1f31f4e976e441d5afa6dc",
-      "loc": 437,
-      "bytes": 19846,
+      "sha256": "d6baaa2dcbe27f815bdbcd58c835eca7bcfa5659df2969f6abc94e3ca7c464e2",
+      "loc": 923,
+      "bytes": 38486,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -6052,9 +6084,24 @@
       "runtimeSignature": "0e46f63c0cf15d4cddf31deb8cac7832c0f46ad07a529657aa9bd66c5c5c5687"
     },
     {
+      "path": "apps/web/src/schedules/scheduleFormatting.ts",
+      "category": "ui",
+      "runtimeSignature": "f19300491d48bf66f34b28b69dfbbe998774a9e70151f16b61dd52854bfce893"
+    },
+    {
+      "path": "apps/web/src/schedules/ScheduleRunHistoryPanel.tsx",
+      "category": "ui",
+      "runtimeSignature": "0e53863657af2333a5dd22d7053f26f1caa1dceefaea20a3953e90cea2cd3a93"
+    },
+    {
       "path": "apps/web/src/schedules/SchedulesPage.tsx",
       "category": "ui",
-      "runtimeSignature": "f429b4b4c3823daa8bf4856c38a63fb7b337629696b59b56e6414d1bbcafc1a3"
+      "runtimeSignature": "3aafaca1d3cd1d2eb097aa8c983ea5a51413a4ba65a413cdf7b29984d2b8e032"
+    },
+    {
+      "path": "apps/web/src/schedules/ScheduleTimezoneField.tsx",
+      "category": "ui",
+      "runtimeSignature": "d9945c66e1192e6516695136ce9c313367fb76d182e419499b7a643cf6709481"
     },
     {
       "path": "apps/web/src/sessions/LocalProjectTree.tsx",

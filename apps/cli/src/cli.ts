@@ -1,10 +1,11 @@
 import { PORTABLE_SESSION_FORMAT, previewImport } from '@extalia/core';
-import type { ConnectService } from '@extalia/host';
+import type { ConnectService, ServiceRunCommand } from '@extalia/host';
 import { DATA_DIRECTORY_OVERRIDE, legacyDataDirectories, resolveDataDirectory } from '@extalia/platform';
 import { PROTOCOL_VERSION, parseEvent, parseEventLines, type ParseResult } from '@extalia/protocol';
 import { runConnect, runConnections, runDisconnect, runMcp, runReply } from './connect';
 import { runCodexPermissions } from './codexPermissions';
 import { runInbox } from './inbox';
+import { runService } from './service';
 import type { StartOptions } from './start';
 
 export type { StartOptions } from './start';
@@ -28,6 +29,13 @@ export interface CliHost {
   connectService?(): Promise<ConnectService>;
   prompt?(question: string): Promise<boolean>;
   mcpInput?: NodeJS.ReadableStream;
+  binPath?: string;
+  serviceExecutablePath?: string;
+  serviceRunCommand?: ServiceRunCommand;
+  serviceUid?: number;
+  serviceNow?: () => Date;
+  serviceIsProcessAlive?: (pid: number) => boolean;
+  serviceUptimeSeconds?: () => number;
 }
 
 export const DEFAULT_PORT = 4310;
@@ -40,6 +48,11 @@ Commands:
     --port <number>     Port on 127.0.0.1 (default ${DEFAULT_PORT})
     --no-open           Do not open a browser
     --no-update-check   Skip the update check (or set EXTALIA_NO_UPDATE_CHECK=1)
+  service <action>    Manage the single-owner headless OS service (install, uninstall, status, start, stop)
+    --dry-run           Preview OS service changes without writing (install/uninstall)
+    --yes, -y           Apply without asking for confirmation (install/uninstall)
+    --port <number>     Loopback Bridge port on 127.0.0.1 (install)
+    --json              Output machine-readable JSON (status)
   connect <app>       Connect an agent app (codex, claude, gemini, antigravity, hermes)
     --dry-run           Preview configuration changes without writing
     --yes, -y           Apply changes without asking for confirmation
@@ -184,6 +197,8 @@ export async function run(args: readonly string[], host: CliHost): Promise<numbe
   switch (command) {
     case 'start':
       return start(host, rest);
+    case 'service':
+      return runService(host, rest);
     case 'connect':
       return rest[0] === 'codex-permission' ? runCodexPermissions(host, rest.slice(1)) : runConnect(host, rest);
     case 'disconnect':
