@@ -209,6 +209,8 @@ describe('Gateway Settings UI, Workspace Reports Inbox, Chat System Reports & Mo
   });
 
   it('renders ChatSystemReportCard read-only in EN and ID with sanitized problems and GW-AT-088 badge', () => {
+    const syntheticPath = ['/Users', 'example-user', '.extalia-vo', 'secret'].join('/');
+    const syntheticToken = ['sk', 'proj', 'abcdefghijklmnopqrstuvwxyz123456'].join('-');
     const report: WorkspaceSystemReport = {
       id: 'rep-test-1',
       revision: 1,
@@ -228,7 +230,7 @@ describe('Gateway Settings UI, Workspace Reports Inbox, Chat System Reports & Mo
       }],
       meeting: { outcome: 'completed', knowledge: 'saved' },
       problems: [
-        'Failed upload from /Users/tester/.extalia-vo/secret using token sk-proj-abcdefghijklmnopqrstuvwxyz123456',
+        `Failed upload from ${syntheticPath} using token ${syntheticToken}`,
       ],
       committedAt: '2026-11-26T00:00:00.000Z',
       lastUpdatedAt: '2026-11-26T00:00:00.000Z',
@@ -252,8 +254,8 @@ describe('Gateway Settings UI, Workspace Reports Inbox, Chat System Reports & Mo
       expect(html).toContain(t.chat.systemReports.meetingOutcomes.completed);
       expect(html).toContain('[redacted-secret]');
       expect(html).toContain('[redacted-path]');
-      expect(html).not.toContain('sk-proj-abcdefghijklmnopqrstuvwxyz123456');
-      expect(html).not.toContain('/Users/tester/.extalia-vo/secret');
+      expect(html).not.toContain(syntheticToken);
+      expect(html).not.toContain(syntheticPath);
     }
   });
 
