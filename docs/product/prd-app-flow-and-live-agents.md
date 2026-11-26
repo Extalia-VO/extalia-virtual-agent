@@ -411,6 +411,20 @@ for example when one runs out of quota.
   composer`, resolving `OQ-02`). No runtime, schema, or UI behavior changes in
   `v0.4.353`; historical evidence below remains unchanged.
 
+### Schedule & Automation vNext and Universal Gateway v2 — Proposed (2026-11-24)
+
+- **Proposed / not yet implemented** (baseline `v0.4.353`, documentation-only):
+  added [Schedule & Automation vNext (`Rev 1.1`)](prd-schedule-automation-vnext.md)
+  (durable occurrence/turn ledger separating admission from turn completion and
+  verification, per-job IANA `timeZone`, headless OS service ownership, and
+  cross-platform outbox addendum) and
+  [Universal Gateway Module v2 (`Rev 2.0`)](prd-universal-gateway-v2.md)
+  (provider-neutral Gateway Core, Discord per-agent webhook identity/portraits
+  extending `PRD-SF-1.0` `Slice D`, Telegram operations, WhatsApp policy-gated
+  monitoring, and canonical workspace autonomous Knowledge/Skills Chat reports).
+  No new Gateway adapter, scheduler SQLite store, headless OS service installer,
+  or autonomous Chat report projection is implemented by adding these PRDs.
+
 ### Feature README previews (2026-11-16)
 
 - Complete (Codex GPT orchestration): five animated WebP previews recorded from
@@ -1057,6 +1071,9 @@ Documentation/media scope; no runtime version bump or package publication.
 | SCH-CORE | Schedule & Automation vNext (`#131`, `#132` backend, `WP-SCH-01..04` + `WP-SCH-06`, `ADR 0097`) | Implemented & verified locally (2026-11-24) | Host-owned transactional `node:sqlite` schedule ledger (`packages/host/src/scheduleStore.ts`, `state/schedules.sqlite`, `0o600`, downgrade refusal, immutable `schedules.pre-sqlite.json` legacy migration), atomic CAS occurrence admission + crash `unknown` quarantine without auto-replay, split dispatch/turn/verification receipts (`ScheduleRunV1`), and Host IANA `timeZone` + `each-valid-instant` DST calculation/previews (`packages/platform/src/schedules.ts`, `packages/host/src/schedules.ts`). Verified locally in `packages/host/test/schedule{Ledger,Timezone}.test.ts` + all existing `schedule*.test.ts`. |
 | SCH-UI | Schedule vNext Run History / Unknown Review & Timezone/DST UI (`#132`, `WP-SCH-05/07`) | Implemented & verified locally (2026-11-24) | Expose `listScheduleRuns`, `scheduleRunDetail`, `previewScheduleNextRuns`, and `reviewUnknownScheduleRun` in `@extalia/platform` and `packages/host/src/service.ts` (`AGENT_HOST_METHODS` + `mockHost.ts`), add IANA `timeZone` editor with authoritative 5-run DST preview (`apps/web/src/schedules/ScheduleTimezoneField.tsx`), and add accessible EN/ID Run History panel with distinct schedule/run/verification/delivery badges and unknown-run review UI (`ScheduleRunHistoryPanel.tsx`, `SchedulesPage.tsx`, `i18n.ts`). Verified locally in `apps/web/test/schedulesRunHistory.test.ts` + `packages/{platform,host}/test/schedule*.test.ts`. |
 | SCH-SVC | Single-owner headless OS service manager & `extalia service` CLI (`#133`, `WP-SCH-08`) | Implemented & verified locally (2026-11-24) | macOS `launchd`, Linux `systemd --user`, and Windows Task Scheduler dry-run planners, timestamped backups, `0o600` manifests, unmanaged-file guards, loopback-only config, and single-owner `state/host.lock` conflict checks (`packages/host/src/serviceManager.ts`, `apps/cli/src/{service,cli,bin}.ts`). Verified against synthetic temp directories and injected command runners in `packages/host/test/serviceManager.test.ts` and `apps/cli/test/service.test.ts`; packaged OS service acceptance and optional Desktop-as-client attach (`WP-SCH-14`) remain separate. |
+| GW-M0 | Universal Gateway v2 M0 Foundation (`#136`, `#137`, `GW-WP-01..07`, `ADR 0098`) | Implemented & verified locally (2026-11-24) | Browser-safe contracts and sanitization (`packages/platform/src/gateway.ts`), Host-owned `node:sqlite` store (`packages/host/src/gateway/store.ts`), challenge-confirmed principal linking & deterministic route precedence with zero cross-workspace fallback (`routing.ts`), canonical autonomous Knowledge/Skills Chat report ledger + `latest-eligible-in-source-workspace` selector + `Reports Inbox` fallback (`autonomousReports.ts`), and durable priority outbox with `429`/`403`/`unknown` quarantine & 5-dimension `ConnectorHealth` (`outbox.ts`). Verified locally in `packages/host/test/gateway{Core,AutonomousReports}.test.ts`. Live Discord/Telegram/WhatsApp adapters & Gateway UI (`#138`–`#143`) remain open. |
+| GW-M1 | Universal Gateway v2 M1 Discord Adapter & Portrait Export (`#138`, `GW-WP-08..10`) | Implemented & verified locally (2026-11-24) | Headless `CharacterAppearance` portrait rendering & HTTPS-only asset validation (`packages/host/src/gateway/portraits.ts`) and `DiscordGatewayAdapter` (`packages/host/src/gateway/discord.ts`) separating `Extalia Gateway Bot` system notices from session Lead/Worker webhook profiles, `wait=true` receipt-only reply-to-worker routing via Lead, `/extalia` slash subcommands under minimal intents, thread/forum lifecycle guards, adaptive status coalescing, and redaction. Verified via synthetic fixtures & mock `fetch` in `packages/host/test/gatewayDiscord.test.ts`; live guild `GW-AT-035` remains separate. |
+| GW-M2-M3 | Universal Gateway v2 M2 Telegram Connector & M3 Multi-Surface Fanout (`#139`, `#140`, `GW-WP-11..13`) | Implemented & verified locally (2026-11-24) | Official `TelegramGatewayAdapter` (`packages/host/src/gateway/telegram.ts`: `getMe` pinning, mutually exclusive secret-token webhook or single-leader polling, DM/topic isolation, anonymous-admin/forward rejection, 18 commands + one-time nonce callbacks, milestone coalescing & `429`/`403` handling) and `GatewayFanoutService` (`packages/host/src/gateway/fanout.ts`: canonical Chat report first + isolated Discord/Telegram/compliance-gated WhatsApp fanout, IANA quiet hours, `maintenanceIntentKey` dedup). Verified via synthetic fixtures & mock `fetch` in `packages/host/test/gateway{Telegram,Fanout}.test.ts`; live bot `GW-AT-056` and Gateway Settings UI (`#142`) remain separate. |
 
 ### Phase 0 discrepancy ledger
 

@@ -1058,6 +1058,103 @@
       "unresolvedRuntimeImports": 0
     },
     {
+      "path": "packages/host/src/gateway/autonomousReports.ts",
+      "category": "legacy-backend",
+      "sha256": "8c86e30d26150fd0d5557fc1e6cd8a485815d0070ac9a905dfb6a5da89832c6e",
+      "loc": 758,
+      "bytes": 28253,
+      "effectKinds": [
+        "node-builtin"
+      ],
+      "unresolvedRuntimeImports": 0
+    },
+    {
+      "path": "packages/host/src/gateway/discord.ts",
+      "category": "legacy-backend",
+      "sha256": "02425f36c58b00a9aa89e5c27e903e4db20aa21227e4a05c8f55ad57e4ab5d87",
+      "loc": 2864,
+      "bytes": 110062,
+      "effectKinds": [
+        "node-builtin"
+      ],
+      "unresolvedRuntimeImports": 0
+    },
+    {
+      "path": "packages/host/src/gateway/fanout.ts",
+      "category": "legacy-backend",
+      "sha256": "0b9a4cd5a266a90b023af2c05062accf9f1b8ada9aef23a90984b33b7d2a89cd",
+      "loc": 928,
+      "bytes": 32302,
+      "effectKinds": [
+        "node-builtin"
+      ],
+      "unresolvedRuntimeImports": 0
+    },
+    {
+      "path": "packages/host/src/gateway/index.ts",
+      "category": "legacy-backend",
+      "sha256": "cecbaf928c32011c0dfb95abdbea0ed7e4deac68011af3509c175e522df308a6",
+      "loc": 8,
+      "bytes": 249,
+      "effectKinds": [],
+      "unresolvedRuntimeImports": 0
+    },
+    {
+      "path": "packages/host/src/gateway/outbox.ts",
+      "category": "legacy-backend",
+      "sha256": "23f6cd83428a9a430fd5e41a6ba22ef9d7651f317f796f1cd7dccc7e256e63bc",
+      "loc": 937,
+      "bytes": 34998,
+      "effectKinds": [
+        "node-builtin"
+      ],
+      "unresolvedRuntimeImports": 0
+    },
+    {
+      "path": "packages/host/src/gateway/portraits.ts",
+      "category": "legacy-backend",
+      "sha256": "d5ea712275e7d47cd720cba80b0a4fe4300676c2e1b36dfa72e541c1a46858df",
+      "loc": 1070,
+      "bytes": 40140,
+      "effectKinds": [
+        "node-builtin"
+      ],
+      "unresolvedRuntimeImports": 0
+    },
+    {
+      "path": "packages/host/src/gateway/routing.ts",
+      "category": "legacy-backend",
+      "sha256": "d230c5ca39757afb171fd5f33530061a0eb3fcd76d3714237cec7d452aee889b",
+      "loc": 1224,
+      "bytes": 44471,
+      "effectKinds": [
+        "node-builtin"
+      ],
+      "unresolvedRuntimeImports": 0
+    },
+    {
+      "path": "packages/host/src/gateway/store.ts",
+      "category": "legacy-backend",
+      "sha256": "645404148cd0c8a4d7fc17da91557f54393e349b70fdec6409e581c8970eced1",
+      "loc": 830,
+      "bytes": 30411,
+      "effectKinds": [
+        "node-builtin"
+      ],
+      "unresolvedRuntimeImports": 0
+    },
+    {
+      "path": "packages/host/src/gateway/telegram.ts",
+      "category": "legacy-backend",
+      "sha256": "d923cfef6a6d1790a10d5fd8c63d8bffa39b3c13138cbaaeda3bd3cabb5c670d",
+      "loc": 2526,
+      "bytes": 93975,
+      "effectKinds": [
+        "node-builtin"
+      ],
+      "unresolvedRuntimeImports": 0
+    },
+    {
       "path": "packages/host/src/handoverEvidence.ts",
       "category": "legacy-backend",
       "sha256": "cfffb5eac548bd94c6c5380273ed71bfc488bdef19daf4d061bc8d6ba7faf8df",
@@ -1220,9 +1317,9 @@
     {
       "path": "packages/host/src/index.ts",
       "category": "legacy-backend",
-      "sha256": "a7a8b49ce0cc5eb1dac85c3d316d9f2d53fef194ed7658a4bcda353461635ac4",
-      "loc": 53,
-      "bytes": 3991,
+      "sha256": "82ad3c0a578b8065980daee02c22995dd90ea0cee4a64639be9375d5d59193af",
+      "loc": 54,
+      "bytes": 4027,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -2414,11 +2511,20 @@
       "unresolvedRuntimeImports": 0
     },
     {
+      "path": "packages/platform/src/gateway.ts",
+      "category": "shared-backend-review",
+      "sha256": "33f1eaa4bf6d3c77d08807c1fee68f134fad8f2503f2e9cf77cc4ff62e5f41f8",
+      "loc": 792,
+      "bytes": 36859,
+      "effectKinds": [],
+      "unresolvedRuntimeImports": 0
+    },
+    {
       "path": "packages/platform/src/index.ts",
       "category": "shared-backend-review",
-      "sha256": "a9b9f8b10afca545f5333f52afd6eea8f8b929903f8f0a1df793b71b1550efdd",
-      "loc": 43,
-      "bytes": 1456,
+      "sha256": "aaef2c07c5075d05bbf182d929f6a82100028bb68119b0292c22cb6c05d9872f",
+      "loc": 44,
+      "bytes": 1486,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },

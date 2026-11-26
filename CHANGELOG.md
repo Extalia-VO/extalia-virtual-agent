@@ -16,6 +16,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.358] - 2026-11-24
+
+- Add [Universal Gateway Module v2](docs/product/prd-universal-gateway-v2.md) (`Rev 2.0`) and record [ADR 0098](docs/adr/0098-universal-gateway-and-autonomous-reports.md).
+- Implement Universal Gateway v2 M0 Foundation (`#136`, `#137`, `GW-WP-01..07`, [ADR 0098](docs/adr/0098-universal-gateway-and-autonomous-reports.md)): add browser-safe Gateway contracts and sanitization (`packages/platform/src/gateway.ts`), Host-owned `node:sqlite` store (`packages/host/src/gateway/store.ts`), challenge-confirmed principal linking and deterministic route precedence with zero cross-workspace fallback (`routing.ts`), canonical workspace autonomous Knowledge/Skills Chat report ledger with `latest-eligible-in-source-workspace` selection and `Reports Inbox` fallback (`autonomousReports.ts`), and priority delivery outbox with `429`/`403`/`unknown` quarantine and 5-dimension `ConnectorHealth` (`outbox.ts`).
+- Implement Universal Gateway v2 M1 Discord Adapter & Portrait Export pipeline (`#138`, `GW-WP-08..10`): add headless `CharacterAppearance` headshot rendering and HTTPS-safe asset validation (`packages/host/src/gateway/portraits.ts`) plus `DiscordGatewayAdapter` (`discord.ts`) separating `Extalia Gateway Bot` system notices from session Lead/Worker webhook profiles, `wait=true` receipt-only reply routing through Lead, `/extalia` slash subcommands under minimal intents, thread/forum lifecycle safety, adaptive status card coalescing, and redaction.
+- Implement Universal Gateway v2 M2 Telegram Bot API Connector & M3 Multi-Surface Fanout (`#139`, `#140`, `GW-WP-11..13`): add `TelegramGatewayAdapter` (`telegram.ts`) with `getMe` pinning, mutually exclusive secret-token webhook or single-leader polling, DM/topic `(chat_id, message_thread_id)` isolation, single-use nonce callbacks, and milestone/rate-limit handling; add `GatewayFanoutService` (`fanout.ts`) bridging `ScheduleRunV1` and autonomous Knowledge/Skills receipts into canonical Chat reports first plus isolated Discord/Telegram/compliance-gated WhatsApp delivery.
+
 ## [0.4.357] - 2026-11-24
 
 - Add [Schedule & Automation vNext](docs/product/prd-schedule-automation-vnext.md) (`Rev 1.1`) and record [ADR 0097](docs/adr/0097-durable-schedule-ledger-and-timezones.md).

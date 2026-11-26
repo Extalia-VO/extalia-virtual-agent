@@ -51,3 +51,4 @@ export {
   type RecordDeliveryInput, type StoredScheduleCatalogState,
 } from './scheduleStore.js';
 export * from './serviceManager.js';
+export * from './gateway/index.js';
