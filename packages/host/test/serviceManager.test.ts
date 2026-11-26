@@ -205,7 +205,7 @@ describe('Headless OS Service Manager', () => {
     expect(installed.targetPath).toBe(path.join(homeDirectory, '.config', 'systemd', 'user', SYSTEMD_SERVICE_NAME));
     const unit = await readFile(installed.targetPath, 'utf8');
     expect(unit).toContain('Restart=on-failure');
-    expect(unit).toContain(`EXTALIA_HOME=${dataDirectory}`);
+    expect(unit).toContain(`Environment="EXTALIA_HOME=${dataDirectory.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`);
     expect(unit).toContain('--no-open');
     expect(unit).toContain('--no-update-check');
     expect(unit).toContain('127.0.0.1');
