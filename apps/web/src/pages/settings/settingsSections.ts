@@ -1,9 +1,15 @@
 /** Durable configuration has one home; Observe and Import link back to these sections. */
-export const SETTINGS_SECTIONS = ['general', 'connections', 'profiles', 'workspaces', 'agent-apps', 'storage', 'system'] as const;
+export const SETTINGS_SECTIONS = ['general', 'connections', 'profiles', 'workspaces', 'agent-apps', 'gateway', 'storage', 'system'] as const;
 export type SettingsSection = typeof SETTINGS_SECTIONS[number];
 
-export function availableSettingsSections({ agents, system, profiles = true }: { agents: boolean; system: boolean; profiles?: boolean }): SettingsSection[] {
-  return SETTINGS_SECTIONS.filter(section => section === 'general' || (section === 'system' ? system : agents && (section !== 'profiles' || profiles)));
+export function availableSettingsSections({ agents, system, profiles = true, gateway = true }: { agents: boolean; system: boolean; profiles?: boolean; gateway?: boolean }): SettingsSection[] {
+  return SETTINGS_SECTIONS.filter(
+    section =>
+      section === 'general'
+      || (section === 'system'
+        ? system
+        : agents && (section !== 'profiles' || profiles) && (section !== 'gateway' || gateway)),
+  );
 }
 
 export function resolveSettingsSection(requested: SettingsSection | undefined, available: readonly SettingsSection[], editGateFor?: string): SettingsSection {

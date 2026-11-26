@@ -1,18 +1,21 @@
 import { DEFAULT_PERMISSIONS, modelPlanningBasis, applyTeamSpec, defaultOrchestration, generateFullName, initialSessionTeam, parseTeamSpec, withDistinctMemberNames, pickTeamModels, planModelOrder, planTeamHeuristic, presetById, workspaceCrossAccess, type AgentTeam, type Workspace } from '@extalia/core';
 import type {
   AgentAppConnection, AgentAppConnectOptions, AgentAppConnectPlan, AgentAppConnectResult, AgentAppDisconnectResult,
-  AgentAppId, AgentAppRecoveryReport, AgentAppTestResult, AgentHostApi, ApprovalDecisionInput, CommandSandboxStatus, ConnectionInput, ConnectionView,
-  GeneralSchedule, GeneralScheduleCatalog, HookIngestStatus, HostState, ModelChoices, ModelSelectionGuide, NextRunPreview,
+  AgentAppId, AgentAppRecoveryReport, AgentAppTestResult, AgentHostApi, ApprovalDecisionInput, ChatSystemReportsView, CommandSandboxStatus, ConnectionInput, ConnectionView,
+  ConnectorHealth, GatewayAuditEntryView, GatewayConfirmLinkInput, GatewayConnectorSaveInput, GatewayConnectorState, GatewayConnectorView,
+  GatewayIssueChallengeInput, GatewayLinkChallengeView, GatewayOverview, GatewayPrincipalLinkView, GatewayRouteSaveInput, GatewayRouteView,
+  GeneralSchedule, GeneralScheduleCatalog, HealthDimensionStatus, HookIngestStatus, HostState, ModelChoices, ModelSelectionGuide, NextRunPreview,
   Platform, ProfilePreferences, ProjectGitInspection, ProjectPlannedAction, ProjectProvisionApplyInput,
   ProjectProvisionPreview, ProjectProvisionPreviewInput, ProjectProvisionReceipt, ProjectProvisionStepReceipt,
   ProjectProvisionWarning, SaveGeneralScheduleInput, ScheduleDeliveryV1, ScheduleReviewDecision,
   ScheduleRunDetail, ScheduleRunFilter, ScheduleRunPage, ScheduleRunV1, ScheduleTrigger,
   SessionMovePreview, SessionSummary, UpdateCapability, UpdateStatus, UserProfile,
+  WorkspaceReportsInboxView, WorkspaceSystemReport,
 } from '@extalia/platform';
 import {
   isProtectedBranchName, nextScheduleRunAt, normalizeModelSelectionGuideInput, normalizeSaveGeneralSchedule,
   normalizeScheduleReviewDecision, normalizeScheduleRunFilter, previewScheduleNextRuns as computeSchedulePreview,
-  PROJECT_SCAFFOLD_TEMPLATES, validateProjectFolderName,
+  PROJECT_SCAFFOLD_TEMPLATES, sanitizeGatewayText, validateProjectFolderName,
   attachmentLimit, classifyAttachment, normalizeAgentTeam, normalizeIntegrationGate, normalizePromptLearnSkill,
   normalizeSessionOptions, normalizeTeamPlanRequest, sanitizeAttachmentName, type PromptAttachment,
 } from '@extalia/platform';
@@ -1107,6 +1110,207 @@ function createMockAgents(options: MockOptions): AgentHostApi {
       deliveries: structuredClone(mockScheduleDeliveries.get(run.id) ?? []),
       ...(matchingSchedule ? { scheduleName: matchingSchedule.name } : {}),
     };
+  };
+
+  // Universal Gateway v2 mock store (connectors, challenges, links, routes, audit, system reports)
+  const gatewayConnectors: GatewayConnectorView[] = [];
+  const gatewayLinks: GatewayPrincipalLinkView[] = [];
+  const gatewayRoutes: GatewayRouteView[] = [];
+  const gatewayAudit: GatewayAuditEntryView[] = [];
+  const gatewayChallenges = new Map<string, { view: GatewayLinkChallengeView; used: boolean }>();
+  const gatewayReports: WorkspaceSystemReport[] = [];
+  let gatewayAuditSeq = 0;
+
+  const pushGatewayAudit = (actor: string, action: string, resource: string, outcome: string, reason?: string) => {
+    gatewayAuditSeq += 1;
+    gatewayAudit.unshift({
+      sequence: gatewayAuditSeq,
+      actor,
+      action,
+      resource,
+      outcome,
+      ...(reason ? { reason } : {}),
+      at: iso(),
+    });
+    if (gatewayAudit.length > 50) gatewayAudit.length = 50;
+  };
+
+  const makeConnectorHealth = (connectorId: string, provider: string, status: GatewayConnectorState, at: string, detail?: string): ConnectorHealth => {
+    const transportStatus: HealthDimensionStatus = status === 'connected' ? 'healthy' : status === 'degraded' ? 'degraded' : status === 'blocked' ? 'blocked' : status === 'disabled' ? 'disconnected' : 'unknown';
+    const progressStatus: HealthDimensionStatus = status === 'degraded' ? 'degraded' : status === 'connected' ? 'healthy' : 'unknown';
+    return {
+      connectorId,
+      provider,
+      connectorState: status,
+      transport: { status: transportStatus, observedAt: at, ...(detail ? { detail } : {}) },
+      host: { status: 'healthy', observedAt: at },
+      runtime: { status: status === 'disabled' ? 'disconnected' : 'healthy', observedAt: at },
+      progress: { status: progressStatus, observedAt: at, ...(status === 'degraded' ? { detail: 'Provider rate limit backoff' } : {}) },
+      notification: { status: status === 'disabled' ? 'disconnected' : 'healthy', observedAt: at },
+      checkedAt: at,
+    };
+  };
+
+  if (options.seed === 'ready') {
+    const seededAt = iso();
+    const primaryWorkspace = state.workspaces.find(item => item.mode !== 'observe') ?? state.workspaces[0];
+    const primarySession = state.sessions.find(item => item.workspaceId === primaryWorkspace?.id && item.control === 'managed') ?? state.sessions[0];
+    gatewayConnectors.push(
+      {
+        id: 'gw-discord-1',
+        provider: 'discord',
+        providerAccountId: 'guild-demo-001',
+        secretRef: 'keychain:extalia-gateway-discord-1',
+        status: 'connected',
+        policyVersion: 1,
+        capabilityRevision: 1,
+        capabilities: {
+          provider: 'discord',
+          revision: 1,
+          receiveCommands: true,
+          createOrResumeSession: true,
+          perAgentWebhookPortraits: true,
+          editMessages: true,
+          replyReceipts: true,
+          threadsOrTopics: true,
+          attachments: true,
+          deliveryCallbacks: true,
+          supportsCancel: true,
+          requiresComplianceGate: false,
+          maxMessageLength: 2000,
+        },
+        createdAt: seededAt,
+        updatedAt: seededAt,
+        health: makeConnectorHealth('gw-discord-1', 'discord', 'connected', seededAt, 'Gateway socket active'),
+      },
+      {
+        id: 'gw-telegram-1',
+        provider: 'telegram',
+        providerAccountId: 'bot-extalia-demo',
+        secretRef: 'keychain:extalia-gateway-telegram-1',
+        status: 'degraded',
+        policyVersion: 1,
+        capabilityRevision: 1,
+        capabilities: {
+          provider: 'telegram',
+          revision: 1,
+          receiveCommands: true,
+          createOrResumeSession: true,
+          perAgentWebhookPortraits: false,
+          editMessages: true,
+          replyReceipts: true,
+          threadsOrTopics: true,
+          attachments: true,
+          deliveryCallbacks: true,
+          supportsCancel: true,
+          requiresComplianceGate: false,
+          maxMessageLength: 4096,
+        },
+        createdAt: seededAt,
+        updatedAt: seededAt,
+        health: makeConnectorHealth('gw-telegram-1', 'telegram', 'degraded', seededAt, 'Polling backoff active'),
+      },
+    );
+    gatewayLinks.push({
+      id: 'gw-link-1',
+      connectorId: 'gw-discord-1',
+      providerAccountId: 'guild-demo-001',
+      externalActorId: 'actor-demo-001',
+      extaliaPrincipalId: 'principal-local',
+      permissionBands: ['read_status', 'view_reports', 'submit_prompt'],
+      state: 'active',
+      confirmedAt: seededAt,
+    });
+    if (primaryWorkspace) {
+      gatewayRoutes.push({
+        id: 'gw-route-1',
+        connectorId: 'gw-discord-1',
+        providerAccountId: 'guild-demo-001',
+        channelId: 'channel-demo-ops',
+        workspaceId: primaryWorkspace.id,
+        mode: 'explicit-only',
+        audience: 'team',
+        policyRevision: 1,
+        inboundEnabled: true,
+        outboundEnabled: true,
+        isDmDefault: false,
+        state: 'active',
+        createdAt: seededAt,
+        updatedAt: seededAt,
+      });
+      gatewayReports.push(
+        {
+          id: 'rep-knowledge-1',
+          revision: 1,
+          source: 'knowledge-build',
+          sourceJobId: 'job-knowledge-demo-1',
+          workspaceId: primaryWorkspace.id,
+          ...(primarySession ? { sourceSessionId: primarySession.id, targetChatId: primarySession.id, targetSelection: 'last-eligible' as const } : { targetSelection: 'inbox' as const }),
+          outcome: 'completed',
+          knowledge: { state: 'saved', indexed: true, artifactReceiptIds: ['kn-receipt-1'] },
+          committedAt: seededAt,
+          lastUpdatedAt: seededAt,
+          audienceScopeId: `workspace:${primaryWorkspace.id}:team`,
+        },
+        {
+          id: 'rep-skill-1',
+          revision: 1,
+          source: 'skills',
+          sourceJobId: 'job-skills-demo-1',
+          workspaceId: primaryWorkspace.id,
+          ...(primarySession ? { sourceSessionId: primarySession.id, targetChatId: primarySession.id, targetSelection: 'last-eligible' as const } : { targetSelection: 'inbox' as const }),
+          outcome: 'partial',
+          skills: [{
+            packageId: 'skill-audit-helper',
+            revisionId: 'rev-2',
+            state: 'review-required',
+            activationPerformed: false,
+          }],
+          problems: ['Candidate skill requires manual security review in Grimoire before activation.'],
+          committedAt: seededAt,
+          lastUpdatedAt: seededAt,
+          audienceScopeId: `workspace:${primaryWorkspace.id}:private`,
+        },
+        {
+          id: 'rep-schedule-1',
+          revision: 1,
+          source: 'schedule-run',
+          sourceJobId: 'sch_mock_daily_review',
+          sourceRunId: 'run_mock_completed_verified',
+          workspaceId: primaryWorkspace.id,
+          targetSelection: 'inbox',
+          outcome: 'completed',
+          meeting: {
+            outcome: 'completed',
+            meetingId: 'mtg-demo-1',
+            knowledge: 'saved',
+            indexed: true,
+            artifactReceiptId: 'mtg-receipt-1',
+          },
+          committedAt: seededAt,
+          lastUpdatedAt: seededAt,
+          audienceScopeId: `workspace:${primaryWorkspace.id}:team`,
+        },
+      );
+    }
+    pushGatewayAudit('system', 'gateway.seeded', 'gateway', 'ok', 'Seeded Discord and Telegram connectors');
+  }
+
+  const gatewaySnapshot = (): GatewayOverview => structuredClone({
+    connectors: gatewayConnectors,
+    routes: gatewayRoutes,
+    links: gatewayLinks,
+    recentAudit: gatewayAudit,
+  });
+
+  const looksLikeRawGatewaySecret = (secretRef: string): boolean => {
+    const trimmed = secretRef.trim();
+    if (!trimmed) return true;
+    if (sanitizeGatewayText(trimmed, { stripMentions: false, redactPaths: false }).redactedCount > 0) return true;
+    if (/^https?:\/\//i.test(trimmed)) return true;
+    if (/^[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{20,}$/.test(trimmed)) return true;
+    if (/^(?:bot|bearer)\s+/i.test(trimmed)) return true;
+    return false;
   };
   return {
     ...operatingProfiles.api,
@@ -2237,6 +2441,185 @@ function createMockAgents(options: MockOptions): AgentHostApi {
       mockScheduleRuns[index] = updated;
       scheduleCatalogSeq++;
       return scheduleDetailFor(updated);
+    },
+    async gatewayOverview(): Promise<GatewayOverview> {
+      await latency();
+      return gatewaySnapshot();
+    },
+    async saveGatewayConnector(input: GatewayConnectorSaveInput): Promise<GatewayOverview> {
+      await latency();
+      const provider = input.provider.trim();
+      const providerAccountId = input.providerAccountId.trim();
+      const secretRef = input.secretRef.trim();
+      if (!/^[a-z][a-z0-9-]{1,31}$/.test(provider)) throw new Error('Invalid gateway provider.');
+      if (!providerAccountId) throw new Error('Provider account ID is required.');
+      if (!secretRef) throw new Error('Opaque secretRef is required.');
+      if (looksLikeRawGatewaySecret(secretRef)) {
+        throw new Error('Provide an opaque secretRef (such as keychain:...), never a raw bot token, API key, or webhook URL.');
+      }
+      const nowIso = iso();
+      const existingIndex = input.id ? gatewayConnectors.findIndex(item => item.id === input.id) : -1;
+      const existing = existingIndex >= 0 ? gatewayConnectors[existingIndex] : undefined;
+      const id = existing?.id ?? nextId(`gw-${provider}`);
+      const status = input.status ?? existing?.status ?? 'connected';
+      const saved: GatewayConnectorView = {
+        id,
+        provider,
+        providerAccountId,
+        secretRef,
+        status,
+        policyVersion: (existing?.policyVersion ?? 0) + 1,
+        capabilityRevision: existing?.capabilityRevision ?? 1,
+        ...(existing?.capabilities ? { capabilities: existing.capabilities } : {}),
+        createdAt: existing?.createdAt ?? nowIso,
+        updatedAt: nowIso,
+        health: makeConnectorHealth(id, provider, status, nowIso),
+      };
+      if (existing) gatewayConnectors[existingIndex] = saved;
+      else gatewayConnectors.push(saved);
+      pushGatewayAudit('operator', 'connector.saved', id, 'ok', `${provider}:${providerAccountId}`);
+      return gatewaySnapshot();
+    },
+    async setGatewayConnectorStatus(connectorId: string, status: GatewayConnectorState): Promise<GatewayOverview> {
+      await latency();
+      const index = gatewayConnectors.findIndex(item => item.id === connectorId);
+      const existing = index >= 0 ? gatewayConnectors[index] : undefined;
+      if (!existing) throw new Error('Gateway connector not found.');
+      const nowIso = iso();
+      gatewayConnectors[index] = {
+        ...existing,
+        status,
+        policyVersion: existing.policyVersion + 1,
+        updatedAt: nowIso,
+        health: makeConnectorHealth(existing.id, existing.provider, status, nowIso),
+      };
+      pushGatewayAudit('operator', 'connector.status', connectorId, 'ok', `status=${status}`);
+      return gatewaySnapshot();
+    },
+    async issueGatewayLinkChallenge(input: GatewayIssueChallengeInput): Promise<GatewayLinkChallengeView> {
+      await latency();
+      const connector = gatewayConnectors.find(item => item.id === input.connectorId);
+      if (!connector) throw new Error('Gateway connector not found.');
+      const challengeId = nextId('gw-chal');
+      const ttlSeconds = Math.max(30, Math.min(900, input.ttlSeconds ?? 300));
+      const view: GatewayLinkChallengeView = {
+        challengeId,
+        code: `EXT-${(++counter).toString(36).toUpperCase().padStart(4, '0')}`,
+        connectorId: connector.id,
+        extaliaPrincipalId: input.extaliaPrincipalId?.trim() || 'principal-local',
+        expiresAt: new Date(Date.now() + ttlSeconds * 1000).toISOString(),
+      };
+      gatewayChallenges.set(challengeId, { view, used: false });
+      pushGatewayAudit('operator', 'link.challenge.issued', challengeId, 'ok', `connector=${connector.id}`);
+      return structuredClone(view);
+    },
+    async confirmGatewayPrincipalLink(input: GatewayConfirmLinkInput): Promise<GatewayOverview> {
+      await latency();
+      const entry = gatewayChallenges.get(input.challengeId);
+      if (!entry) throw new Error('Link challenge not found.');
+      if (entry.used) throw new Error('Link challenge has already been used.');
+      if (Date.parse(entry.view.expiresAt) <= Date.now()) throw new Error('Link challenge expired.');
+      const providerAccountId = input.providerAccountId.trim();
+      const externalActorId = input.externalActorId.trim();
+      if (!providerAccountId || !externalActorId) throw new Error('Provider account ID and external actor ID are required.');
+      const bands = [...new Set(input.permissionBands)];
+      if (bands.length === 0) throw new Error('Select at least one permission band.');
+      entry.used = true;
+      const nowIso = iso();
+      const link: GatewayPrincipalLinkView = {
+        id: nextId('gw-link'),
+        connectorId: entry.view.connectorId,
+        providerAccountId,
+        externalActorId,
+        extaliaPrincipalId: entry.view.extaliaPrincipalId,
+        permissionBands: bands,
+        state: 'active',
+        ...(input.ttlSeconds ? { expiresAt: new Date(Date.now() + input.ttlSeconds * 1000).toISOString() } : {}),
+        confirmedAt: nowIso,
+      };
+      gatewayLinks.unshift(link);
+      pushGatewayAudit('operator', 'link.confirmed', link.id, 'ok', `${externalActorId} (${bands.join(',')})`);
+      return gatewaySnapshot();
+    },
+    async revokeGatewayPrincipalLink(linkId: string, reason?: string): Promise<GatewayOverview> {
+      await latency();
+      const index = gatewayLinks.findIndex(item => item.id === linkId);
+      const existing = index >= 0 ? gatewayLinks[index] : undefined;
+      if (!existing) throw new Error('Linked principal not found.');
+      gatewayLinks[index] = {
+        ...existing,
+        state: 'revoked',
+        revokedAt: iso(),
+        revocationReason: reason?.trim() || 'Revoked by operator',
+      };
+      pushGatewayAudit('operator', 'link.revoked', linkId, 'ok', gatewayLinks[index]!.revocationReason);
+      return gatewaySnapshot();
+    },
+    async saveGatewayRoute(input: GatewayRouteSaveInput): Promise<GatewayOverview> {
+      await latency();
+      const connector = gatewayConnectors.find(item => item.id === input.connectorId);
+      if (!connector) throw new Error('Gateway connector not found.');
+      const providerAccountId = input.providerAccountId.trim();
+      const channelId = input.channelId.trim();
+      const workspaceId = input.workspaceId.trim();
+      if (!providerAccountId || !channelId || !workspaceId) {
+        throw new Error('Connector, provider account, channel ID, and workspace are required.');
+      }
+      const nowIso = iso();
+      const index = input.id ? gatewayRoutes.findIndex(item => item.id === input.id) : -1;
+      const existing = index >= 0 ? gatewayRoutes[index] : undefined;
+      const saved: GatewayRouteView = {
+        id: existing?.id ?? nextId('gw-route'),
+        connectorId: connector.id,
+        providerAccountId,
+        channelId,
+        ...(input.threadId?.trim() ? { threadId: input.threadId.trim() } : {}),
+        workspaceId,
+        mode: input.mode ?? existing?.mode ?? 'explicit-only',
+        audience: input.audience ?? existing?.audience ?? 'private',
+        policyRevision: (existing?.policyRevision ?? 0) + 1,
+        inboundEnabled: input.inboundEnabled ?? existing?.inboundEnabled ?? true,
+        outboundEnabled: input.outboundEnabled ?? existing?.outboundEnabled ?? true,
+        isDmDefault: input.isDmDefault ?? existing?.isDmDefault ?? false,
+        state: input.state ?? existing?.state ?? 'active',
+        createdAt: existing?.createdAt ?? nowIso,
+        updatedAt: nowIso,
+      };
+      if (existing) gatewayRoutes[index] = saved;
+      else gatewayRoutes.unshift(saved);
+      pushGatewayAudit('operator', 'route.saved', saved.id, 'ok', `${channelId} -> ${workspaceId}`);
+      return gatewaySnapshot();
+    },
+    async deleteGatewayRoute(routeId: string): Promise<GatewayOverview> {
+      await latency();
+      const index = gatewayRoutes.findIndex(item => item.id === routeId);
+      if (index < 0) throw new Error('Gateway route not found.');
+      const [removed] = gatewayRoutes.splice(index, 1);
+      pushGatewayAudit('operator', 'route.deleted', routeId, 'ok', removed?.channelId);
+      return gatewaySnapshot();
+    },
+    async listWorkspaceReports(workspaceId: string): Promise<WorkspaceReportsInboxView> {
+      await latency();
+      const reports = gatewayReports.filter(item => item.workspaceId === workspaceId);
+      const projections = reports
+        .filter(item => item.targetSelection !== 'inbox')
+        .map(item => ({
+          id: `proj-${item.id}`,
+          reportId: item.id,
+          ...(item.targetChatId ? { chatId: item.targetChatId } : {}),
+          targetSelection: item.targetSelection,
+          committedAt: item.committedAt,
+        }));
+      return structuredClone({ workspaceId, reports, projections });
+    },
+    async listSessionSystemReports(workspaceId: string, sessionId: string): Promise<ChatSystemReportsView> {
+      await latency();
+      const reports = gatewayReports.filter(
+        item => item.workspaceId === workspaceId
+          && item.targetSelection !== 'inbox'
+          && (item.targetChatId === sessionId || item.sourceSessionId === sessionId),
+      );
+      return structuredClone({ workspaceId, sessionId, reports });
     },
     subscribe(listener) {
       listeners.add(listener);

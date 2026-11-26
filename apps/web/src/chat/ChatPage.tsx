@@ -1,6 +1,6 @@
 import { ObservedInputCards } from '../observe/ObservedInputCards';
 import { sourceLabel } from '@extalia/core';
-import type { AgentHostApi, ApprovalDecisionInput, FileSystemCapability, HostState, ProjectProvisionMode, SessionSummary } from '@extalia/platform';
+import type { AgentHostApi, ApprovalDecisionInput, FileSystemCapability, HostState, ProjectProvisionMode, SessionSummary, WorkspaceSystemReport } from '@extalia/platform';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { errorMessage } from '../host/remote';
 import type { Messages } from '../i18n';
@@ -38,6 +38,7 @@ import { WorkspaceRuntimeNotice } from './WorkspaceRuntimeNotice';
 import { ChatTeamControls } from './ChatTeamControls';
 import { useChatTeam } from './chatTeam';
 import { ChatSessionInfo } from './ChatSessionInfo';
+import { ChatSystemReportCard } from './ChatSystemReportCard';
 import './chatLayout.css';
 
 const UNASSIGNED_WORKSPACE_VALUE = '__unassigned__';
@@ -128,6 +129,19 @@ export function ChatPage({ t, language, agents, picker, state, onState, selectio
   const teamControl = useChatTeam({ agents, state, workspace, session, connectionId: selectedConnectionId, onState });
   const workspaceReview = useWorkspaceReviewRecovery({ agents, session, onState });
   const hasConnections = state.connections.length > 0;
+  const reportsScope = workspace && session ? `${sourceScope}:${workspace.id}:${session.id}` : '';
+  const [sessionReportsState, setSessionReportsState] = useState<{ scope: string; reports: WorkspaceSystemReport[] }>({ scope: '', reports: [] });
+  useEffect(() => {
+    if (!workspace || !session || typeof agents.listSessionSystemReports !== 'function') return;
+    let active = true;
+    const targetScope = reportsScope;
+    void agents.listSessionSystemReports(workspace.id, session.id).then(
+      view => { if (active) setSessionReportsState({ scope: targetScope, reports: view.reports }); },
+      () => { if (active) setSessionReportsState(current => current.scope === targetScope ? current : { scope: targetScope, reports: [] }); },
+    );
+    return () => { active = false; };
+  }, [agents, reportsScope, workspace, session, events.length]);
+  const sessionReports = reportsScope && sessionReportsState.scope === reportsScope ? sessionReportsState.reports : [];
 
   if (!workspace && !session && !hasConnections) {
     return (
@@ -339,6 +353,13 @@ export function ChatPage({ t, language, agents, picker, state, onState, selectio
               </div>
             ) : (
               <TranscriptView t={t} items={messageItems} language={language} onDecide={decide} previewAttachment={previewAttachment} approvalsEnabled={!readOnly} onOpenWorker={openInspector} selectedWorkerId={currentInspector?.workerId} />
+            )}
+            {sessionReports.length > 0 && (
+              <section className="chat-system-reports" aria-label={t.chat.systemReports.heading}>
+                {sessionReports.map(report => (
+                  <ChatSystemReportCard key={report.id} t={t} report={report} language={language} />
+                ))}
+              </section>
             )}
 
           </ConversationTabs>

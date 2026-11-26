@@ -14,6 +14,7 @@ import { availableSettingsSections, nextSettingsSection, resolveSettingsSection,
 import './settings/settingsNav.css';
 
 import { ConnectionsSection } from './settings/ConnectionsSection';
+import { GatewaySettingsSection } from './settings/GatewaySettingsSection';
 import { WorkspacesSection } from './settings/WorkspacesSection';
 import { KnowledgeVaultSection } from './settings/KnowledgeVaultSection';
 import { OperatingProfilesSection } from '../operatingProfiles/OperatingProfilesSection';
@@ -60,7 +61,12 @@ function SettingsPageContent({ t, platform, preferences, onChange, hostState, on
   const { agents, updater } = platform.capabilities;
   const observeOnly = hostState?.workflow === 'observe';
   const picker = hostState?.host.kind === 'desktop' ? platform.capabilities.filesystem : undefined;
-  const sections = availableSettingsSections({ agents: Boolean(agents && hostState), system: Boolean(updater || platform.capabilities.restart), profiles: !observeOnly && typeof agents?.listOperatingProfiles === 'function' });
+  const sections = availableSettingsSections({
+    agents: Boolean(agents && hostState),
+    system: Boolean(updater || platform.capabilities.restart),
+    profiles: !observeOnly && typeof agents?.listOperatingProfiles === 'function',
+    gateway: !observeOnly && typeof agents?.gatewayOverview === 'function',
+  });
   const [localSection, setLocalSection] = useState<SettingsSection>('general');
   const activeSection = resolveSettingsSection(section ?? localSection, sections, editGateFor);
   const [visited, setVisited] = useState<SettingsSection[]>([activeSection]);
@@ -236,6 +242,7 @@ function SettingsPageContent({ t, platform, preferences, onChange, hostState, on
             <AutoWatchLocations t={t} agents={agents} onState={onHostState} />
             <IgnoredFolders t={t} agents={agents} picker={picker} onState={onHostState} />
           </>}
+          {item === 'gateway' && agents && hostState && <GatewaySettingsSection t={t} agents={agents} state={hostState} />}
           {item === 'storage' && <>
             {agents && hostState && (
               <section className="card settings-section" aria-labelledby="settings-data-folder">
