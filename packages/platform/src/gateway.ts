@@ -790,3 +790,145 @@ export function sanitizeGatewayText(
 
   return { text, redactedCount, mentionsStripped, truncated };
 }
+
+export interface GatewayConnectorView {
+  id: string;
+  provider: GatewayProvider;
+  providerAccountId: string;
+  /** Opaque secret-store reference only; raw credentials are never serialized to clients. */
+  secretRef: string;
+  status: GatewayConnectorState;
+  policyVersion: number;
+  capabilityRevision: number;
+  capabilities?: GatewayCapabilities;
+  createdAt: string;
+  updatedAt: string;
+  health?: ConnectorHealth;
+}
+
+export interface GatewayConnectorSaveInput {
+  id?: string;
+  provider: GatewayProvider;
+  providerAccountId: string;
+  secretRef: string;
+  status?: GatewayConnectorState;
+}
+
+export interface GatewayLinkChallengeView {
+  challengeId: string;
+  code: string;
+  connectorId: string;
+  extaliaPrincipalId: string;
+  expiresAt: string;
+}
+
+export interface GatewayIssueChallengeInput {
+  connectorId: string;
+  extaliaPrincipalId?: string;
+  ttlSeconds?: number;
+}
+
+export interface GatewayConfirmLinkInput {
+  challengeId: string;
+  providerAccountId: string;
+  externalActorId: string;
+  permissionBands: GatewayPermissionBand[];
+  ttlSeconds?: number;
+}
+
+export interface GatewayPrincipalLinkView {
+  id: string;
+  connectorId: string;
+  providerAccountId: string;
+  externalActorId: string;
+  extaliaPrincipalId: string;
+  permissionBands: GatewayPermissionBand[];
+  state: 'active' | 'expired' | 'revoked';
+  expiresAt?: string;
+  confirmedAt: string;
+  revokedAt?: string;
+  revocationReason?: string;
+}
+
+export interface GatewayRouteView {
+  id: string;
+  connectorId: string;
+  providerAccountId: string;
+  channelId: string;
+  threadId?: string;
+  workspaceId: string;
+  mode: GatewayRouteMode;
+  audience: GatewayAudience;
+  policyRevision: number;
+  inboundEnabled: boolean;
+  outboundEnabled: boolean;
+  isDmDefault: boolean;
+  state: GatewayBindingState;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GatewayRouteSaveInput {
+  id?: string;
+  connectorId: string;
+  providerAccountId: string;
+  channelId: string;
+  threadId?: string;
+  workspaceId: string;
+  mode?: GatewayRouteMode;
+  audience?: GatewayAudience;
+  inboundEnabled?: boolean;
+  outboundEnabled?: boolean;
+  isDmDefault?: boolean;
+  state?: GatewayBindingState;
+}
+
+export interface GatewayAuditEntryView {
+  sequence: number;
+  actor: string;
+  action: string;
+  resource: string;
+  outcome: string;
+  reason?: string;
+  at: string;
+}
+
+export interface GatewayOverview {
+  connectors: GatewayConnectorView[];
+  routes: GatewayRouteView[];
+  links: GatewayPrincipalLinkView[];
+  recentAudit: GatewayAuditEntryView[];
+}
+
+export interface WorkspaceReportProjectionSummary {
+  id: string;
+  reportId: string;
+  chatId?: string;
+  targetSelection: AutonomousReportTargetSelection;
+  committedAt: string;
+}
+
+export interface WorkspaceReportsInboxView {
+  workspaceId: string;
+  reports: WorkspaceSystemReport[];
+  projections: WorkspaceReportProjectionSummary[];
+}
+
+export interface ChatSystemReportsView {
+  workspaceId: string;
+  sessionId: string;
+  reports: WorkspaceSystemReport[];
+}
+
+export const GATEWAY_HOST_METHODS = [
+  'gatewayOverview',
+  'saveGatewayConnector',
+  'setGatewayConnectorStatus',
+  'issueGatewayLinkChallenge',
+  'confirmGatewayPrincipalLink',
+  'revokeGatewayPrincipalLink',
+  'saveGatewayRoute',
+  'deleteGatewayRoute',
+  'listWorkspaceReports',
+  'listSessionSystemReports',
+] as const;

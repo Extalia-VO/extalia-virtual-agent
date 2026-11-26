@@ -48,6 +48,18 @@ import type { SkillMarketSearchResult, SkillMarketPreviewInput, SkillMarketPrevi
 import type { ContinuityView, ContinuityReadInput, ContinuityReadPage, HandoverPreviewInput, HandoverPreview, HandoverApplyInput, HandoverReconcileInput, HandoverReceipt } from './handover.js';
 import { VAULT_PROFILE_HOST_METHODS, type VaultProfilesCatalog, type SaveVaultProfileInput } from './vaultProfiles.js';
 import {
+  GATEWAY_HOST_METHODS,
+  type ChatSystemReportsView,
+  type GatewayConfirmLinkInput,
+  type GatewayConnectorSaveInput,
+  type GatewayConnectorState,
+  type GatewayIssueChallengeInput,
+  type GatewayLinkChallengeView,
+  type GatewayOverview,
+  type GatewayRouteSaveInput,
+  type WorkspaceReportsInboxView,
+} from './gateway.js';
+import {
   GENERAL_SCHEDULE_HOST_METHODS,
   type GeneralScheduleCatalog,
   type NextRunPreview,
@@ -1263,6 +1275,16 @@ export interface AgentHostApi extends ObservedMemoryApi {
   scheduleRunDetail?(runId: string): Promise<ScheduleRunDetail>;
   previewScheduleNextRuns?(trigger: ScheduleTrigger, count?: number): Promise<NextRunPreview>;
   reviewUnknownScheduleRun?(runId: string, expectedRevision: number, decision: ScheduleReviewDecision): Promise<ScheduleRunDetail>;
+  gatewayOverview?(): Promise<GatewayOverview>;
+  saveGatewayConnector?(input: GatewayConnectorSaveInput): Promise<GatewayOverview>;
+  setGatewayConnectorStatus?(connectorId: string, status: GatewayConnectorState): Promise<GatewayOverview>;
+  issueGatewayLinkChallenge?(input: GatewayIssueChallengeInput): Promise<GatewayLinkChallengeView>;
+  confirmGatewayPrincipalLink?(input: GatewayConfirmLinkInput): Promise<GatewayOverview>;
+  revokeGatewayPrincipalLink?(linkId: string, reason?: string): Promise<GatewayOverview>;
+  saveGatewayRoute?(input: GatewayRouteSaveInput): Promise<GatewayOverview>;
+  deleteGatewayRoute?(routeId: string): Promise<GatewayOverview>;
+  listWorkspaceReports?(workspaceId: string): Promise<WorkspaceReportsInboxView>;
+  listSessionSystemReports?(workspaceId: string, sessionId: string): Promise<ChatSystemReportsView>;
   /** Host resolves the registered vault; an optional expected binding only refuses stale callers. */
   workspaceKnowledge?(workspaceId: string, method: WorkspaceKnowledgeMethod, args: unknown[], expectedBinding?: WorkspaceKnowledgeBinding): Promise<unknown>;
   /** Live protocol events for every session. Returns an unsubscribe function. */
@@ -1276,6 +1298,7 @@ export const AGENT_HOST_METHODS = [
   'nativeStatus', 'refreshNativeStatus', 'setWorkspaceMissionConnections', 'planNativeMission', 'startNativeMission', 'cancelNativeMission', 'nativeMissionRun', 'listNativeMissions', 'refreshNativeMissionRecovery',
   ...OPERATING_PROFILE_HOST_METHODS,
   ...GENERAL_SCHEDULE_HOST_METHODS,
+  ...GATEWAY_HOST_METHODS,
   'completeSetup', 'createSession', 'setSessionOptions', 'modelChoices', 'teamModelChoices', 'getSessionTeam', 'saveSessionTeam', 'saveWorkspaceTeam', 'planTeam', 'continueSession', 'renameSession', 'previewSessionMove', 'moveSession', 'setSessionProjectRoot', 'sessionContinuity', 'handoverHarnesses', 'createHandoverDestination', 'previewHandover', 'applyHandover', 'readContinuity', 'reconcileHandover', 'deleteSession', 'sessionEvents', 'sendPrompt', 'uploadAttachment', 'removeAttachment', 'attachmentPreview', 'resolveApproval', 'revokeApproval', 'commandSandboxStatus', 'cancel',
   'setWorkflow', 'observeImports', 'observationSession', 'markObservedRead', 'setObservation', 'setAutoWatch',
   'observedWorkspaceLink', 'setObservedWorkspaceLink',

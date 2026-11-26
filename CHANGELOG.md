@@ -16,6 +16,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.361] - 2026-11-26
+
+- Implement Gateway Settings UI, Workspace Reports Inbox, Chat System Report cards (`#142`, `GW-WP-17`) & Schedule/Learning Gateway fanout wiring (`#134`, `WP-SCH-09..11`): add 10 `GATEWAY_HOST_METHODS` (`@extalia/platform`) backed by `GatewayHostBridge` (`packages/host/src/gateway/hostBridge.ts`, `store.ts`, `service.ts`), connect settled `ScheduleRunV1` runs (`onRunSettled` + `recordDelivery` in `packages/host/src/schedules.ts`) and terminal `learningSchedule` outcomes into canonical workspace-isolated `WorkspaceSystemReport` projection and outbox delivery without feedback loops, add the EN/ID `GatewaySettingsSection` (connectors, 5-dimension `ConnectorHealth`, opaque `secretRef`, challenge linking, routes ACL, Workspace Reports Inbox, audit viewer) in `SettingsPage.tsx`, and render read-only `ChatSystemReportCard` entries in `ChatPage.tsx` (`mockHost.ts` included).
+
 ## [0.4.360] - 2026-11-24
 
 - Record [ADR 0100](docs/adr/0100-os-sandbox-executor-and-exact-approvals.md) and implement PRD-SF-1.0 Release Slice C foundation (`#150`, `WP-06`/`WP-08`, `V2-05`/`V2-06`): add verifiable fail-closed OS command sandbox executors (`packages/host/src/tools/commandSandbox.ts` supporting `macos-seatbelt`, `linux-bwrap`, and fail-closed defaults) gated behind opt-in host configuration (`commandSandboxStatus`), wire SHA-256 digest-, generation-, and TTL-bound `ExactApprovalLedger` (`packages/host/src/approvalLedger.ts`) with effect-time `verifyApprovalEffect` & `revokeApproval` checks (`@extalia/runtime`, `@extalia/host`), record explicit settlement states (`not_run`, `passed`, `failed`, `timed_out`, `cancelled`, `unknown`) and executor isolation provenance on `IntegrationGateResult`, and render localized EN/ID outcome/executor badges in `MissionChanges.tsx`.

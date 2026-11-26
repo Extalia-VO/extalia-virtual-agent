@@ -1,0 +1,142 @@
+.chat-system-reports {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.chat-system-report-card {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: .84rem;
+  overflow-wrap: anywhere;
+}
+
+[data-material='liquid-glass'] .chat-system-report-card {
+  border-color: var(--glass-line);
+  box-shadow: inset 0 1px 0 var(--highlight);
+}
+
+[data-material='liquid-glass-pro'] .chat-system-report-card {
+  border-color: var(--pro-plate-line, var(--line));
+  background: var(--pro-plate, var(--surface));
+}
+
+.chat-system-report-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 10px;
+}
+
+.chat-system-report-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
+
+.chat-system-report-title .icon {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  color: var(--accent);
+}
+
+.chat-system-report-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.chat-system-report-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 6px 12px;
+  margin: 0;
+}
+
+.chat-system-report-facts > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.chat-system-report-facts dt {
+  color: var(--muted);
+  font-size: .74rem;
+}
+
+.chat-system-report-facts dd {
+  margin: 0;
+  font-weight: 500;
+}
+
+.chat-system-report-receipts {
+  display: grid;
+  gap: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+}
+
+.chat-system-report-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+}
+
+.chat-system-report-label {
+  font-weight: 600;
+  color: var(--muted);
+  font-size: .78rem;
+}
+
+.chat-system-report-skills {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.chat-system-report-skills li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.chat-system-report-problems {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+  color: var(--warn);
+}
+
+.chat-system-report-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin: 0;
+  color: var(--muted);
+  font-size: .74rem;
+}
+
+@media (max-width: 480px) {
+  .chat-system-report-card {
+    padding: 10px 12px;
+  }
+
+  .chat-system-report-facts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
