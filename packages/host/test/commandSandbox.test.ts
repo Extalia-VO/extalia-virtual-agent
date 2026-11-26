@@ -113,7 +113,7 @@ describe('probeCommandSandbox fail-closed behavior', () => {
     expect(sandbox.status.reason).toContain('extalia-missing-sandbox-exec');
   });
 
-  it('fails closed when a candidate binary fails to block out-of-workspace writes', async () => {
+  it.skipIf(process.platform === 'win32')('fails closed when a candidate binary fails to block out-of-workspace writes', async () => {
     const root = await tempDir('extalia-fake-sandbox-');
     const fakeBin = path.join(root, 'fake-sandbox.sh');
     // Ignores `-p <profile>` and executes `/bin/sh -c <cmd>` unsandboxed; probe MUST detect the escape.
