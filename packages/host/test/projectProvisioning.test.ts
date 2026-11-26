@@ -132,15 +132,23 @@ describe('project provisioning safety helpers', () => {
     const realHome = await realpath(homeDirectory);
     const realData = await realpath(dataDirectory);
 
-    const posixOpts = { homeDirectory: realHome, dataDirectory: realData, platform: 'darwin' as const };
+    const hostOpts = { homeDirectory: realHome, dataDirectory: realData };
+    expect(await isProtectedProjectPath(realHome, hostOpts)).toBe('Choose a project subfolder instead of your entire home directory.');
+    expect(await isProtectedProjectPath(realData, hostOpts)).toBe('Cannot use Extalia’s data directory as a project folder.');
+    expect(await isProtectedProjectPath(path.join(realData, 'sessions'), hostOpts)).toBe('Cannot use Extalia’s data directory as a project folder.');
+    expect(await isProtectedProjectPath(path.join(realHome, '.ssh'), hostOpts)).toMatch(/credential/i);
+    expect(await isProtectedProjectPath(path.join(realHome, '.ssh', 'keys'), hostOpts)).toMatch(/credential/i);
+    expect(await isProtectedProjectPath(path.join(realHome, '.aws', 'credentials'), hostOpts)).toMatch(/credential/i);
+    expect(await isProtectedProjectPath(path.join(realHome, 'app', '.env'), hostOpts)).toMatch(/credential/i);
+    expect(await isProtectedProjectPath(path.join(realHome, 'projects', 'my-app'), hostOpts)).toBeUndefined();
+
+    const posixOpts = { homeDirectory: '/Users/example', dataDirectory: '/Users/example/.extalia-vo', platform: 'darwin' as const };
     expect(await isProtectedProjectPath('/', posixOpts)).toMatch(/filesystem root/i);
-    expect(await isProtectedProjectPath(realHome, posixOpts)).toBe('Choose a project subfolder instead of your entire home directory.');
-    expect(await isProtectedProjectPath(realData, posixOpts)).toBe('Cannot use Extalia’s data directory as a project folder.');
-    expect(await isProtectedProjectPath(path.join(realData, 'sessions'), posixOpts)).toBe('Cannot use Extalia’s data directory as a project folder.');
-    expect(await isProtectedProjectPath(path.join(realHome, '.ssh'), posixOpts)).toMatch(/credential/i);
-    expect(await isProtectedProjectPath(path.join(realHome, '.ssh', 'keys'), posixOpts)).toMatch(/credential/i);
-    expect(await isProtectedProjectPath(path.join(realHome, '.aws', 'credentials'), posixOpts)).toMatch(/credential/i);
-    expect(await isProtectedProjectPath(path.join(realHome, 'app', '.env'), posixOpts)).toMatch(/credential/i);
+    expect(await isProtectedProjectPath('/Users/example', posixOpts)).toBe('Choose a project subfolder instead of your entire home directory.');
+    expect(await isProtectedProjectPath('/Users/example/.extalia-vo', posixOpts)).toBe('Cannot use Extalia’s data directory as a project folder.');
+    expect(await isProtectedProjectPath('/Users/example/.extalia-vo/sessions', posixOpts)).toBe('Cannot use Extalia’s data directory as a project folder.');
+    expect(await isProtectedProjectPath('/Users/example/.ssh/keys', posixOpts)).toMatch(/credential/i);
+    expect(await isProtectedProjectPath('/Users/example/projects/my-app', posixOpts)).toBeUndefined();
 
     for (const systemPath of [
       '/etc', '/private/etc/hosts', '/bin', '/sbin', '/usr/local',
@@ -149,8 +157,7 @@ describe('project provisioning safety helpers', () => {
       expect(await isProtectedProjectPath(systemPath, posixOpts)).toMatch(/system/i);
     }
 
-    // Explicitly allowed paths: subfolders of home and macOS/POSIX temp directories.
-    expect(await isProtectedProjectPath(path.join(realHome, 'projects', 'my-app'), posixOpts)).toBeUndefined();
+    // Explicitly allowed macOS/POSIX temp directories.
     expect(await isProtectedProjectPath('/var/folders/xx/my-project', posixOpts)).toBeUndefined();
     expect(await isProtectedProjectPath('/private/var/folders/xx/my-project', posixOpts)).toBeUndefined();
     expect(await isProtectedProjectPath('/tmp/my-project', posixOpts)).toBeUndefined();

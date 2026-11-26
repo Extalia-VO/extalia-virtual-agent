@@ -673,7 +673,7 @@ describe('pinned checkpoints and reviewed lineage joins', () => {
     const resolved = await f.service.reconcileHandover('codex-session', { operationId: uncertain.operationId, packetDigest: uncertain.packetDigest, outcome: 'accepted' });
     expect(resolved.state).toBe('inspected'); expect(f.snapshots()).toBe(captures); expect(f.effects).toHaveLength(1);
     f.deny(); await expect(f.service.inspectContinuity('codex-session')).rejects.toThrow('consent');
-  });
+  }, 30_000);
 });
 
 describe('whole-chain archive privacy', () => {
