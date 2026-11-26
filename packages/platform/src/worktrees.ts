@@ -58,6 +58,27 @@ export interface WorktreeOrphanView {
   unmerged?: boolean;
 }
 
+/** Verification status of the per-OS command execution sandbox (never implies silent fallback). */
+export type CommandSandboxKind = 'macos-seatbelt' | 'linux-bwrap' | 'none';
+
+export interface CommandSandboxStatus {
+  supported: boolean;
+  kind: CommandSandboxKind;
+  platform: string;
+  networkAccess: 'denied';
+  reason?: string;
+  verifiedAt?: string;
+}
+
+/** Explicit settlement states distinguishing verified completion from unrun/timed-out/cancelled/unknown effects. */
+export type IntegrationGateOutcome = 'not_run' | 'passed' | 'failed' | 'timed_out' | 'cancelled' | 'unknown';
+
+export interface IntegrationGateExecutorInfo {
+  kind: CommandSandboxKind | 'legacy-unsandboxed';
+  isolated: boolean;
+  networkAccess: 'denied' | 'allowed';
+}
+
 /** The test gate: a command the user chose (never a model), run in the disposable integration worktree. */
 export interface IntegrationGateInput { command: string; timeoutSeconds?: number }
 
@@ -71,6 +92,8 @@ export interface IntegrationGateResult {
   logDigest: string;
   observedAt: string;
   basis: 'verified_by_extalia' | 'not_run';
+  outcome?: IntegrationGateOutcome;
+  executor?: IntegrationGateExecutorInfo;
 }
 
 export type IntegrationStatus = 'ready' | 'conflict' | 'gate_failed' | 'gate_missing' | 'empty' | 'applied' | 'stale';

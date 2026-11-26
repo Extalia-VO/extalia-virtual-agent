@@ -1,9 +1,10 @@
-import type { AgentHostApi, HostMissionRun, IntegrationProposalView, SessionSummary } from '@extalia/platform';
+import { AGENT_HOST_METHODS, type AgentHostApi, type HostMissionRun, type IntegrationGateExecutorInfo, type IntegrationGateOutcome, type IntegrationProposalView, type SessionSummary } from '@extalia/platform';
 import { createElement, isValidElement, type ReactElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import { createMockPlatform } from '../src/host/mockHost';
 import { MESSAGES } from '../src/i18n';
+import { Icon } from '../src/ui/Icon';
 import {
   confirmChange, gateOrigin, hasWriteTasks, missionChangeItems, MissionChangesView, missionChangesSupported, missionOrphans, proposeForm, proposeRequest,
   type ChangesConfirm, type MissionChangesViewProps,
@@ -172,5 +173,72 @@ describe('mission Changes panel (ADR 0028)', () => {
     const html = render(older as AgentHostApi);
     expect(html).not.toContain('mission-changes');
     expect(html).toContain(run.title);
+  });
+
+  it('renders EN & ID gate outcomes, check vs alert icons, and executor isolation badges', async () => {
+    const { agents, run } = await seeded();
+    const baseProps = await viewProps(agents, run);
+    const writeItem = baseProps.items!.find(item => item.worktree && item.proposals.length > 0)!;
+    const baseProposal = writeItem.proposals[0]!;
+
+    const cases: Array<{
+      outcome: IntegrationGateOutcome;
+      basis: 'verified_by_extalia' | 'not_run';
+      ok: boolean;
+      executor: IntegrationGateExecutorInfo;
+      expectedIcon: 'check' | 'alert';
+    }> = [
+      { outcome: 'passed', basis: 'verified_by_extalia', ok: true, executor: { kind: 'macos-seatbelt', isolated: true, networkAccess: 'denied' }, expectedIcon: 'check' },
+      { outcome: 'not_run', basis: 'not_run', ok: false, executor: { kind: 'none', isolated: false, networkAccess: 'allowed' }, expectedIcon: 'alert' },
+      { outcome: 'timed_out', basis: 'verified_by_extalia', ok: false, executor: { kind: 'linux-bwrap', isolated: true, networkAccess: 'denied' }, expectedIcon: 'alert' },
+      { outcome: 'unknown', basis: 'verified_by_extalia', ok: false, executor: { kind: 'legacy-unsandboxed', isolated: false, networkAccess: 'allowed' }, expectedIcon: 'alert' },
+    ];
+
+    for (const language of ['en', 'id'] as const) {
+      const msg = MESSAGES[language];
+      for (const entry of cases) {
+        const proposal: IntegrationProposalView = {
+          ...baseProposal,
+          status: entry.ok ? 'ready' : 'gate_failed',
+          gate: {
+            command: 'npm test',
+            exitCode: entry.ok ? 0 : 1,
+            ok: entry.ok,
+            durationMs: 1200,
+            log: entry.ok ? '' : 'gate output',
+            logDigest: `sha256:${'a'.repeat(64)}`,
+            observedAt: baseProposal.createdAt,
+            basis: entry.basis,
+            outcome: entry.outcome,
+            executor: entry.executor,
+          },
+        };
+        const props: MissionChangesViewProps = {
+          ...baseProps,
+          t: msg,
+          language,
+          items: [{ ...writeItem, proposals: [proposal] }],
+        };
+        const tree = MissionChangesView(props);
+        const gateEl = elements(tree).find(el => el.props.className === 'mission-gate')!;
+        const icons = elements(gateEl).filter(el => el.type === Icon);
+        expect(icons.map(el => el.props.name)).toEqual([entry.expectedIcon]);
+
+        const html = renderToStaticMarkup(createElement(MissionChangesView, props));
+        expect(html).toContain(msg.missions.changes.gateOutcomes[entry.outcome]);
+        expect(html).toContain(msg.missions.changes.gateExecutors[entry.executor.kind]);
+      }
+    }
+  });
+
+  it('registers revokeApproval and commandSandboxStatus in AGENT_HOST_METHODS and mockHost', async () => {
+    expect(AGENT_HOST_METHODS).toContain('revokeApproval');
+    expect(AGENT_HOST_METHODS).toContain('commandSandboxStatus');
+
+    const agents = createMockPlatform({ seed: 'ready', host: 'bridge' }).capabilities.agents!;
+    expect(typeof agents.revokeApproval).toBe('function');
+    expect(typeof agents.commandSandboxStatus).toBe('function');
+    const sandbox = await agents.commandSandboxStatus!();
+    expect(sandbox).toMatchObject({ supported: true, kind: 'macos-seatbelt', networkAccess: 'denied' });
   });
 });

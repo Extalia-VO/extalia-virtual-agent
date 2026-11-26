@@ -79,7 +79,7 @@ import {
 import {
   normalizeHostMissionRequest, type HostMissionRun, heuristicMissionPlan, MISSION_PLAN_LIMITS, MISSION_PLAN_TIMEOUT_MS, missionPlanPrompt, normalizeMissionPlanRequest, parseMissionPlanReply,
   type MissionPlan, type MissionPlanCandidate, type MissionPlanContext, isModelId, normalizeAgentIdentity, normalizeAgentTeam, normalizeSessionOptions, normalizeTeamPlanRequest, resolveDataDirectory, SETUP_VERSION, type ModelChoices, type SessionOptions,
-  type AgentAppId, type AgentHostApi, type ApprovalDecisionInput, type ConnectionInput, type ConnectionTestResult, type ConnectionView,
+  type AgentAppId, type AgentHostApi, type ApprovalDecisionInput, type CommandSandboxStatus, type ConnectionInput, type ConnectionTestResult, type ConnectionView,
   type FolderCheck, type HostState, type LibrarySessionSummary, type NativeCore, type SessionSummary, type WorkspaceInput,
   HERMES_PERMISSION_MODES, PERMISSION_MODES, ATTACHMENT_ID_PATTERN, normalizeAttachmentUpload, normalizePromptAttachmentIds, normalizePromptClientRequestId, normalizePromptLearnSkill, type PermissionMode, type PromptAttachment, type PromptAttachmentInput,
   normalizeBuiltinSkills, normalizeSkillConsent, normalizeSkillNames, normalizeSkillEvaluationInput, type SkillConsentInput, type WorkspaceSkills,
@@ -92,7 +92,7 @@ import {
 import { createEvent, type AgentEvent, type EventBody, type EventSource, type ExtaliaEvent } from '@extalia/protocol';
 import {
   ProviderError, buildSystemPrompt, composeTurn, memberEditRefusal, createConductTeamMeetingTool, createDelegationTool, createFallbackProvider, createManageTeamTool, createProvider, hermesTeamBrief, modelChain, runTurn,
-  type AnyTool, type ApprovalOutcome, type ContextCompactionReport, type DelegationOptions, type ModelMessage, type ModelProvider, type NativeMeetingMinutes, type NativeMissionAccounting, type NativeMissionTaskResult, type ToolAccess, type ToolResultEntry, type TurnAttachment, type TurnResult,
+  type AnyTool, type ApprovalOutcome, type ApprovalRequest, type ContextCompactionReport, type DelegationOptions, type ModelMessage, type ModelProvider, type NativeMeetingMinutes, type NativeMissionAccounting, type NativeMissionTaskResult, type ToolAccess, type ToolResultEntry, type TurnAttachment, type TurnResult,
 } from '@extalia/runtime';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
@@ -149,7 +149,9 @@ import { VaultProfiles, type StoredVaultProfiles } from './vaultProfiles.js';
 import { KnowledgeEditService, knowledgeEditHostMethods } from './knowledgeEdit.js';
 import { VaultWatcher, type VaultWatcherOptions } from './vaultWatcher.js';
 import { sessionContext } from './sessionContext.js';
-import { createCommandTool } from './tools/command.js';
+import { createCommandTool, WORKSPACE_COMMAND_UNAVAILABLE } from './tools/command.js';
+import type { CommandSandboxExecutor } from './tools/commandSandbox.js';
+import { ExactApprovalLedger, canonicalArgumentsJson, computeActionDigest } from './approvalLedger.js';
 import { createFileTools } from './tools/files.js';
 import { worktreeHostMethods } from './worktrees/hostMethods.js';
 import { IntegrationQueue, WorktreeError, WorktreeManager, type DiffSummary, type IntegrationGate, type IntegrationProposal, type WorktreeOrphan, type WorktreeRecord, type WorktreeStatus } from './worktrees/index.js';
@@ -204,6 +206,8 @@ export interface AgentHostOptions {
   modelDiscovery?: ModelDiscoveryPort;
   /** Explicit experimental completion port; defaults to the measured TypeScript adapter. */
   completion?: OpenAICompletionPort;
+  /** Optional verified per-OS command sandbox executor. Absent means fail-closed command unavailability. */
+  commandSandbox?: CommandSandboxExecutor;
   /** Optional profile-scoped meeting exporter. History-off sessions never invoke it. */
   onMeetingMinutes?(record: NativeMeetingMinutes, context: { sessionId: string; workspaceId: string }): Promise<string | undefined>;
   /**
@@ -563,7 +567,14 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       directory: path.join(layout.root, 'worktrees'), registryFile: path.join(layout.state, 'worktrees.json'), git: { env },
       isOwnerActive: owner => activeWriteMissions.has(owner.missionId),
     });
-    return { manager, queue: await IntegrationQueue.open(manager, { registryFile: path.join(layout.state, 'integrations.json'), env, requireWorkspaceBoundary: true }) };
+    return { manager, queue: await IntegrationQueue.open(manager, {
+      registryFile: path.join(layout.state, 'integrations.json'),
+      env,
+      requireWorkspaceBoundary: true,
+      ...(options.commandSandbox ? { sandbox: options.commandSandbox } : {}),
+      dataDirectory: layout.root,
+      homeDirectory,
+    }) };
   });
   worktreeStore.catch(() => undefined);
   const worktreeFailure = (error: unknown): Error => userError(error instanceof WorktreeError ? error.message : 'The isolated worktree for a write-capable task could not be prepared.');
@@ -802,6 +813,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
   // A concurrent profile switch cannot invalidate the roster snapshot being admitted.
   let workspaceChanges: Promise<void> = Promise.resolve();
   let workspaceChangeRevision = 0;
+  const approvalLedger = new ExactApprovalLedger();
   // A reviewed context write reserves only its destination. Capturing another
   // session must not masquerade as a global workspace-permission mutation.
   const handoverDestinations = new Set<string>();
@@ -822,6 +834,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
   function withWorkspaceChange<T>(change: () => Promise<T>, invalidatePendingLearning = true): Promise<T> {
     if (observedWorkspaceChange) return Promise.reject(userError('Wait for the project association to finish before changing workspace settings.'));
     workspaceChangeRevision++;
+    approvalLedger.revokeAll('workspace configuration changed');
     workspaceBoundaryMutations++;
     const next = workspaceChanges.then(async () => {
       assertHostOpen();
@@ -6220,7 +6233,13 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         const permissionMode: PermissionMode = workspace ? (sessionOptions.permissionMode ?? 'workspace') : 'plan';
         const fileTools = workspace && root && access ? createFileTools(root, { authority: access }).map(localWriteTool) : [];
         const foldersTool = workspace && access ? workspaceFoldersTool(access) : undefined;
-        const commandTool = workspace && root ? createCommandTool(root, { filesystemBoundary: 'required' }) : undefined;
+        const commandTool = workspace && root ? createCommandTool(root, {
+          filesystemBoundary: 'required',
+          ...(options.commandSandbox ? { sandbox: options.commandSandbox } : {}),
+          dataDirectory: layout.root,
+          homeDirectory,
+          env,
+        }) : undefined;
         const readOnly: AnyTool[] = [...fileTools.filter(tool => tool.access === 'read'), ...(foldersTool ? [foldersTool] : [])];
         const tools: AnyTool[] = [...fileTools, ...(foldersTool ? [foldersTool] : []), ...(commandTool ? [commandTool] : [])];
         const scheduleJobsAvailable = Boolean(workspace) && !scheduledInvocation;
@@ -6368,11 +6387,41 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         const sessionGrants = grants.get(sessionId) ?? new Set<ToolAccess>();
         grants.set(sessionId, sessionGrants);
         /** Approvals of the lead and of write members share the session's one pending slot (writers run one at a time). */
-        const askUser = (request: { approvalId: string }) => new Promise<ApprovalOutcome>(resolve => {
+        const askUser = (request: ApprovalRequest) => new Promise<ApprovalOutcome>(resolve => {
           const current = runs.get(sessionId);
           if (!current) { resolve('reject'); return; }
+          const argumentsJson = canonicalArgumentsJson(request.input);
+          approvalLedger.issue({
+            approvalId: request.approvalId,
+            sessionId,
+            workspaceId: workspace?.id ?? null,
+            toolName: request.toolName ?? request.action,
+            access: request.access,
+            ...(request.target !== undefined ? { target: request.target } : {}),
+            argumentsJson,
+            generation: workspaceChangeRevision,
+          });
           current.pending = { approvalId: request.approvalId, resolve: outcome => { delete current.pending; resolve(outcome); } };
         });
+        const verifyApprovalEffect = async (request: ApprovalRequest & { decision: ApprovalOutcome }): Promise<{ ok: true } | { ok: false; message: string }> => {
+          const argumentsJson = canonicalArgumentsJson(request.input);
+          const actionDigest = computeActionDigest({
+            sessionId,
+            workspaceId: workspace?.id ?? null,
+            toolName: request.toolName ?? request.action,
+            access: request.access,
+            ...(request.target !== undefined ? { target: request.target } : {}),
+            argumentsJson,
+            generation: workspaceChangeRevision,
+          });
+          const check = approvalLedger.verifyForEffect(request.approvalId, {
+            sessionId,
+            workspaceId: workspace?.id ?? null,
+            actionDigest,
+            generation: workspaceChangeRevision,
+          });
+          return check.ok ? { ok: true } : { ok: false, message: check.message };
+        };
         const workerToolsForConnection = (id: string): AnyTool[] => {
           const selected = frozenProviders.get(id);
           if (!selected) throw userError('That team connection was not approved for this turn.');
@@ -6763,6 +6812,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
                 return publish(sessionId, body);
               },
               requestApproval: request => askUser(request),
+              verifyApprovalEffect,
               signal: controller.signal,
               takeSteering: (history, boundary) => steering.take(history, boundary),
               beforeComplete: async result => {
@@ -6864,7 +6914,35 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       if (observations.has(sessionId)) throw userError('Observed sessions cannot approve native agent actions.');
       const pending = runs.get(sessionId)?.pending;
       if (!pending || pending.approvalId !== approvalId) throw userError('This request is no longer waiting for approval.');
+      const settled = approvalLedger.resolve(approvalId, decision);
+      if (!settled.ok) {
+        pending.resolve('reject');
+        throw userError(settled.message);
+      }
       pending.resolve(decision);
+    },
+
+    async revokeApproval(sessionId, approvalId) {
+      assertHostOpen();
+      if (observations.has(sessionId)) throw userError('Observed sessions cannot revoke native agent approvals.');
+      const record = approvalLedger.get(approvalId);
+      if (record && record.sessionId !== sessionId) throw userError('This approval does not belong to this session.');
+      approvalLedger.revoke(approvalId, 'revoked by user');
+      const pending = runs.get(sessionId)?.pending;
+      if (pending && pending.approvalId === approvalId) {
+        pending.resolve('reject');
+      }
+    },
+
+    async commandSandboxStatus(): Promise<CommandSandboxStatus> {
+      assertHostOpen();
+      return options.commandSandbox?.status ?? {
+        supported: false,
+        kind: 'none',
+        platform: process.platform,
+        networkAccess: 'denied',
+        reason: WORKSPACE_COMMAND_UNAVAILABLE,
+      };
     },
 
     async cancel(sessionId, expectedNativeRunId) {
@@ -6877,6 +6955,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       }
       if (observations.has(sessionId)) throw userError('Extalia cannot cancel an observed agent. Pause observation instead.');
       followupSuggestions.invalidate(sessionId);
+      approvalLedger.revokeSession(sessionId, 'session cancelled');
       const pausedPrompts = promptQueues.suspend(sessionId);
       if (!run) { await pausedPrompts; return; }
       if (!run.planning) publish(sessionId, { type: 'user.intervention', action: 'cancel' });

@@ -608,6 +608,17 @@
       "unresolvedRuntimeImports": 0
     },
     {
+      "path": "packages/host/src/approvalLedger.ts",
+      "category": "legacy-backend",
+      "sha256": "ab83d4994a91ec2d8d1b952f6a58c3736346dd3cd98bab71950733b850bc464c",
+      "loc": 295,
+      "bytes": 10069,
+      "effectKinds": [
+        "node-builtin"
+      ],
+      "unresolvedRuntimeImports": 0
+    },
+    {
       "path": "packages/host/src/attachments.ts",
       "category": "legacy-backend",
       "sha256": "1d7698f25bd88b6516172a81378d0f7a8aa4037586239729b549561ebc988fc4",
@@ -1317,9 +1328,9 @@
     {
       "path": "packages/host/src/index.ts",
       "category": "legacy-backend",
-      "sha256": "1a8835e75d0cf1affab40f7be8e5912568078a6b9abd352441d81ac2163dd43a",
-      "loc": 55,
-      "bytes": 4069,
+      "sha256": "bb9c30f51efc44648388849dc2ffa46c3394c3ec43bfd3e55c9330fe3004f1cb",
+      "loc": 57,
+      "bytes": 4149,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -2047,9 +2058,9 @@
     {
       "path": "packages/host/src/service.ts",
       "category": "legacy-backend",
-      "sha256": "78ecae4dddef92d3d92374b125f0c749532191b858d8fea3d2468551fc72f574",
-      "loc": 7704,
-      "bytes": 530078,
+      "sha256": "7ed559e054c330798a28c08248895533a841e8cc253ce5449356f693333b2c8c",
+      "loc": 7783,
+      "bytes": 533553,
       "effectKinds": [
         "node-builtin",
         "runtime-call"
@@ -2235,9 +2246,21 @@
     {
       "path": "packages/host/src/tools/command.ts",
       "category": "legacy-backend",
-      "sha256": "e228fd2342368c696d43b1a63f10701987fe507cdd3bd505810ac4fb1071a0e7",
-      "loc": 269,
-      "bytes": 11762,
+      "sha256": "554a1de147c69327b9fb33d2b48505ae00fbcfd052f37a58508ecf1ecbe7d6b2",
+      "loc": 324,
+      "bytes": 14401,
+      "effectKinds": [
+        "node-builtin",
+        "runtime-call"
+      ],
+      "unresolvedRuntimeImports": 0
+    },
+    {
+      "path": "packages/host/src/tools/commandSandbox.ts",
+      "category": "legacy-backend",
+      "sha256": "7464beee1d508aaad49711a00247d432cafd3b0bd4ddf8393b0e444c04070b73",
+      "loc": 320,
+      "bytes": 11392,
       "effectKinds": [
         "node-builtin",
         "runtime-call"
@@ -2421,9 +2444,9 @@
     {
       "path": "packages/host/src/worktrees/integration.ts",
       "category": "legacy-backend",
-      "sha256": "70bc4118fb145337190c76962f3dfb6654555514b90076bea654bf4c6645800f",
-      "loc": 282,
-      "bytes": 17025,
+      "sha256": "08d7784834761d3e099693c01e71ef71996f7cbcb0ed062c5ab7a3edfb885777",
+      "loc": 329,
+      "bytes": 19625,
       "effectKinds": [
         "node-builtin"
       ],
@@ -2488,9 +2511,9 @@
     {
       "path": "packages/platform/src/agentHost.ts",
       "category": "shared-backend-review",
-      "sha256": "affc6a8a0b0c485d48890a403024b83a01663ee85b8ff74ae7b2f5c64ae47de4",
-      "loc": 1318,
-      "bytes": 79830,
+      "sha256": "cae8071ab5509bc63bcc74c6a5eb4870e1d321736aa55c5ec476797ac39cc4da",
+      "loc": 1322,
+      "bytes": 80235,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -2731,9 +2754,9 @@
     {
       "path": "packages/platform/src/worktrees.ts",
       "category": "shared-backend-review",
-      "sha256": "df5f1cafdc9bcf5165ca675d2900ecd852e9f5db5ef847425ad42e619d4b5920",
-      "loc": 188,
-      "bytes": 8871,
+      "sha256": "1f93d184bb510ab195fd3910f7e9d5dc3df18cd61c6b261127d53cbfac4cc6c0",
+      "loc": 211,
+      "bytes": 9697,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -3163,9 +3186,9 @@
     {
       "path": "packages/runtime/src/loop.ts",
       "category": "legacy-backend",
-      "sha256": "5f5a2f58d28fb3b10c49764211e85680fc058e77d57000b4d94da33d6a909d7e",
-      "loc": 329,
-      "bytes": 19850,
+      "sha256": "e4e0a8bbb1e74dbc3d5c1d2625552594b825075f5e270dcc5ba4e3c97fafec26",
+      "loc": 352,
+      "bytes": 20998,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -3302,9 +3325,9 @@
     {
       "path": "packages/runtime/src/tools.ts",
       "category": "legacy-backend",
-      "sha256": "2036d7deb9cbfa00a53be2ca61e061e6a617bd8abbf77b9b36a0e5a2540596df",
-      "loc": 118,
-      "bytes": 5053,
+      "sha256": "6ef88a60a4858a437d42b7cd017c46722e582a06817741070fdb11df8e259ae0",
+      "loc": 122,
+      "bytes": 5283,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },

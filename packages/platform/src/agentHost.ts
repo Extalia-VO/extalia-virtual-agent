@@ -32,7 +32,7 @@ import type { AttachmentPreview, PromptAttachment, PromptAttachmentInput } from 
 import type { BuiltinSkillInfo, SkillConsentInput, WorkspaceSkills } from './skills.js';
 import type { SkillActionResult, SkillApprovalInput, SkillEvaluationInput, SkillImportSource, SkillRegistryReport, SkillRegistryPage, SkillRegistryPageInput, SkillReviewInput, SkillRevisionDetails, SkillPreflightInput, SkillPreflightReport, SkillRoutingInput, SkillRoutingReport } from './skillRegistry.js';
 import type {
-  IntegrationApproval, IntegrationGateInput, IntegrationProposalView, IntegrationRequest, WorktreeDiffView, WorktreeDiscardConfirmation, WorktreeOrphanView, WorktreeStatusView, WorktreeView,
+  CommandSandboxStatus, IntegrationApproval, IntegrationGateInput, IntegrationProposalView, IntegrationRequest, WorktreeDiffView, WorktreeDiscardConfirmation, WorktreeOrphanView, WorktreeStatusView, WorktreeView,
 } from './worktrees.js';
 import type {
   KnowledgeGraph, KnowledgeLinkPage, KnowledgeNodeLookup, KnowledgeNoteResult, KnowledgeOverview, KnowledgeOverviewOptions, KnowledgeSearchResult, KnowledgeStatus, KnowledgeSyncMode,
@@ -1075,6 +1075,10 @@ export interface AgentHostApi extends ObservedMemoryApi {
    */
   attachmentPreview(sessionId: string, ref: string): Promise<AttachmentPreview | undefined>;
   resolveApproval(sessionId: string, approvalId: string, decision: ApprovalDecisionInput): Promise<void>;
+  /** Revoke a pending or unexecuted exact-action approval so effect-time verification denies execution. */
+  revokeApproval?(sessionId: string, approvalId: string): Promise<void>;
+  /** Inspect the host's verified per-OS command sandbox capability without assuming availability. */
+  commandSandboxStatus?(): Promise<CommandSandboxStatus>;
   /** A status-panel cancellation is bound to its exact Native invocation; legacy callers may omit the guard. */
   cancel(sessionId: string, expectedNativeRunId?: string): Promise<void>;
   /** Native history locations Extalia knows how to look in. Nothing is read until a scan. */
@@ -1272,7 +1276,7 @@ export const AGENT_HOST_METHODS = [
   'nativeStatus', 'refreshNativeStatus', 'setWorkspaceMissionConnections', 'planNativeMission', 'startNativeMission', 'cancelNativeMission', 'nativeMissionRun', 'listNativeMissions', 'refreshNativeMissionRecovery',
   ...OPERATING_PROFILE_HOST_METHODS,
   ...GENERAL_SCHEDULE_HOST_METHODS,
-  'completeSetup', 'createSession', 'setSessionOptions', 'modelChoices', 'teamModelChoices', 'getSessionTeam', 'saveSessionTeam', 'saveWorkspaceTeam', 'planTeam', 'continueSession', 'renameSession', 'previewSessionMove', 'moveSession', 'setSessionProjectRoot', 'sessionContinuity', 'handoverHarnesses', 'createHandoverDestination', 'previewHandover', 'applyHandover', 'readContinuity', 'reconcileHandover', 'deleteSession', 'sessionEvents', 'sendPrompt', 'uploadAttachment', 'removeAttachment', 'attachmentPreview', 'resolveApproval', 'cancel',
+  'completeSetup', 'createSession', 'setSessionOptions', 'modelChoices', 'teamModelChoices', 'getSessionTeam', 'saveSessionTeam', 'saveWorkspaceTeam', 'planTeam', 'continueSession', 'renameSession', 'previewSessionMove', 'moveSession', 'setSessionProjectRoot', 'sessionContinuity', 'handoverHarnesses', 'createHandoverDestination', 'previewHandover', 'applyHandover', 'readContinuity', 'reconcileHandover', 'deleteSession', 'sessionEvents', 'sendPrompt', 'uploadAttachment', 'removeAttachment', 'attachmentPreview', 'resolveApproval', 'revokeApproval', 'commandSandboxStatus', 'cancel',
   'setWorkflow', 'observeImports', 'observationSession', 'markObservedRead', 'setObservation', 'setAutoWatch',
   'observedWorkspaceLink', 'setObservedWorkspaceLink',
   'observedUserInputStatus', 'answerObservedUserInput',

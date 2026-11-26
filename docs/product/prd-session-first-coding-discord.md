@@ -3,7 +3,7 @@
 
 | Metadata | Nilai |
 | --- | --- |
-| Status | **In progress (Slices A & B complete & verified locally at v0.4.359; Slices C–E pending)** — Slice A1 backend (`ADR 0095` + profile `landingPage` `ADR 0096`), Slice A2 (`#127`: zero-workspace Chat UI, `Unassigned` session tree, `null → workspace` attach dialog, Chat-first default landing + lazy 3D Office), dan Slice B (`#149`, `WP-05`, `ADR 0099`: two-phase `previewProjectProvision` / `applyProjectProvision`, protected-path/symlink refusal, dirty/protected-branch Git acknowledgement, curated zero-script templates, partial-failure step receipts, Chat `ProjectProvisionDialog` & atomic `null → workspace` attach, `COD-001` unassigned proposal guidance) telah terimplementasi secara lokal; Slices C–E (isolated coding worker executor/apply, live Discord/Gateway acceptance & UI `#138`/`#142`, shared 3D Office polish) belum selesai |
+| Status | **In progress (Slices A & B complete, Slice C foundation implemented & verified locally at v0.4.360; remaining Slices C–E pending)** — Slice A1/A2 (`ADR 0095`, `ADR 0096`), Slice B (`#149`, `WP-05`, `ADR 0099`), serta Slice C foundation (`#150`, `WP-06`/`WP-08`, `ADR 0100`: OS command sandbox probe `macos-seatbelt`/`linux-bwrap` behind opt-in gate, `ExactApprovalLedger` effect-time revocation, dan settlement outcome/executor badges) telah terimplementasi secara lokal; sisa Slice C (Linux `bwrap` live test, full Rust worker lease/child fencing & real-provider OS certification), Gateway UI/live acceptance (`#138`, `#142`), dan shared 3D Office polish belum selesai |
 | Versi dokumen | PRD-SF-1.0 |
 | Tanggal | 23 November 2026 |
 | Repository | [Extalia-VO/extalia-virtual-agent](https://github.com/Extalia-VO/extalia-virtual-agent) |
