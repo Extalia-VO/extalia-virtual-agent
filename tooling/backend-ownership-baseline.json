@@ -1288,9 +1288,9 @@
     {
       "path": "packages/host/src/hermesDelegation.ts",
       "category": "legacy-backend",
-      "sha256": "dfa751eac59b00322ba73b3f51127e00797ae535599a2f6fcbb9c7d8171a6096",
-      "loc": 167,
-      "bytes": 10860,
+      "sha256": "5ae28e9970864e913f4cd2b7de72e29aa551068d36c3c6b3f32a883eff690178",
+      "loc": 171,
+      "bytes": 10767,
       "effectKinds": [
         "node-builtin"
       ],
@@ -3317,9 +3317,9 @@
     {
       "path": "packages/runtime/src/providers/anthropic.ts",
       "category": "legacy-backend",
-      "sha256": "8d9a519d4dc4e8378d4864091f434edf3b1277ce150fef3af63c3fe201b687a1",
-      "loc": 214,
-      "bytes": 10487,
+      "sha256": "5dc73b2eab4f004fce1bab2726b9534b70d324575e30491d090994b9023e1d63",
+      "loc": 220,
+      "bytes": 10742,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },

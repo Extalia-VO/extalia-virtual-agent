@@ -16,6 +16,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.363] - 2026-11-27
+
+- Integrate dependency updates (`#97`, `#99`, `#101`, `#130`): bump `astral-sh/setup-uv` in `.github/workflows/release.yml`, apply 12 minor/patch package updates (`eslint`, `vitest`, `electron 45.4.1`, `electron-updater`, `electron-builder`, `three 0.187.0`, `@types/three`, `meshoptimizer`, `downshift`, `typescript-eslint`, `vite`, `@vitejs/plugin-react`), migrate `packages/host/src/hermesDelegation.ts` to `js-yaml` `5.5.0` public `YAML11_SCHEMA.withTags` / `defineScalarTag` API (preserving YAML 1.1 numeric spelling guards and merge-key support), and update `packages/runtime/src/providers/anthropic.ts` for `@anthropic-ai/sdk` `1.12.0` (retaining explicit `x-api-key` without implicit `Authorization` leakage).
+
 ## [0.4.362] - 2026-11-26
 
 - Record [ADR 0101](docs/adr/0101-whatsapp-conditional-monitoring-adapter.md) and implement Universal Gateway v2 M4 (`#141`) and M5 (`#143`) local foundations: add conditional fail-closed WhatsApp Cloud API / BSP monitoring adapter (`packages/host/src/gateway/whatsapp.ts` with Meta eligibility gate, raw-body `X-Hub-Signature-256`, 24h window & `utility` template registry, opt-out detection, 4-signal redaction, dual budget caps, and monotonic `wamid` webhook reconciliation), browser-safe `GatewayAdapterContract` / Watchdog SDK types (`packages/platform/src/gatewayAdapter.ts`), loopback-only isolated Webhook Edge (`packages/host/src/gateway/webhookEdge.ts`), independent `HostWatchdogMonitor` (`packages/host/src/gateway/watchdog.ts`), and 6-check `runGatewayAdapterConformance` + reference `webhook-relay` 4th-provider adapter (`packages/host/src/gateway/adapterSdk.ts`).

@@ -1,7 +1,7 @@
 {
   "name": "@extalia/web",
   "description": "Extalia Web client and the shared renderer UI used by Desktop.",
-  "version": "0.4.362",
+  "version": "0.4.363",
   "private": true,
   "license": "MIT",
   "type": "module",
@@ -26,17 +26,17 @@
     "@react-three/fiber": "9.8.2",
     "@xyflow/react": "^13.0.3",
     "d3-force-3d": "3.0.6",
-    "downshift": "^9.4.0",
+    "downshift": "^9.5.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
-    "three": "0.186.1",
+    "three": "0.187.0",
     "zustand": "^5.0.15"
   },
   "devDependencies": {
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
-    "@types/three": "0.186.0",
-    "@vitejs/plugin-react": "^6.1.2",
-    "vite": "^8.3.4"
+    "@types/three": "0.187.0",
+    "@vitejs/plugin-react": "^6.3.0",
+    "vite": "^8.3.8"
   }
 }
