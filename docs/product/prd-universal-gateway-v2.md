@@ -2,8 +2,8 @@
 
 ## Discord Collaboration · Telegram Remote Operations · WhatsApp Monitoring · Autonomous Knowledge/Skills Reports
 
-> **Document status:** Proposed implementation specification, revision 2.0, 24 November 2026 (supersedes v1 draft).  
-> **Code audit baseline:** `Extalia-VO/extalia-virtual-agent` tag `v0.4.353` (static review; not a statement of implemented gateway functionality).  
+> **Document status:** Implementation in progress, revision 2.0 (M0–M3 core/UI/fanout & M4/M5 local modules implemented through `v0.4.362`; live Discord/Telegram/Meta WABA account certification and packaged soak remain separate).  
+> **Code audit baseline:** `Extalia-VO/extalia-virtual-agent` tag `v0.4.353` (static baseline prior to incremental `v0.4.358`–`v0.4.362` slices).  
 > **Repository path:** `docs/product/prd-universal-gateway-v2.md`.  
 > **Companion PRDs:** [Schedule & Automation vNext (`prd-schedule-automation-vnext.md`)](prd-schedule-automation-vnext.md), [Session-First Workspace, Coding Workers & Discord (`prd-session-first-coding-discord.md`)](prd-session-first-coding-discord.md), [App Flow & Live Agents (`prd-app-flow-and-live-agents.md`)](prd-app-flow-and-live-agents.md), [Security Architecture (`../architecture/security.md`)](../architecture/security.md).  
 > **Audience:** product owner, Extalia Host/Protocol engineers, Discord/Telegram/WhatsApp adapter engineers, UI engineering, QA and release security reviewers.  

@@ -393,6 +393,12 @@ for example when one runs out of quota.
 
 ## 11. Status tracker
 
+### Universal Gateway v2 M4 & M5 foundation (2026-11-27, v0.4.362)
+
+- **Implemented and verified locally** (synthetic fixtures and loopback HTTP tests; live Meta WABA, Discord, and Telegram platform acceptance remain separate):
+  - **WhatsApp Cloud API conditional monitoring (`#141`, [ADR 0101](../adr/0101-whatsapp-conditional-monitoring-adapter.md)):** added fail-closed `packages/host/src/gateway/whatsapp.ts` (`wa.enabled = false` default, `complianceSignOffId` requirement, raw-body `X-Hub-Signature-256` verification, GET webhook challenge, 24h customer-service window and approved `utility` template checks, `STOP`/`UNSUBSCRIBE`/`BERHENTI` opt-out recognition, 4-signal redaction, dual monthly/workspace budget caps, `wamid` acceptance separated from monotonic async status webhooks).
+  - **Isolated Webhook Edge, Independent Host Watchdog & 4th-Provider Adapter SDK (`#143`):** added browser-safe contracts and validators in `packages/platform/src/gatewayAdapter.ts`, loopback-enforced `packages/host/src/gateway/webhookEdge.ts` (`413` size cap, `429` rate limit, fail-closed `401` signature check before scoped bearer forwarding), independent file-lease + probe `HostWatchdogMonitor` in `packages/host/src/gateway/watchdog.ts` (`unknown` on missing/corrupt lease, deduped `host_down`/`recovered` alerts), and `packages/host/src/gateway/adapterSdk.ts` (6-check `runGatewayAdapterConformance` + reference `webhook-relay` 4th provider).
+
 ### Resilient POSIX hook launcher & Antigravity/Gemini subagent trees (2026-11-23, v0.4.354)
 
 - **Implemented and verified locally** (synthetic temp homes, isolated unit/integration tests; not an installed external-app live certification):
@@ -440,11 +446,19 @@ for example when one runs out of quota.
 - Verification of the captures: `pnpm check` passed (11,637 application tests;
   29 skipped; 751 Rust tests), including lint, typechecks, native checks and
   builds. Capture details are in [README previews](../images/README.md).
-- Publication in progress: the owner authorized the GitHub push and live npm
-  README update. The documentation-only patch v0.4.353 carries the same runtime
-  behavior; npm requires a new package version to refresh its rendered README.
-  Re-run the release checks, push the source/media and publish verified npm
-  artifacts after the repository's review and packaging gates.
+- Published (2026-11-17): [PR #122](https://github.com/Extalia-VO/extalia-virtual-agent/pull/122)
+  merged the source/media after all ten required checks passed. The v0.4.353
+  documentation patch passed `pnpm check` and all twelve tagged release jobs.
+  The six original npm tarballs matched the GitHub artifact and release checksums;
+  publication removed only the CLI manifest's `private` flag, preserving payload
+  paths, types, modes, links and contents.
+- All five platform packages were available before approving the main
+  [npm package v0.4.353](https://www.npmjs.com/package/extalia-vo/v/0.4.353).
+  Registry integrity matched all six publish-ready tarballs. npm's latest tag,
+  rendered feature sections and byte-identical README were verified. An isolated
+  public-registry install passed CLI version/doctor and the bundled macOS ARM64
+  daemon handshake at v0.4.353, with the installed README matching source. Capture
+  UI attribution remains v0.4.352; the publication patch changes no runtime behavior.
 
 ### Release-platform correction (2026-11-16)
 
