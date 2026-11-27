@@ -1069,6 +1069,18 @@
       "unresolvedRuntimeImports": 0
     },
     {
+      "path": "packages/host/src/gateway/adapterSdk.ts",
+      "category": "legacy-backend",
+      "sha256": "32ed5c0c1776521e90ab6a06d7ca9d4411d60f060f5f7292450648c77a6ea668",
+      "loc": 526,
+      "bytes": 18465,
+      "effectKinds": [
+        "node-builtin",
+        "runtime-call"
+      ],
+      "unresolvedRuntimeImports": 0
+    },
+    {
       "path": "packages/host/src/gateway/autonomousReports.ts",
       "category": "legacy-backend",
       "sha256": "8c86e30d26150fd0d5557fc1e6cd8a485815d0070ac9a905dfb6a5da89832c6e",
@@ -1115,9 +1127,9 @@
     {
       "path": "packages/host/src/gateway/index.ts",
       "category": "legacy-backend",
-      "sha256": "3352bd0f7c02bcdfb2237e3d0db5ef0132ff60137a54d86ce4eed3e2ae0c1ffc",
-      "loc": 9,
-      "bytes": 282,
+      "sha256": "beccb7e5339566d672c1a513aa4176c0e9f42d86470f2a5cfa0f0a970d2a31b4",
+      "loc": 13,
+      "bytes": 411,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -1171,6 +1183,40 @@
       "sha256": "d923cfef6a6d1790a10d5fd8c63d8bffa39b3c13138cbaaeda3bd3cabb5c670d",
       "loc": 2526,
       "bytes": 93975,
+      "effectKinds": [
+        "node-builtin"
+      ],
+      "unresolvedRuntimeImports": 0
+    },
+    {
+      "path": "packages/host/src/gateway/watchdog.ts",
+      "category": "legacy-backend",
+      "sha256": "300076c8cc97f12b0f4fb99479ceb75004e66fe8227ab28b4258473eb96e5d6a",
+      "loc": 240,
+      "bytes": 7864,
+      "effectKinds": [
+        "node-builtin"
+      ],
+      "unresolvedRuntimeImports": 0
+    },
+    {
+      "path": "packages/host/src/gateway/webhookEdge.ts",
+      "category": "legacy-backend",
+      "sha256": "9e9b1059578909defb50c9ad62c858bb0edbf7f02bb225cd4c99c1b83472e593",
+      "loc": 444,
+      "bytes": 14560,
+      "effectKinds": [
+        "node-builtin",
+        "runtime-call"
+      ],
+      "unresolvedRuntimeImports": 0
+    },
+    {
+      "path": "packages/host/src/gateway/whatsapp.ts",
+      "category": "legacy-backend",
+      "sha256": "8fa8cfe1c1b73a33f8bf8a770dccd764bc9761aa328926517e1973dfa987ae3e",
+      "loc": 945,
+      "bytes": 30766,
       "effectKinds": [
         "node-builtin"
       ],
@@ -2565,11 +2611,20 @@
       "unresolvedRuntimeImports": 0
     },
     {
+      "path": "packages/platform/src/gatewayAdapter.ts",
+      "category": "shared-backend-review",
+      "sha256": "09dd7ebfcc74a3aea419844d850c5629a26c7179e866baaaf39ac6c5a7498fde",
+      "loc": 302,
+      "bytes": 8312,
+      "effectKinds": [],
+      "unresolvedRuntimeImports": 0
+    },
+    {
       "path": "packages/platform/src/index.ts",
       "category": "shared-backend-review",
-      "sha256": "7e64c1193ac0a413877fcbb5a6e9a52cff2572e669c536f5fa99dc3b7f54715c",
-      "loc": 45,
-      "bytes": 1528,
+      "sha256": "71dd42728150bd83aa4826d433c0393e6af0feffeda2521ab03a0dd1a41ef7c3",
+      "loc": 46,
+      "bytes": 1565,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },

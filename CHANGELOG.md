@@ -16,6 +16,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.362] - 2026-11-26
+
+- Record [ADR 0101](docs/adr/0101-whatsapp-conditional-monitoring-adapter.md) and implement Universal Gateway v2 M4 (`#141`) and M5 (`#143`) local foundations: add conditional fail-closed WhatsApp Cloud API / BSP monitoring adapter (`packages/host/src/gateway/whatsapp.ts` with Meta eligibility gate, raw-body `X-Hub-Signature-256`, 24h window & `utility` template registry, opt-out detection, 4-signal redaction, dual budget caps, and monotonic `wamid` webhook reconciliation), browser-safe `GatewayAdapterContract` / Watchdog SDK types (`packages/platform/src/gatewayAdapter.ts`), loopback-only isolated Webhook Edge (`packages/host/src/gateway/webhookEdge.ts`), independent `HostWatchdogMonitor` (`packages/host/src/gateway/watchdog.ts`), and 6-check `runGatewayAdapterConformance` + reference `webhook-relay` 4th-provider adapter (`packages/host/src/gateway/adapterSdk.ts`).
+
 ## [0.4.361] - 2026-11-26
 
 - Implement Gateway Settings UI, Workspace Reports Inbox, Chat System Report cards (`#142`, `GW-WP-17`) & Schedule/Learning Gateway fanout wiring (`#134`, `WP-SCH-09..11`): add 10 `GATEWAY_HOST_METHODS` (`@extalia/platform`) backed by `GatewayHostBridge` (`packages/host/src/gateway/hostBridge.ts`, `store.ts`, `service.ts`), connect settled `ScheduleRunV1` runs (`onRunSettled` + `recordDelivery` in `packages/host/src/schedules.ts`) and terminal `learningSchedule` outcomes into canonical workspace-isolated `WorkspaceSystemReport` projection and outbox delivery without feedback loops, add the EN/ID `GatewaySettingsSection` (connectors, 5-dimension `ConnectorHealth`, opaque `secretRef`, challenge linking, routes ACL, Workspace Reports Inbox, audit viewer) in `SettingsPage.tsx`, and render read-only `ChatSystemReportCard` entries in `ChatPage.tsx` (`mockHost.ts` included).

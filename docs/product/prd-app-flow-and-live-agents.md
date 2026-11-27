@@ -393,6 +393,12 @@ for example when one runs out of quota.
 
 ## 11. Status tracker
 
+### Universal Gateway v2 M4 & M5 foundation (2026-11-27, v0.4.362)
+
+- **Implemented and verified locally** (synthetic fixtures and loopback HTTP tests; live Meta WABA, Discord, and Telegram platform acceptance remain separate):
+  - **WhatsApp Cloud API conditional monitoring (`#141`, [ADR 0101](../adr/0101-whatsapp-conditional-monitoring-adapter.md)):** added fail-closed `packages/host/src/gateway/whatsapp.ts` (`wa.enabled = false` default, `complianceSignOffId` requirement, raw-body `X-Hub-Signature-256` verification, GET webhook challenge, 24h customer-service window and approved `utility` template checks, `STOP`/`UNSUBSCRIBE`/`BERHENTI` opt-out recognition, 4-signal redaction, dual monthly/workspace budget caps, `wamid` acceptance separated from monotonic async status webhooks).
+  - **Isolated Webhook Edge, Independent Host Watchdog & 4th-Provider Adapter SDK (`#143`):** added browser-safe contracts and validators in `packages/platform/src/gatewayAdapter.ts`, loopback-enforced `packages/host/src/gateway/webhookEdge.ts` (`413` size cap, `429` rate limit, fail-closed `401` signature check before scoped bearer forwarding), independent file-lease + probe `HostWatchdogMonitor` in `packages/host/src/gateway/watchdog.ts` (`unknown` on missing/corrupt lease, deduped `host_down`/`recovered` alerts), and `packages/host/src/gateway/adapterSdk.ts` (6-check `runGatewayAdapterConformance` + reference `webhook-relay` 4th provider).
+
 ### Resilient POSIX hook launcher & Antigravity/Gemini subagent trees (2026-11-23, v0.4.354)
 
 - **Implemented and verified locally** (synthetic temp homes, isolated unit/integration tests; not an installed external-app live certification):
