@@ -34,6 +34,12 @@ import type { SkillActionResult, SkillApprovalInput, SkillEvaluationInput, Skill
 import type {
   CommandSandboxStatus, IntegrationApproval, IntegrationGateInput, IntegrationProposalView, IntegrationRequest, WorktreeDiffView, WorktreeDiscardConfirmation, WorktreeOrphanView, WorktreeStatusView, WorktreeView,
 } from './worktrees.js';
+import {
+  EXECUTION_SAFETY_HOST_METHODS,
+  type ExactApprovalView,
+  type WorkerLeaseReconcileAction,
+  type WorkerLeaseView,
+} from './executionSafety.js';
 import type {
   KnowledgeGraph, KnowledgeLinkPage, KnowledgeNodeLookup, KnowledgeNoteResult, KnowledgeOverview, KnowledgeOverviewOptions, KnowledgeSearchResult, KnowledgeStatus, KnowledgeSyncMode,
   KnowledgeSyncOutcome,
@@ -53,6 +59,7 @@ import {
   type GatewayConfirmLinkInput,
   type GatewayConnectorSaveInput,
   type GatewayConnectorState,
+  type GatewayDiagnosticsView,
   type GatewayIssueChallengeInput,
   type GatewayLinkChallengeView,
   type GatewayOverview,
@@ -1089,8 +1096,14 @@ export interface AgentHostApi extends ObservedMemoryApi {
   resolveApproval(sessionId: string, approvalId: string, decision: ApprovalDecisionInput): Promise<void>;
   /** Revoke a pending or unexecuted exact-action approval so effect-time verification denies execution. */
   revokeApproval?(sessionId: string, approvalId: string): Promise<void>;
+  /** Inspect exact-action approval ledger records (without raw arguments) for review or revocation. */
+  listApprovals?(sessionId?: string): Promise<ExactApprovalView[]>;
   /** Inspect the host's verified per-OS command sandbox capability without assuming availability. */
   commandSandboxStatus?(): Promise<CommandSandboxStatus>;
+  /** Inspect durable worker process leases, fencing tokens, and any quarantined unknown settlements. */
+  listWorkerLeases?(): Promise<WorkerLeaseView[]>;
+  /** Explicitly acknowledge a quarantined worker lease after user inspection so future tasks may run cleanly. */
+  reconcileWorkerLease?(leaseId: string, action: WorkerLeaseReconcileAction): Promise<WorkerLeaseView>;
   /** A status-panel cancellation is bound to its exact Native invocation; legacy callers may omit the guard. */
   cancel(sessionId: string, expectedNativeRunId?: string): Promise<void>;
   /** Native history locations Extalia knows how to look in. Nothing is read until a scan. */
@@ -1276,6 +1289,8 @@ export interface AgentHostApi extends ObservedMemoryApi {
   previewScheduleNextRuns?(trigger: ScheduleTrigger, count?: number): Promise<NextRunPreview>;
   reviewUnknownScheduleRun?(runId: string, expectedRevision: number, decision: ScheduleReviewDecision): Promise<ScheduleRunDetail>;
   gatewayOverview?(): Promise<GatewayOverview>;
+  /** Evaluate Host Watchdog health, Adapter SDK 6-check conformance, and WhatsApp compliance posture. */
+  gatewayDiagnostics?(): Promise<GatewayDiagnosticsView>;
   saveGatewayConnector?(input: GatewayConnectorSaveInput): Promise<GatewayOverview>;
   setGatewayConnectorStatus?(connectorId: string, status: GatewayConnectorState): Promise<GatewayOverview>;
   issueGatewayLinkChallenge?(input: GatewayIssueChallengeInput): Promise<GatewayLinkChallengeView>;
@@ -1299,7 +1314,7 @@ export const AGENT_HOST_METHODS = [
   ...OPERATING_PROFILE_HOST_METHODS,
   ...GENERAL_SCHEDULE_HOST_METHODS,
   ...GATEWAY_HOST_METHODS,
-  'completeSetup', 'createSession', 'setSessionOptions', 'modelChoices', 'teamModelChoices', 'getSessionTeam', 'saveSessionTeam', 'saveWorkspaceTeam', 'planTeam', 'continueSession', 'renameSession', 'previewSessionMove', 'moveSession', 'setSessionProjectRoot', 'sessionContinuity', 'handoverHarnesses', 'createHandoverDestination', 'previewHandover', 'applyHandover', 'readContinuity', 'reconcileHandover', 'deleteSession', 'sessionEvents', 'sendPrompt', 'uploadAttachment', 'removeAttachment', 'attachmentPreview', 'resolveApproval', 'revokeApproval', 'commandSandboxStatus', 'cancel',
+  'completeSetup', 'createSession', 'setSessionOptions', 'modelChoices', 'teamModelChoices', 'getSessionTeam', 'saveSessionTeam', 'saveWorkspaceTeam', 'planTeam', 'continueSession', 'renameSession', 'previewSessionMove', 'moveSession', 'setSessionProjectRoot', 'sessionContinuity', 'handoverHarnesses', 'createHandoverDestination', 'previewHandover', 'applyHandover', 'readContinuity', 'reconcileHandover', 'deleteSession', 'sessionEvents', 'sendPrompt', 'uploadAttachment', 'removeAttachment', 'attachmentPreview', 'resolveApproval', 'revokeApproval', 'commandSandboxStatus', ...EXECUTION_SAFETY_HOST_METHODS, 'cancel',
   'setWorkflow', 'observeImports', 'observationSession', 'markObservedRead', 'setObservation', 'setAutoWatch',
   'observedWorkspaceLink', 'setObservedWorkspaceLink',
   'observedUserInputStatus', 'answerObservedUserInput',

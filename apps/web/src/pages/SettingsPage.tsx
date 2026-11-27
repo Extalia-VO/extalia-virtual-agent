@@ -8,6 +8,7 @@ import { CopyButton } from '../ui/CopyButton';
 import { RestartPrompt } from '../ui/RestartPrompt';
 import { Select } from '../ui/Select';
 import { ApprovalNotificationSetting } from '../approvals/NotificationSetting';
+import { ExecutionSafetyPanel } from '../approvals/ExecutionSafetyPanel';
 import { ConnectAgentAppsCard } from './ConnectAgentAppsCard';
 import { AutoWatchLocations, IgnoredFolders } from './AutoWatchLocations';
 import { availableSettingsSections, nextSettingsSection, resolveSettingsSection, type SettingsSection } from './settings/settingsSections';
@@ -226,6 +227,11 @@ function SettingsPageContent({ t, platform, preferences, onChange, hostState, on
               <section className="card settings-section" aria-labelledby="settings-approvals">
                 <h2 id="settings-approvals">{t.approvalInbox.settings.title}</h2>
                 <ApprovalNotificationSetting t={t} hostKind={platform.info.kind} notifier={platform.capabilities.notifications} />
+              </section>
+            )}
+            {agents && hostState && !observeOnly && (
+              <section className="card settings-section" aria-labelledby="settings-execution-safety">
+                <ExecutionSafetyPanel t={t} language={preferences.language} agents={agents} />
               </section>
             )}
           </>}

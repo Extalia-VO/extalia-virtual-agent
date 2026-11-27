@@ -16,6 +16,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.365] - 2026-11-27
+
+- Complete local deliverables for **Universal Gateway v2 Diagnostics (`#142` / `#143` / `GW-WP-17`)** and **PRD-SF-1.0 Release Slice E Shared Office (`WP-12`, `AC-23`, `AC-24`)**: add `GatewayDiagnosticsView` & `gatewayDiagnostics` RPC (`packages/platform/src/gateway.ts`, `GatewayHostBridge.diagnostics()` in `packages/host/src/gateway/hostBridge.ts` & `service.ts`) evaluating `HostWatchdogMonitor` lease liveness, offline 6-check `runGatewayAdapterConformance` (`webhook-relay`), and WhatsApp fail-closed posture (`GatewaySettingsSection.tsx`, `gatewaySettings.css`, `mockHost.ts`, EN/ID in `i18n.ts`); and add Shared Office source-aware filters (`all`, `native`, `hermes`, `observed`, `unassigned`), `deduplicateOfficeAgents` (`AC-23`), manual 2D/3D view toggle, and operational No-WebGL `OfficeFallback2D` view (`apps/web/src/office/{officeFilters.ts,OfficeFallback2D.tsx,officeFallback2D.css}`, `OfficePage.tsx`, retaining inline pending approval actions and observed read-only labels).
+
+## [0.4.364] - 2026-11-27
+
+- Complete PRD-SF-1.0 Release Slice C local deliverables (`#150`, `WP-06`/`WP-07`/`WP-08`, [ADR 0100](docs/adr/0100-os-sandbox-executor-and-exact-approvals.md) addendum): add durable `WorkerLeaseRegistry` (`packages/host/src/workerLease.ts`) with monotonic fencing tokens, startup/expiry unknown-effect quarantine without recycled-PID kills or blind replay, explicit `acknowledge` reconciliation, and mission worktree fencing (`packages/host/src/service.ts`, `onChildSpawned` in `packages/host/src/tools/command.ts`); expose browser-safe `listApprovals` (argument-free, redacted targets), `listWorkerLeases`, and `reconcileWorkerLease` RPCs (`packages/platform/src/executionSafety.ts`, `AGENT_HOST_METHODS`); and add the EN/ID `ExecutionSafetyPanel` in `SettingsPage.tsx` and `ChatSessionInfo.tsx` (`apps/web/src/approvals/ExecutionSafetyPanel.tsx`, `executionSafety.css`, `mockHost.ts`) displaying command sandbox posture, exact-action approvals with effect-time revocation, and quarantined worker leases.
+
 ## [0.4.363] - 2026-11-27
 
 - Integrate dependency updates (`#97`, `#99`, `#101`, `#130`): bump `astral-sh/setup-uv` in `.github/workflows/release.yml`, apply 12 minor/patch package updates (`eslint`, `vitest`, `electron 45.4.1`, `electron-updater`, `electron-builder`, `three 0.187.0`, `@types/three`, `meshoptimizer`, `downshift`, `typescript-eslint`, `vite`, `@vitejs/plugin-react`), migrate `packages/host/src/hermesDelegation.ts` to `js-yaml` `5.5.0` public `YAML11_SCHEMA.withTags` / `defineScalarTag` API (preserving YAML 1.1 numeric spelling guards and merge-key support), and update `packages/runtime/src/providers/anthropic.ts` for `@anthropic-ai/sdk` `1.12.0` (retaining explicit `x-api-key` without implicit `Authorization` leakage).

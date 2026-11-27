@@ -48,6 +48,7 @@ import { profileClientStateStorage, subscribeProfileClientState } from '../profi
 import { Icon } from '../ui/Icon';
 import { OriginChip } from '../ui/OriginMark';
 import { Select } from '../ui/Select';
+import { ApprovalActions } from '../approvals/ApprovalInbox';
 import { useApprovals } from '../approvals/context';
 import { AutoCameraCountdown } from '../office/AutoCameraCountdown';
 import type { CameraTourCountdown } from '../office/cameraCountdown';
@@ -55,6 +56,15 @@ import { useCameraDirector } from '../office/useCameraDirector';
 import { useObservedInputs } from '../observe/ObservedInputProvider';
 import { cameraAttentionIds } from '../office/cameraAttention';
 import { officeCharacterContext } from '../office/characterContext';
+import { OfficeFallback2D } from '../office/OfficeFallback2D';
+import {
+  deduplicateOfficeAgents,
+  filterOfficeSessions,
+  OFFICE_SOURCE_FILTERS,
+  resolveOfficeDisplayMode,
+  type OfficeDisplayMode,
+  type OfficeSourceFilter,
+} from '../office/officeFilters';
 import { createSceneAttempt } from '../office/sceneAttempt';
 import type { OfficeContextState } from '../office/contextRecovery';
 
@@ -153,6 +163,9 @@ export function OfficePage({ t, language, agents, hostDisconnected = false, stat
   const OfficeCanvas = sceneAttempt.Canvas;
   const [loadStage, setLoadStage] = useState<OfficeLoadStage>('engine');
   const [renderFailed, setRenderFailed] = useState(false);
+  const [sourceFilter, setSourceFilter] = useState<OfficeSourceFilter>('all');
+  const [displayMode, setDisplayMode] = useState<OfficeDisplayMode>('3d');
+  const effectiveDisplayMode = resolveOfficeDisplayMode(displayMode, renderFailed);
   const [dockRevealed, setDockRevealed] = useState(false);
   const [contextState, setContextState] = useState<OfficeContextState>('ready');
   const retryScene = useCallback(() => {
@@ -178,7 +191,8 @@ export function OfficePage({ t, language, agents, hostDisconnected = false, stat
     .filter(session => state?.workflow !== 'observe' || session.control === 'observed')
     .sort((a, b) => Number(b.id === (inputFocus?.sessionId ?? selection.dialog?.sessionId)) - Number(a.id === (inputFocus?.sessionId ?? selection.dialog?.sessionId))
       || Number(b.running) - Number(a.running) || b.lastActiveAt.localeCompare(a.lastActiveAt)), [state?.sessions, state?.workflow, inputFocus?.sessionId, selection.dialog?.sessionId]);
-  const visible = useMemo(() => sessions.slice(0, MAX_SESSIONS), [sessions]);
+  const filteredSessions = useMemo(() => filterOfficeSessions(sessions, { source: sourceFilter }), [sessions, sourceFilter]);
+  const visible = useMemo(() => filteredSessions.slice(0, MAX_SESSIONS), [filteredSessions]);
   const selectedSessionId = selectedId ? visible.find(session => selectedId.startsWith(`${session.id}:`))?.id : undefined;
   // Managed sessions that run or are selected, plus watched observed sessions, so outside-app activity reaches presence, screens and bubbles.
   // v0.0.47: sessions whose mission workers are still in the office keep their history after the mission ends (linger, then leave).
@@ -194,7 +208,8 @@ export function OfficePage({ t, language, agents, hostDisconnected = false, stat
   const standbyScope = JSON.stringify([state?.profile.id, state?.dataDirectory ?? state?.storage?.dataDirectory]);
   const { teams, readySessionIds: readyTeamIds } = useSessionTeamSnapshot(agents, visible, events, standbyScope);
   const reportedPresences = useMemo(() => projectOfficePresence(visible, events, now, teams, missions), [visible, events, now, teams, missions]);
-  const presences = useStableValue(useNativeStandby(agents, standbyScope, reportedPresences, visible, teams, now, loadedSessionIds, readyTeamIds));
+  const standbyPresences = useNativeStandby(agents, standbyScope, reportedPresences, visible, teams, now, loadedSessionIds, readyTeamIds);
+  const presences = useStableValue(useMemo(() => deduplicateOfficeAgents(standbyPresences), [standbyPresences]));
   // v0.0.43: agents under the board's offline group (ended or quiet sessions, subagents that left) are not in the 3D office.
   // v0.0.47: nor are mission workers that have not started (queued): they walk in through the spawn queue when their task runs.
   const officeAgents = useMemo(() => presences.filter(agent => !agent.earlier && isAdmitted(agent)), [presences]);
@@ -305,14 +320,14 @@ export function OfficePage({ t, language, agents, hostDisconnected = false, stat
       if (inputCamera.current?.token === inputFocus.token) {
         const camera = inputCamera.current;
         if (selectedId && selectedId !== camera.characterId) { finish(); return; }
-        if (renderFailed || contextState !== 'ready') { present(); return; }
+        if (effectiveDisplayMode === '2d' || contextState !== 'ready') { present(); return; }
         if (focusFinished?.request === camera.request) {
           if (focusFinished.completed) present(); else finish();
         }
         return;
       }
       // The 2D request remains usable when a character or renderer is unavailable.
-      if (!isAdmitted(agent) || agent.earlier || renderFailed || contextState !== 'ready') { present(); return; }
+      if (!isAdmitted(agent) || agent.earlier || effectiveDisplayMode === '2d' || contextState !== 'ready') { present(); return; }
       if (loadStage !== 'ready') return;
       if (!positions.position(agent.id)) return;
       const floor = positions.floor(agent.id) ?? allocations.find(item => item.agentId === agent.id)?.floor;
@@ -321,7 +336,7 @@ export function OfficePage({ t, language, agents, hostDisconnected = false, stat
       characterCallouts.say(agent.id, t.characterCallouts);
     });
     return () => cancelAnimationFrame(frame);
-  }, [inputFocus, foreground, loadedSessionIds, error, state?.sessions, approvals, observedInputs?.view.entries, events, presences, positions, positionVersion, allocations, renderFailed, contextState, loadStage, selectedId, focusFinished, requestFocus, setView, t.characterCallouts, t.officeUx.composer, onWorkspace, onInputFocused]);
+  }, [inputFocus, foreground, loadedSessionIds, error, state?.sessions, approvals, observedInputs?.view.entries, events, presences, positions, positionVersion, allocations, effectiveDisplayMode, contextState, loadStage, selectedId, focusFinished, requestFocus, setView, t.characterCallouts, t.officeUx.composer, onWorkspace, onInputFocused]);
   useEffect(() => {
     if (!inputDialogFocus || focusedInputDialog.current === inputDialogFocus.token || selection.dialog?.sessionId !== inputDialogFocus.sessionId) return;
     let frame = 0, attempts = 0;
@@ -431,7 +446,7 @@ export function OfficePage({ t, language, agents, hostDisconnected = false, stat
   const popoverPlace = popoverAgent ? placeOf(popoverAgent) : undefined;
   const [cameraCountdown, setCameraCountdown] = useState<{ scope: string; value: CameraTourCountdown | null } | null>(null);
   const automaticShot = useCameraDirector({
-    enabled: autoCamera && loadStage === 'ready' && contextState === 'ready' && !renderFailed && !hostDisconnected,
+    enabled: autoCamera && effectiveDisplayMode === '3d' && loadStage === 'ready' && contextState === 'ready' && !renderFailed && !hostDisconnected,
     reducedMotion,
     suspended: Boolean(dialog || approvals.inboxOpen || following || inputFocus),
     workingIds: officeAgents.filter(agent => !agent.stalled && (agent.meeting || agent.status === 'thinking' || agent.status === 'working' || agent.status === 'delegating')).map(agent => agent.id),
@@ -542,12 +557,18 @@ export function OfficePage({ t, language, agents, hostDisconnected = false, stat
 
   // Reveal after first load/failure, then retain the composer through renderer retries
   // so its local draft and attachment state never unmount with the 3D scene.
-  const showDock = Boolean(!observeOnly && agents && state && (dockRevealed || loadStage === 'ready' || renderFailed));
+  const showDock = Boolean(!observeOnly && agents && state && (dockRevealed || loadStage === 'ready' || renderFailed || effectiveDisplayMode === '2d'));
   const showLeadBar = overlay.model.leads.shown.length > 0;
   return <PortraitPositionContext value={positions}><div className="office-page">
     <div className="office-toolbar">
       <Select aria-label={t.office.activeWorkspace} value={workspaceId ?? 'all'} options={[{ value: 'all', label: t.office.defaultWorkspace }, ...(state?.workspaces ?? []).map(workspace => ({ value: workspace.id, label: workspace.name }))]}
         onChange={id => { setDockTarget({}); onWorkspace(id === 'all' ? undefined : id); }} />
+      <Select aria-label={t.office.sourceFilter.label} value={sourceFilter} options={OFFICE_SOURCE_FILTERS.map(value => ({ value, label: t.office.sourceFilter[value] }))}
+        onChange={setSourceFilter} />
+      <button type="button" className="office-tool-button" aria-pressed={effectiveDisplayMode === '2d'} onClick={() => {
+        if (renderFailed) { setDisplayMode('3d'); retryScene(); }
+        else setDisplayMode(current => current === '2d' ? '3d' : '2d');
+      }}><Icon name="monitor" /><span>{effectiveDisplayMode === '2d' ? t.office.viewMode.switchTo3d : t.office.viewMode.switchTo2d}</span></button>
       <OfficeTools t={t} source={overlay.source} rooms={overlay.rooms} currentRoom={roomFocus?.roomId} boardOpen={boardOpen} boardId={boardId} boardCount={overlay.model.board.length}
         onAgent={findAgent} onRoom={focusRoom} onToggleBoard={() => setBoardOpen(value => !value)} />
       {agents && <button type="button" className="office-tool-button" title={t.agentApps.title} onClick={onOpenAgentSettings ?? onOpenSettings}>
@@ -556,18 +577,36 @@ export function OfficePage({ t, language, agents, hostDisconnected = false, stat
       <span className="office-live" role="status" title={hostDisconnected ? t.hostConnection.title : agents ? t.office.connected : t.office.disconnected}><span className={agents && !hostDisconnected ? 'pulse' : ''} aria-hidden="true" /><span className="office-live-text">{hostDisconnected ? t.hostConnection.title : agents ? t.office.connected : t.office.disconnected}</span></span>
     </div>
     <div ref={setOfficeViewport} className={`office-stage ${showDock ? 'has-dock' : ''} ${showLeadBar ? 'has-lead-bar' : ''} ${boardOpen ? 'has-board' : ''}`} aria-label={t.office.title}>
-      <SceneBoundary key={`scene-${attempt}`} fallback={failed} onFailure={markFailed}>
-        <Suspense fallback={null}>
-          <OfficeCanvas automaticShot={automaticShot} agents={officeAgents} selectedId={selected?.id ?? selectedStaff?.definition.id ?? null} onSelect={selectAgent} popoverId={popoverAgent?.id ?? popoverStaff?.definition.id ?? null} onMiss={() => dispatch({ type: 'closePopover' })} view={view} viewRequest={viewRequest} language={language} dark={dark} reducedMotion={reducedMotion} appearances={looks.appearances} activities={recentActivity} onScene={markScene} onReady={markReady} onContextState={setContextState} onRetryScene={retryScene} focusRequest={focusRequest} onFocusFinished={cameraFinished} follow={following} onFollowEnd={() => setFollowId(null)} onFollowFloor={followFloor} focusPoint={roomFocus?.point} allocations={allocations} positions={positions} lightOverride={lightOverride} followSun={followSun} />
-        </Suspense>
-      </SceneBoundary>
-      {autoCamera && !dialog && !approvals.inboxOpen && !following && !inputFocus && loadStage === 'ready' && contextState === 'ready' && !renderFailed && !hostDisconnected
-        && automaticShot?.mode === 'tour' && automaticShot.phase === 'focus' && cameraCountdown?.scope === standbyScope
-        && <AutoCameraCountdown t={t} countdown={cameraCountdown.value} name={presences.find(agent => agent.id === cameraCountdown.value?.targetId)?.displayName
-          ?? (countdownStaff ? facilityCard(t, countdownStaff).displayName : undefined)} />}
-      {!renderFailed && <OfficeLoading key={`loading-${attempt}`} t={t} stage={loadStage} reducedMotion={reducedMotion} />}
-      {following && followingName && loadStage === 'ready' && contextState === 'ready' && !renderFailed &&
-        <OfficeFollowStatus t={t} name={followingName} onStop={stopFollowing} />}
+      {effectiveDisplayMode === '3d' ? <>
+        <SceneBoundary key={`scene-${attempt}`} fallback={failed} onFailure={markFailed}>
+          <Suspense fallback={null}>
+            <OfficeCanvas automaticShot={automaticShot} agents={officeAgents} selectedId={selected?.id ?? selectedStaff?.definition.id ?? null} onSelect={selectAgent} popoverId={popoverAgent?.id ?? popoverStaff?.definition.id ?? null} onMiss={() => dispatch({ type: 'closePopover' })} view={view} viewRequest={viewRequest} language={language} dark={dark} reducedMotion={reducedMotion} appearances={looks.appearances} activities={recentActivity} onScene={markScene} onReady={markReady} onContextState={setContextState} onRetryScene={retryScene} focusRequest={focusRequest} onFocusFinished={cameraFinished} follow={following} onFollowEnd={() => setFollowId(null)} onFollowFloor={followFloor} focusPoint={roomFocus?.point} allocations={allocations} positions={positions} lightOverride={lightOverride} followSun={followSun} />
+          </Suspense>
+        </SceneBoundary>
+        {autoCamera && !dialog && !approvals.inboxOpen && !following && !inputFocus && loadStage === 'ready' && contextState === 'ready' && !renderFailed && !hostDisconnected
+          && automaticShot?.mode === 'tour' && automaticShot.phase === 'focus' && cameraCountdown?.scope === standbyScope
+          && <AutoCameraCountdown t={t} countdown={cameraCountdown.value} name={presences.find(agent => agent.id === cameraCountdown.value?.targetId)?.displayName
+            ?? (countdownStaff ? facilityCard(t, countdownStaff).displayName : undefined)} />}
+        {!renderFailed && <OfficeLoading key={`loading-${attempt}`} t={t} stage={loadStage} reducedMotion={reducedMotion} />}
+        {following && followingName && loadStage === 'ready' && contextState === 'ready' && !renderFailed &&
+          <OfficeFollowStatus t={t} name={followingName} onStop={stopFollowing} />}
+      </> : (
+        <OfficeFallback2D
+          t={t}
+          language={language}
+          reason={renderFailed ? 'webgl-unavailable' : 'manual-2d'}
+          agents={officeAgents}
+          sessions={visible}
+          workspaces={state?.workspaces ?? []}
+          statusLabelOf={agent => agentStatusLabel(t, agent, language)}
+          approvalFor={agent => approvalById(agent.pendingApprovalId)}
+          renderApprovalActions={approval => <ApprovalActions t={t} approval={approval} compact />}
+          onOpenSession={agent => openDialog(agent, 'messages', null)}
+          onOpenChat={onStartChat}
+          onOpenMissions={onOpenMissions ? () => onOpenMissions() : undefined}
+          onSwitchTo3D={() => { setDisplayMode('3d'); if (renderFailed) retryScene(); }}
+        />
+      )}
       {boardOpen && <ActivityBoard t={t} id={boardId} items={overlay.model.board} names={overlay.names} now={overlay.now} onSelect={locateAgent} onClose={() => setBoardOpen(false)} onOpenMissions={onOpenMissions && (() => onOpenMissions())} approvalFor={characterId => approvalById(officeAgents.find(agent => agent.id === characterId)?.pendingApprovalId)} />}
       {showLeadBar && <LeadAgentBar t={t} leads={overlay.model.leads.shown} more={overlay.model.leads.more} appearances={looks.appearances} projects={overlay.projects}
         latest={overlay.model.latest} selectedId={selected?.id ?? null} onSelect={locateAgent} />}
@@ -592,7 +631,7 @@ export function OfficePage({ t, language, agents, hostDisconnected = false, stat
               </div></div>
             </section>}
           </>}
-        {sessions.length > MAX_SESSIONS && <p className="note">{t.office.limited(MAX_SESSIONS, sessions.length)}</p>}
+        {filteredSessions.length > MAX_SESSIONS && <p className="note">{t.office.limited(MAX_SESSIONS, filteredSessions.length)}</p>}
         </div></div>
       </aside>
       <div ref={onLearningCompactTarget} className="learning-compact-slot office-learning-compact-slot" />

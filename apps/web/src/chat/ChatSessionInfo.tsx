@@ -1,13 +1,15 @@
 import { sourceLabel, type Workspace } from '@extalia/core';
-import type { HostState, SessionSummary } from '@extalia/platform';
-import type { Messages } from '../i18n';
+import type { AgentHostApi, HostState, SessionSummary } from '@extalia/platform';
+import { ExecutionSafetyPanel } from '../approvals/ExecutionSafetyPanel';
+import type { Language, Messages } from '../i18n';
 import { sessionRuntime } from './sessionRuntime';
 import type { ChangedFile } from './changedFiles';
 
 /** Presentation of known session facts; no extra host requests or inferred activity. */
-export function ChatSessionInfo({ t, state, workspace, session, status, files, connectionId }: {
+export function ChatSessionInfo({ t, state, workspace, session, status, files, connectionId, agents, language }: {
   t: Messages; state: HostState; workspace?: Workspace; session?: SessionSummary;
   status: string; files: readonly ChangedFile[]; connectionId?: string;
+  agents?: AgentHostApi; language?: Language;
 }) {
   const m = t.chat.sessionInfo;
   const observed = session?.control === 'observed';
@@ -33,5 +35,8 @@ export function ChatSessionInfo({ t, state, workspace, session, status, files, c
       {files.length ? <ul>{files.slice(0, 5).map(file => <li key={file.path}><span title={file.path}>{file.path}</span><small>{t.tool.change[file.change]}</small></li>)}</ul>
         : <p className="muted">{t.characterConsole.noFiles}</p>}
     </div>
+    {!observed && agents && (agents.commandSandboxStatus || agents.listApprovals) && (
+      <ExecutionSafetyPanel compact t={t} language={language ?? 'en'} agents={agents} sessionId={session?.id} />
+    )}
   </section>;
 }

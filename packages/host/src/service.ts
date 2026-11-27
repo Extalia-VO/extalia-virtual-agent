@@ -70,7 +70,7 @@ import type { HermesObservedRpcFactory } from './hermesObservedControl.js';
 import type { CodexObservedRpcFactory } from './codexObservedControl.js';
 import {
   assertHermesTeamCapacity, DEFAULT_PERMISSIONS, DEFAULT_WORKSPACE_CROSS_ACCESS, WORKSPACE_CROSS_ACCESS, applyImport, decodeConnection, decodeLibrary, decodeWorkspace, defaultOrchestration, deleteSession as deleteLibrarySession,
-  displayTitle, emptyLibrary, keepsHistory, presetById, previewImport, renameSession as renameLibrarySession, resolveFeatures, safeLabel, safeText, setSessionState,
+  displayTitle, emptyLibrary, keepsHistory, presetById, previewImport, redact, renameSession as renameLibrarySession, resolveFeatures, safeLabel, safeText, setSessionState,
   sourceLabel, tierModel, EFFORTS, RUNTIME_IDS, workspaceRuntime, workspaceCrossAccess, MAX_WORKSPACE_FOLDERS, providerHeaders, type Effort, type RuntimeId,
   characterSessionId, decodeCharacterAppearance, decodeCharacterAppearanceStore, emptyCharacterAppearanceStore, isCharacterId, MAX_CHARACTER_APPEARANCES,
   type CharacterAppearanceStore, type CharacterAppearances, type Connection, type PortableSession, type SessionLibrary, type TaskTier, type Workspace, type WorkspaceCrossAccess, type WorkspacePermissions,
@@ -89,6 +89,7 @@ import {
   GLOBAL_OBSERVE_WORKSPACE_ID, KNOWLEDGE_EVENT_SESSION_ID, normalizeKnowledgeVaultRoot, normalizeScheduleRunFilter, type NativeActiveRun, type NativeStatus, type NativeStatusRecheck, type NativeStatusWorker,
   type ContinuityView, type HandoverTarget,
   type ProjectPlannedAction, type ProjectProvisionApplyInput, type ProjectProvisionPreviewInput, type ProjectProvisionReceipt, type ProjectProvisionStepReceipt,
+  ExecutionSafetyInputError, normalizeApprovalSessionFilter, normalizeWorkerLeaseId, normalizeWorkerLeaseReconcileAction, type ExactApprovalView, type GatewayDiagnosticsView, type WorkerLeaseView,
 } from '@extalia/platform';
 import { createEvent, type AgentEvent, type EventBody, type EventSource, type ExtaliaEvent } from '@extalia/protocol';
 import {
@@ -153,6 +154,7 @@ import { sessionContext } from './sessionContext.js';
 import { createCommandTool, WORKSPACE_COMMAND_UNAVAILABLE } from './tools/command.js';
 import type { CommandSandboxExecutor } from './tools/commandSandbox.js';
 import { ExactApprovalLedger, canonicalArgumentsJson, computeActionDigest } from './approvalLedger.js';
+import { WorkerLeaseError, WorkerLeaseRegistry } from './workerLease.js';
 import { createFileTools } from './tools/files.js';
 import { worktreeHostMethods } from './worktrees/hostMethods.js';
 import { IntegrationQueue, WorktreeError, WorktreeManager, type DiffSummary, type IntegrationGate, type IntegrationProposal, type WorktreeOrphan, type WorktreeRecord, type WorktreeStatus } from './worktrees/index.js';
@@ -605,13 +607,19 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     }) };
   });
   worktreeStore.catch(() => undefined);
-  const worktreeFailure = (error: unknown): Error => userError(error instanceof WorktreeError ? error.message : 'The isolated worktree for a write-capable task could not be prepared.');
+  const worktreeFailure = (error: unknown): Error => userError(error instanceof WorktreeError || error instanceof WorkerLeaseError ? error.message : 'The isolated worktree for a write-capable task could not be prepared.');
   let gatewayBridge: GatewayHostBridge | undefined;
   try {
   await missions.initialize(await savedSessions.list());
+  const workerLeases = await persistence.run(() => WorkerLeaseRegistry.open({
+    registryFile: path.join(layout.state, 'worker-leases.json'),
+    ownerId: instanceId,
+    now: () => Date.now(),
+  }));
   try {
     gatewayBridge = await GatewayHostBridge.open({
       dbPath: path.join(layout.state, 'gateway.sqlite'),
+      hostId: instanceId,
       validateWorkspace: workspaceId => { findWorkspace(workspaceId); },
       listRegisteredWorkspaceIds: () => new Set(config.workspaces.map(item => item.id)),
       defaultPrincipalId: () => `profile:${config.profile.id}`,
@@ -5756,7 +5764,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         preparation?.check();
       };
       // Worktrees of write-capable tasks (ADR 0028), owned by this mission while it runs.
-      const worktreesCreated: { id: string; alias: string; taskId: string }[] = [];
+      const worktreesCreated: { id: string; alias: string; taskId: string; leaseId: string; fencingToken: number }[] = [];
       let writeMission: string | undefined;
       try {
         const record = await sessions.get(sessionId);
@@ -5813,7 +5821,19 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
               checkPreparation();
               unverifiedWorktreePreparation = true;
               const handle = await trackPreparationWrite(() => manager.create({ workspaceRoot: workspace.projectLocation!, requireExactRoot: true, owner: { missionId: task.missionId, taskId: task.taskId, agentId: task.agentId } }));
-              worktreesCreated.push({ id: handle.id, alias: task.alias, taskId: task.taskId });
+              let lease;
+              try {
+                lease = await trackPreparationWrite(() => workerLeases.acquire({
+                  taskId: task.taskId,
+                  sessionId,
+                  missionId: task.missionId,
+                  worktreeId: handle.id,
+                }));
+              } catch (leaseError) {
+                await trackPreparationWrite(() => manager.remove(handle.id)).catch(() => undefined);
+                throw leaseError;
+              }
+              worktreesCreated.push({ id: handle.id, alias: task.alias, taskId: task.taskId, leaseId: lease.leaseId, fencingToken: lease.fencingToken });
               unverifiedWorktreePreparation = false;
               checkPreparation();
               return handle.root;
@@ -5868,6 +5888,15 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         // The session reservation remains held through all event and metadata writes.
         void (async () => {
           const observationWrites = new Set<Promise<void>>();
+          const leaseHeartbeatTimer = worktreesCreated.length
+            ? setInterval(() => {
+                if (closing) return;
+                for (const created of worktreesCreated) {
+                  void trackPreparationWrite(() => workerLeases.heartbeat(created.leaseId, created.fencingToken)).catch(() => undefined);
+                }
+              }, 60_000)
+            : undefined;
+          leaseHeartbeatTimer?.unref();
           try {
             /** The checkpoint after `event`; usage/budget state travels with the event (ADR 0015). */
             const advance = (event: AgentEvent, outcome?: NativeMissionTaskResult, accounting?: NativeMissionAccounting): HostMissionRun => {
@@ -5940,14 +5969,30 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
             missions.updateMemory(metadata);
             await persistence.run(() => missions.save(metadata!)).catch(() => undefined);
           } finally {
+            if (leaseHeartbeatTimer) clearInterval(leaseHeartbeatTimer);
             core?.dispose();
             // Commit what each write-capable worker wrote and release its worktree. A task whose
             // execution is unknown keeps an active worktree, which orphan detection reports.
             if (worktreesCreated.length) {
               const { manager } = await worktreeStore;
               for (const created of worktreesCreated) {
-                if (metadata?.tasks.find(task => task.taskId === created.taskId)?.state === 'unknown') continue;
-                await trackPreparationWrite(() => manager.release(created.id, `Extalia worker: ${created.alias}`)).catch(() => undefined);
+                const taskOutcome = metadata?.tasks.find(task => task.taskId === created.taskId)?.state;
+                if (taskOutcome === 'unknown' || metadata?.state === 'recovering') {
+                  await trackPreparationWrite(() => workerLeases.settle(created.leaseId, created.fencingToken, 'unknown', 'worker_task_settlement_uncertain')).catch(() => undefined);
+                  continue;
+                }
+                try {
+                  workerLeases.assertFenced(created.leaseId, created.fencingToken);
+                  await trackPreparationWrite(() => manager.release(created.id, `Extalia worker: ${created.alias}`));
+                  const settlement = metadata?.state === 'completed'
+                    ? 'completed'
+                    : metadata?.state === 'cancelled'
+                      ? 'cancelled'
+                      : 'failed';
+                  await trackPreparationWrite(() => workerLeases.settle(created.leaseId, created.fencingToken, settlement)).catch(() => undefined);
+                } catch {
+                  await trackPreparationWrite(() => workerLeases.settle(created.leaseId, created.fencingToken, 'unknown', 'worker_task_settlement_uncertain')).catch(() => undefined);
+                }
               }
             }
             if (writeMission) activeWriteMissions.delete(writeMission);
@@ -5969,10 +6014,28 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
               try {
                 const { manager } = await worktreeStore;
                 for (const created of worktreesCreated) {
-                  if (closing) break;
-                  await trackPreparationWrite(() => manager.remove(created.id)).catch(() => { cleanupSucceeded = false; });
+                  if (closing) {
+                    await trackPreparationWrite(() => workerLeases.settle(created.leaseId, created.fencingToken, 'unknown', 'worktree_cleanup_failed')).catch(() => undefined);
+                    cleanupSucceeded = false;
+                    break;
+                  }
+                  let removed = true;
+                  await trackPreparationWrite(() => manager.remove(created.id)).catch(() => {
+                    removed = false;
+                    cleanupSucceeded = false;
+                  });
+                  if (removed && !closing) {
+                    await trackPreparationWrite(() => workerLeases.settle(created.leaseId, created.fencingToken, 'cancelled')).catch(() => undefined);
+                  } else {
+                    await trackPreparationWrite(() => workerLeases.settle(created.leaseId, created.fencingToken, 'unknown', 'worktree_cleanup_failed')).catch(() => undefined);
+                  }
                 }
-              } catch { cleanupSucceeded = false; }
+              } catch {
+                cleanupSucceeded = false;
+                for (const created of worktreesCreated) {
+                  await trackPreparationWrite(() => workerLeases.settle(created.leaseId, created.fencingToken, 'unknown', 'worktree_cleanup_failed')).catch(() => undefined);
+                }
+              }
             }
             if (metadata && !closing) {
               const uncertain = !cleanupSucceeded || unverifiedWorktreePreparation;
@@ -7041,6 +7104,55 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       };
     },
 
+    async listApprovals(sessionId?: string): Promise<ExactApprovalView[]> {
+      assertHostOpen();
+      let filterSessionId: string | undefined;
+      try {
+        filterSessionId = normalizeApprovalSessionFilter(sessionId);
+      } catch (error) {
+        throw userError(error instanceof ExecutionSafetyInputError || error instanceof Error ? error.message : 'Invalid session filter.');
+      }
+      return approvalLedger
+        .list(filterSessionId)
+        .map(({ argumentsJson: _omitted, target, access, ...rest }) => ({
+          ...rest,
+          access: access === 'read' || access === 'write' || access === 'execute'
+            ? access
+            : access === 'memory'
+              ? 'write'
+              : 'execute',
+          ...(target !== undefined ? { target: safeLabel(redact(target), 200) } : {}),
+        }))
+        .sort((a, b) => b.issuedAt - a.issuedAt);
+    },
+
+    async listWorkerLeases(): Promise<WorkerLeaseView[]> {
+      assertHostOpen();
+      await persistence.run(() => workerLeases.quarantineExpired()).catch(() => 0);
+      return workerLeases.list();
+    },
+
+    async reconcileWorkerLease(leaseId, action): Promise<WorkerLeaseView> {
+      assertHostOpen();
+      let id: string;
+      let normalizedAction: ReturnType<typeof normalizeWorkerLeaseReconcileAction>;
+      try {
+        id = normalizeWorkerLeaseId(leaseId);
+        normalizedAction = normalizeWorkerLeaseReconcileAction(action);
+      } catch (error) {
+        throw userError(error instanceof ExecutionSafetyInputError || error instanceof Error ? error.message : 'Invalid worker lease reconciliation request.');
+      }
+      if (normalizedAction !== 'acknowledge') {
+        throw userError('Unsupported worker lease reconciliation action.');
+      }
+      try {
+        return await persistence.run(() => workerLeases.acknowledgeQuarantine(id));
+      } catch (error) {
+        if (error instanceof Error && error.name === 'UserError') throw error;
+        throw userError(error instanceof WorkerLeaseError ? error.message : 'Could not reconcile worker lease.');
+      }
+    },
+
     async cancel(sessionId, expectedNativeRunId) {
       assertHostOpen();
       const run = runs.get(sessionId);
@@ -7907,6 +8019,13 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       if (!gatewayBridge) throw userError('Gateway storage is unavailable.');
       return gatewayBridge.overview(now());
     },
+    gatewayDiagnostics: async (): Promise<GatewayDiagnosticsView> => {
+      assertHostOpen();
+      if (!gatewayBridge) {
+        throw userError('Universal Gateway diagnostics are unavailable because the gateway database could not be opened.');
+      }
+      return gatewayBridge.diagnostics(now());
+    },
     saveGatewayConnector: async input => {
       assertHostOpen();
       if (!gatewayBridge) throw userError('Gateway storage is unavailable.');
@@ -7952,7 +8071,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       if (!gatewayBridge) throw userError('Gateway storage is unavailable.');
       return gatewayBridge.listSessionSystemReports(workspaceId, sessionId);
     },
-  } satisfies Pick<Required<AgentHostApi>, 'listVaultProfiles' | 'saveVaultProfile' | 'learningSchedule' | 'changeLearningSchedule' | 'requestKnowledgeUpdate' | 'listSchedules' | 'saveSchedule' | 'setScheduleEnabled' | 'runScheduleNow' | 'deleteSchedule' | 'listScheduleRuns' | 'scheduleRunDetail' | 'previewScheduleNextRuns' | 'reviewUnknownScheduleRun' | 'gatewayOverview' | 'saveGatewayConnector' | 'setGatewayConnectorStatus' | 'issueGatewayLinkChallenge' | 'confirmGatewayPrincipalLink' | 'revokeGatewayPrincipalLink' | 'saveGatewayRoute' | 'deleteGatewayRoute' | 'listWorkspaceReports' | 'listSessionSystemReports'>);
+  } satisfies Pick<Required<AgentHostApi>, 'listVaultProfiles' | 'saveVaultProfile' | 'learningSchedule' | 'changeLearningSchedule' | 'requestKnowledgeUpdate' | 'listSchedules' | 'saveSchedule' | 'setScheduleEnabled' | 'runScheduleNow' | 'deleteSchedule' | 'listScheduleRuns' | 'scheduleRunDetail' | 'previewScheduleNextRuns' | 'reviewUnknownScheduleRun' | 'gatewayOverview' | 'gatewayDiagnostics' | 'saveGatewayConnector' | 'setGatewayConnectorStatus' | 'issueGatewayLinkChallenge' | 'confirmGatewayPrincipalLink' | 'revokeGatewayPrincipalLink' | 'saveGatewayRoute' | 'deleteGatewayRoute' | 'listWorkspaceReports' | 'listSessionSystemReports'>);
 
   workMemory = new WorkMemory({ backend: rustLearning, directory: path.join(layout.state, 'work-memory-outbox'),
     resolve: resolveWorkMemory, authorizeCapture: authorizeWorkMemoryCapture, persist: operation => persistence.run(operation),
@@ -8045,6 +8164,12 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       const interruptions = await Promise.allSettled(interrupted);
       await persistence.drain();
       await Promise.allSettled([...preparationWrites]);
+      await workerLeases.quarantineExpired().catch(() => 0);
+      for (const lease of workerLeases.list()) {
+        if (lease.ownerId === instanceId && lease.status === 'active') {
+          await workerLeases.settle(lease.leaseId, lease.fencingToken, 'unknown', 'host_closed_before_settlement').catch(() => undefined);
+        }
+      }
       await Promise.all(writeChains.values());
       await drainKnowledge?.();
       await workspaceKnowledge.close();

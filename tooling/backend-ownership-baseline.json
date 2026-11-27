@@ -1116,9 +1116,9 @@
     {
       "path": "packages/host/src/gateway/hostBridge.ts",
       "category": "legacy-backend",
-      "sha256": "835341c09ca5037e5ea325411f02f5817e602863acb8eff59fd50aa17f91fe14",
-      "loc": 819,
-      "bytes": 30013,
+      "sha256": "44c46e5bd6b38b8bc4180f1ab285e0ffef7a0c6081ab2980bb0540ba9131ca27",
+      "loc": 931,
+      "bytes": 33928,
       "effectKinds": [
         "node-builtin"
       ],
@@ -1385,9 +1385,9 @@
     {
       "path": "packages/host/src/index.ts",
       "category": "legacy-backend",
-      "sha256": "bb9c30f51efc44648388849dc2ffa46c3394c3ec43bfd3e55c9330fe3004f1cb",
-      "loc": 57,
-      "bytes": 4149,
+      "sha256": "4d20272a6d4641ffd9f264dd0857933969a5744a7c9a73479331dd7e3fc1ec4e",
+      "loc": 58,
+      "bytes": 4183,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -2115,9 +2115,9 @@
     {
       "path": "packages/host/src/service.ts",
       "category": "legacy-backend",
-      "sha256": "0887e0ac5acd513421366c613318fba068c71d33f36c15104a2a0a608f944fd5",
-      "loc": 8077,
-      "bytes": 546116,
+      "sha256": "d2fdfe0de52ec257903451b0dd64217a4bbe73ae6ff97e33bef5c7432c252f68",
+      "loc": 8202,
+      "bytes": 552591,
       "effectKinds": [
         "node-builtin",
         "runtime-call"
@@ -2303,9 +2303,9 @@
     {
       "path": "packages/host/src/tools/command.ts",
       "category": "legacy-backend",
-      "sha256": "554a1de147c69327b9fb33d2b48505ae00fbcfd052f37a58508ecf1ecbe7d6b2",
-      "loc": 324,
-      "bytes": 14401,
+      "sha256": "c4b608f42bd2af9dbb0cb780732d4861eb2a2dcbdb823452de88498c6ca44112",
+      "loc": 338,
+      "bytes": 14946,
       "effectKinds": [
         "node-builtin",
         "runtime-call"
@@ -2386,6 +2386,18 @@
       "sha256": "051aa766ed696e557dc3baa8e726424af7657c2ec103324eceb00a8374996fd5",
       "loc": 245,
       "bytes": 11311,
+      "effectKinds": [
+        "node-builtin",
+        "runtime-call"
+      ],
+      "unresolvedRuntimeImports": 0
+    },
+    {
+      "path": "packages/host/src/workerLease.ts",
+      "category": "legacy-backend",
+      "sha256": "c990c32bd7b04cf72bc5e4690c96546d39986665ae5dbfbe820ff7d3fafbe75c",
+      "loc": 524,
+      "bytes": 19743,
       "effectKinds": [
         "node-builtin",
         "runtime-call"
@@ -2568,9 +2580,9 @@
     {
       "path": "packages/platform/src/agentHost.ts",
       "category": "shared-backend-review",
-      "sha256": "0cba1905d0e2e311ec742c6195667cf8ec06736948e942e85f43b2e96ab5aa4f",
-      "loc": 1345,
-      "bytes": 81447,
+      "sha256": "7d336af8e92e9be8ca5911fc387ff35d6936f6dbc8e71a0c79e0f92b82e790e9",
+      "loc": 1360,
+      "bytes": 82380,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -2602,11 +2614,20 @@
       "unresolvedRuntimeImports": 0
     },
     {
+      "path": "packages/platform/src/executionSafety.ts",
+      "category": "shared-backend-review",
+      "sha256": "2c36c7cfed23e992f9b50f31c1f221e53fb118ed398909eb87f52e0f41b45f37",
+      "loc": 93,
+      "bytes": 2915,
+      "effectKinds": [],
+      "unresolvedRuntimeImports": 0
+    },
+    {
       "path": "packages/platform/src/gateway.ts",
       "category": "shared-backend-review",
-      "sha256": "cd139481938305a1070ac5ae7791e641f48da616e52144ee888919cc8ff5cf6b",
-      "loc": 934,
-      "bytes": 40186,
+      "sha256": "fd229032c4b4ad9aeac5e5dd00a5453dd1c514a5a58a679ebdba3b2337718b5f",
+      "loc": 951,
+      "bytes": 40668,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -2622,9 +2643,9 @@
     {
       "path": "packages/platform/src/index.ts",
       "category": "shared-backend-review",
-      "sha256": "71dd42728150bd83aa4826d433c0393e6af0feffeda2521ab03a0dd1a41ef7c3",
-      "loc": 46,
-      "bytes": 1565,
+      "sha256": "c137893e0a8bc276205b47bbac84fdef6f48895edcba5205aaf2918071f8ed2b",
+      "loc": 47,
+      "bytes": 1603,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -3449,6 +3470,11 @@
       "runtimeSignature": "0e46f63c0cf15d4cddf31deb8cac7832c0f46ad07a529657aa9bd66c5c5c5687"
     },
     {
+      "path": "apps/web/src/approvals/ExecutionSafetyPanel.tsx",
+      "category": "ui",
+      "runtimeSignature": "b6e4138ae847d2fcc62e88c9b011313cd08714447bfbb969626bf3d737dcdbba"
+    },
+    {
       "path": "apps/web/src/approvals/model.ts",
       "category": "ui",
       "runtimeSignature": "734ebf0b095afba20cfee776606b96909bed64e4ccc8e440584fca7225a4a8aa"
@@ -3516,7 +3542,7 @@
     {
       "path": "apps/web/src/chat/ChatSessionInfo.tsx",
       "category": "ui",
-      "runtimeSignature": "14eba056746470783c3a8456f00ac26c81dfcef72288af946b49cc5360dfc45d"
+      "runtimeSignature": "9ba7c7e2fc5cab993df0bc5e6aaeb6521bede2021d257b079b42aaf08e0477d9"
     },
     {
       "path": "apps/web/src/chat/ChatSystemReportCard.tsx",
@@ -4472,6 +4498,16 @@
       "path": "apps/web/src/office/officeControls.ts",
       "category": "ui",
       "runtimeSignature": "683f61744589e2120a1514f0438f58ff7367f532c0af7e5d719223d1a0082e55"
+    },
+    {
+      "path": "apps/web/src/office/OfficeFallback2D.tsx",
+      "category": "ui",
+      "runtimeSignature": "e49b5cb872bfbce25ae3b43599c9e8ecb86c09a3e712c03894bcdb5bb9375de3"
+    },
+    {
+      "path": "apps/web/src/office/officeFilters.ts",
+      "category": "ui",
+      "runtimeSignature": "0a144d1b52939ff20b1ace05314d2cfb962ed218c4eafd4072bd333f3a812da7"
     },
     {
       "path": "apps/web/src/office/OfficeFollowStatus.tsx",
@@ -6226,7 +6262,7 @@
     {
       "path": "apps/web/src/pages/OfficePage.tsx",
       "category": "ui",
-      "runtimeSignature": "9ea9b42bfd97540c5c5b0b0708b0453aaf222024988a228a5389f8b1abe040a3"
+      "runtimeSignature": "9facea78e511c535471b264a225cbd1ee496d81362d66857b2dcbe57baa9e7c2"
     },
     {
       "path": "apps/web/src/pages/PageLoadBoundary.tsx",
@@ -6266,7 +6302,7 @@
     {
       "path": "apps/web/src/pages/SettingsPage.tsx",
       "category": "ui",
-      "runtimeSignature": "86940180b50f85fc69dce1e93d9e86b5e1c8de84e791a20ec63f3126fee7e13b"
+      "runtimeSignature": "ec0b0793064fb4b609a2096a58edd5d42a7edd3bd9e22c831d60568093cfcf79"
     },
     {
       "path": "apps/web/src/pages/StartPage.tsx",

@@ -4,6 +4,7 @@ import {
   GATEWAY_HOST_METHODS,
   type AgentHostApi,
   type ChatSystemReportsView,
+  type GatewayDiagnosticsView,
   type GatewayOverview,
   type HostState,
   type WorkspaceReportsInboxView,
@@ -105,15 +106,24 @@ afterEach(() => {
 });
 
 describe('Gateway Settings UI, Workspace Reports Inbox, Chat System Reports & Mocks (GW-WP-17)', () => {
-  it('registers all GATEWAY_HOST_METHODS in AGENT_HOST_METHODS and mockHost', () => {
+  it('registers all GATEWAY_HOST_METHODS in AGENT_HOST_METHODS and mockHost', async () => {
     for (const method of GATEWAY_HOST_METHODS) {
       expect(AGENT_HOST_METHODS).toContain(method);
     }
+    expect(GATEWAY_HOST_METHODS).toContain('gatewayDiagnostics');
+    expect(AGENT_HOST_METHODS).toContain('gatewayDiagnostics');
     const platform = createMockPlatform({ seed: 'ready', host: 'bridge' });
     const agents = platform.capabilities.agents!;
     for (const method of GATEWAY_HOST_METHODS) {
       expect(typeof agents[method]).toBe('function');
     }
+    const diag = await agents.gatewayDiagnostics!();
+    expect(diag.watchdog.state).toBe('healthy');
+    expect(diag.conformance.passed).toBe(true);
+    expect(diag.conformance.checks).toHaveLength(6);
+    expect(diag.whatsappPosture.failClosed).toBe(true);
+    expect(diag.whatsappPosture.allowedSignalCount).toBe(4);
+    expect(diag.whatsappPosture.serviceWindowHours).toBe(24);
   });
 
   it('orders gateway between agent-apps and storage while preserving backwards-compatible availableSettingsSections', () => {
@@ -205,6 +215,47 @@ describe('Gateway Settings UI, Workspace Reports Inbox, Chat System Reports & Mo
       expect(html).toContain(t.gatewaySettings.audit.title);
       expect(html).toContain('skill-audit-helper@rev-2');
       expect(html).toContain(t.chat.systemReports.skillStates['review-required']);
+    }
+  });
+
+  it('renders GatewaySettingsSection runtime diagnostics in EN and ID with Watchdog, 6/6 Conformance, and WhatsApp fail-closed posture', async () => {
+    const platform = createMockPlatform({ seed: 'ready', host: 'bridge' });
+    const agents = platform.capabilities.agents!;
+    const hostState = await agents.getState();
+    const overview: GatewayOverview = await agents.gatewayOverview!();
+    const inbox: WorkspaceReportsInboxView = await agents.listWorkspaceReports!(hostState.workspaces[0]!.id);
+    const diagnostics: GatewayDiagnosticsView = await agents.gatewayDiagnostics!();
+
+    for (const lang of ['en', 'id'] as const) {
+      const t = MESSAGES[lang];
+      const d = t.gatewaySettings.diagnostics;
+      const html = renderToStaticMarkup(createElement(GatewaySettingsSection, {
+        t,
+        agents,
+        state: hostState,
+        initialOverview: overview,
+        initialInbox: inbox,
+        initialDiagnostics: diagnostics,
+      }));
+      expect(html).toContain(escapeHtml(d.title));
+      expect(html).toContain(escapeHtml(d.runCheck));
+      expect(html).toContain(escapeHtml(d.watchdogTitle));
+      expect(html).toContain(escapeHtml(d.watchdogStates.healthy));
+      expect(html).toContain(escapeHtml(d.leaseAge(diagnostics.watchdog.leaseAgeMs!)));
+      expect(html).toContain(escapeHtml(d.conformanceTitle));
+      expect(html).toContain(escapeHtml(d.conformancePassed));
+      expect(html).toContain(escapeHtml(d.conformanceSummary(6, 6, 'webhook-relay')));
+      for (const check of diagnostics.conformance.checks) {
+        expect(html).toContain(check.id);
+      }
+      expect(html).toContain(escapeHtml(d.whatsappTitle));
+      expect(html).toContain(escapeHtml(d.whatsappFailClosed));
+      expect(html).toContain(escapeHtml(d.whatsappSummary(
+        diagnostics.whatsappPosture.enabledConnectors,
+        diagnostics.whatsappPosture.configuredConnectors,
+        diagnostics.whatsappPosture.allowedSignalCount,
+        diagnostics.whatsappPosture.serviceWindowHours,
+      )));
     }
   });
 

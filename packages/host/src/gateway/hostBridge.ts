@@ -15,6 +15,7 @@ import type {
   GatewayConnectorSaveInput,
   GatewayConnectorState,
   GatewayConnectorView,
+  GatewayDiagnosticsView,
   GatewayIssueChallengeInput,
   GatewayLinkChallengeView,
   GatewayOverview,
@@ -22,6 +23,8 @@ import type {
   GatewayRouteMode,
   GatewayRouteSaveInput,
   GatewayRouteView,
+  GatewayWhatsAppPosture,
+  HostWatchdogStatus,
   LearningScheduleJob,
   LearningScheduleResult,
   ScheduleDeliveryState,
@@ -30,7 +33,13 @@ import type {
   WorkspaceReportsInboxView,
 } from '@extalia/platform';
 import { createHash, randomUUID } from 'node:crypto';
+import path from 'node:path';
 import type { RecordDeliveryInput } from '../scheduleStore.js';
+import {
+  createReferenceFourthProviderAdapter,
+  runGatewayAdapterConformance,
+  signReferenceFourthProviderPayload,
+} from './adapterSdk.js';
 import {
   AutonomousReportService,
   type AutonomousReportChatCandidate,
@@ -52,6 +61,11 @@ import {
   GatewayStore,
   type GatewayConnectorRecord,
 } from './store.js';
+import { HostWatchdogMonitor, writeHostWatchdogLease } from './watchdog.js';
+import {
+  WHATSAPP_ALLOWED_SIGNAL_CLASSES,
+  WHATSAPP_SERVICE_WINDOW_MS,
+} from './whatsapp.js';
 
 const PROVIDER_PATTERN = /^[a-z][a-z0-9-]{1,31}$/;
 const CONTROL_CHAR_PATTERN = /\p{Cc}/u;
@@ -160,6 +174,8 @@ export interface GatewayHostBridgeOptions {
   listRegisteredWorkspaceIds: () => ReadonlySet<string>;
   defaultPrincipalId?: () => string;
   now?: () => string;
+  hostId?: string;
+  watchdogLeasePath?: string;
 }
 
 export interface FanoutSettledScheduleRunInput {
@@ -200,6 +216,9 @@ export class GatewayHostBridge {
 
   private readonly now: () => string;
   private readonly defaultPrincipalId: () => string;
+  private readonly startedAt: string;
+  private readonly hostId: string;
+  private readonly watchdogLeasePath?: string;
   /** Ephemeral in-memory challenge codes (never stored in plaintext in SQLite) to support local UI confirm flow. */
   private readonly issuedChallengeCodes = new Map<string, string>();
 
@@ -219,6 +238,13 @@ export class GatewayHostBridge {
     });
     this.now = options.now ?? (() => new Date().toISOString());
     this.defaultPrincipalId = options.defaultPrincipalId ?? (() => 'profile:default');
+    this.startedAt = this.now();
+    this.hostId = options.hostId ?? 'extalia-host';
+    this.watchdogLeasePath =
+      options.watchdogLeasePath ??
+      (options.dbPath !== ':memory:'
+        ? path.join(path.dirname(options.dbPath), 'gateway-watchdog-lease.json')
+        : undefined);
   }
 
   static async open(options: GatewayHostBridgeOptions): Promise<GatewayHostBridge> {
@@ -343,6 +369,92 @@ export class GatewayHostBridge {
     }));
 
     return { connectors, routes, links, recentAudit };
+  }
+
+  async diagnostics(nowIso = this.now()): Promise<GatewayDiagnosticsView> {
+    const parsedNowMs = Date.parse(nowIso);
+    const nowMs = Number.isFinite(parsedNowMs) ? parsedNowMs : Date.now();
+    const connectors = this.store.listConnectors();
+    const activeConnectors = connectors.filter(
+      connector => connector.status === 'connected' || connector.status === 'degraded',
+    ).length;
+
+    let watchdog: HostWatchdogStatus;
+    if (this.watchdogLeasePath) {
+      await writeHostWatchdogLease(this.watchdogLeasePath, {
+        schemaVersion: 1,
+        ownerId: this.hostId,
+        pid: process.pid,
+        startedAt: this.startedAt,
+        heartbeatAt: nowIso,
+        fencingToken: randomUUID(),
+        activeConnectors,
+      });
+      const monitor = new HostWatchdogMonitor({
+        leaseFilePath: this.watchdogLeasePath,
+        staleAfterMs: 30_000,
+        downAfterMs: 90_000,
+        probeHealth: async () => true,
+        now: () => nowMs,
+      });
+      watchdog = await monitor.evaluate();
+    } else {
+      watchdog = {
+        state: 'healthy',
+        checkedAt: nowIso,
+        leaseAgeMs: 0,
+        heartbeatAt: nowIso,
+        probeOk: true,
+        reason: 'In-memory test host watchdog snapshot.',
+      };
+    }
+
+    const conformanceVerifier = 'extalia-conformance-verifier';
+    const rawBody = JSON.stringify({ eventId: 'evt-conformance-1', text: '/status' });
+    const signature = signReferenceFourthProviderPayload(rawBody, conformanceVerifier);
+    const createAdapter = (fetchImpl?: typeof fetch) =>
+      createReferenceFourthProviderAdapter({
+        connectorId: 'conn-conformance-1',
+        outboundEndpointUrl: 'https://example.com/relay',
+        signingSecret: conformanceVerifier,
+        fetch: fetchImpl,
+        nowIso: () => nowIso,
+      });
+    const defaultFetch: typeof fetch = async () =>
+      new Response(JSON.stringify({ id: 'relay-msg-1' }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+
+    const conformance = await runGatewayAdapterConformance(createAdapter(defaultFetch), {
+      validSignedRequest: {
+        rawBody,
+        headers: {
+          'x-relay-signature-256': signature,
+          'x-relay-event-id': 'evt-conformance-1',
+        },
+      },
+      nowIso: () => nowIso,
+      createAdapterWithFetch: fetchImpl => createAdapter(fetchImpl),
+    });
+
+    const whatsappConnectors = connectors.filter(connector => connector.provider === 'whatsapp');
+    const whatsappPosture: GatewayWhatsAppPosture = {
+      configuredConnectors: whatsappConnectors.length,
+      enabledConnectors: whatsappConnectors.filter(
+        connector => connector.status === 'connected' || connector.status === 'degraded',
+      ).length,
+      failClosed: true,
+      allowedSignalCount: WHATSAPP_ALLOWED_SIGNAL_CLASSES.length,
+      serviceWindowHours: Math.round(WHATSAPP_SERVICE_WINDOW_MS / 3_600_000),
+    };
+
+    return {
+      observedAt: nowIso,
+      watchdog,
+      conformance,
+      whatsappPosture,
+    };
   }
 
   saveConnector(input: GatewayConnectorSaveInput, nowIso = this.now()): GatewayOverview {

@@ -2,19 +2,20 @@ import { DEFAULT_PERMISSIONS, modelPlanningBasis, applyTeamSpec, defaultOrchestr
 import type {
   AgentAppConnection, AgentAppConnectOptions, AgentAppConnectPlan, AgentAppConnectResult, AgentAppDisconnectResult,
   AgentAppId, AgentAppRecoveryReport, AgentAppTestResult, AgentHostApi, ApprovalDecisionInput, ChatSystemReportsView, CommandSandboxStatus, ConnectionInput, ConnectionView,
-  ConnectorHealth, GatewayAuditEntryView, GatewayConfirmLinkInput, GatewayConnectorSaveInput, GatewayConnectorState, GatewayConnectorView,
-  GatewayIssueChallengeInput, GatewayLinkChallengeView, GatewayOverview, GatewayPrincipalLinkView, GatewayRouteSaveInput, GatewayRouteView,
+  ConnectorHealth, ExactApprovalView, GatewayAuditEntryView, GatewayConfirmLinkInput, GatewayConnectorSaveInput, GatewayConnectorState, GatewayConnectorView,
+  GatewayDiagnosticsView, GatewayIssueChallengeInput, GatewayLinkChallengeView, GatewayOverview, GatewayPrincipalLinkView, GatewayRouteSaveInput, GatewayRouteView,
   GeneralSchedule, GeneralScheduleCatalog, HealthDimensionStatus, HookIngestStatus, HostState, ModelChoices, ModelSelectionGuide, NextRunPreview,
   Platform, ProfilePreferences, ProjectGitInspection, ProjectPlannedAction, ProjectProvisionApplyInput,
   ProjectProvisionPreview, ProjectProvisionPreviewInput, ProjectProvisionReceipt, ProjectProvisionStepReceipt,
   ProjectProvisionWarning, SaveGeneralScheduleInput, ScheduleDeliveryV1, ScheduleReviewDecision,
   ScheduleRunDetail, ScheduleRunFilter, ScheduleRunPage, ScheduleRunV1, ScheduleTrigger,
   SessionMovePreview, SessionSummary, UpdateCapability, UpdateStatus, UserProfile,
-  WorkspaceReportsInboxView, WorkspaceSystemReport,
+  WorkerLeaseReconcileAction, WorkerLeaseView, WorkspaceReportsInboxView, WorkspaceSystemReport,
 } from '@extalia/platform';
 import {
-  isProtectedBranchName, nextScheduleRunAt, normalizeModelSelectionGuideInput, normalizeSaveGeneralSchedule,
-  normalizeScheduleReviewDecision, normalizeScheduleRunFilter, previewScheduleNextRuns as computeSchedulePreview,
+  GATEWAY_ADAPTER_SDK_VERSION,
+  isProtectedBranchName, nextScheduleRunAt, normalizeApprovalSessionFilter, normalizeModelSelectionGuideInput, normalizeSaveGeneralSchedule,
+  normalizeScheduleReviewDecision, normalizeScheduleRunFilter, normalizeWorkerLeaseId, normalizeWorkerLeaseReconcileAction, previewScheduleNextRuns as computeSchedulePreview,
   PROJECT_SCAFFOLD_TEMPLATES, sanitizeGatewayText, validateProjectFolderName,
   attachmentLimit, classifyAttachment, normalizeAgentTeam, normalizeIntegrationGate, normalizePromptLearnSkill,
   normalizeSessionOptions, normalizeTeamPlanRequest, sanitizeAttachmentName, type PromptAttachment,
@@ -231,6 +232,8 @@ function createMockAgents(options: MockOptions): AgentHostApi {
   const listeners = new Set<(event: ExtaliaEvent) => void>();
   const runs = new Map<string, Run>();
   const pending = new Map<string, PendingApproval>();
+  const mockApprovals = new Map<string, ExactApprovalView>();
+  const mockWorkerLeases: WorkerLeaseView[] = [];
   const grants = new Map<string, Set<'write' | 'execute'>>();
   const storedSecrets = new Set<string>();
   /** Subagent teams per session (kept with the session record on a real host). */
@@ -320,13 +323,46 @@ function createMockAgents(options: MockOptions): AgentHostApi {
       const mode = access === 'write' ? permissionsFor(id).fileWrite : permissionsFor(id).commands;
       if (mode === 'allow' || grants.get(id)?.has(access)) return true;
       const approvalId = nextId('approval');
+      const issuedAt = at().getTime();
+      const toolName = access === 'write' ? 'edit_file' : 'run_command';
+      const actionDigest = `sha256:${approvalId.replace(/[^a-z0-9]/gi, '').padEnd(64, 'a').slice(0, 64)}`;
+      mockApprovals.set(approvalId, {
+        approvalId,
+        sessionId: id,
+        workspaceId: summary.workspaceId,
+        toolName,
+        access,
+        target: request.detail,
+        generation: 1,
+        actionDigest,
+        state: 'pending',
+        issuedAt,
+        expiresAt: issuedAt + 15 * 60_000,
+      });
       send({ type: 'agent.state', state: 'waiting', summary: request.action });
       send({ type: 'approval.requested', approvalId, ...request });
       summary.pendingApprovalId = approvalId;
       const decision = run.decide ?? await new Promise<ApprovalDecisionInput | typeof CANCELLED>(resolve => pending.set(approvalId, { sessionId: id, access, resolve }));
       pending.delete(approvalId);
       delete summary.pendingApprovalId;
-      if (decision === CANCELLED) throw CANCELLED;
+      if (decision === CANCELLED) {
+        const current = mockApprovals.get(approvalId);
+        if (current && current.state !== 'revoked') {
+          mockApprovals.set(approvalId, { ...current, state: 'revoked', revokedAt: Date.now(), revokeReason: 'cancelled' });
+        }
+        throw CANCELLED;
+      }
+      const current = mockApprovals.get(approvalId);
+      if (current) {
+        const resolvedAt = at().getTime();
+        mockApprovals.set(approvalId, {
+          ...current,
+          state: decision === 'reject' ? 'rejected' : run.decide ? 'consumed' : 'granted',
+          decision,
+          resolvedAt,
+          ...(decision !== 'reject' && run.decide ? { consumedAt: resolvedAt } : {}),
+        });
+      }
       if (!run.decide) {
         // Seeded sessions replay instantly; everything after a real decision runs at normal speed.
         run.pace = 1;
@@ -621,6 +657,69 @@ function createMockAgents(options: MockOptions): AgentHostApi {
       applyPromptTeam(otp, MOCK_OTP_TEAM_PROMPT);
       startTurn(otp, MOCK_OTP_TEAM_PROMPT, { clock: past(1), decide: 'once' });
     }
+    const sampleSessionId = state.sessions[0]?.id ?? 'session-demo';
+    const sampleIssuedAt = Date.now() - 5 * 60_000;
+    mockApprovals.set('approval-seed-granted', {
+      approvalId: 'approval-seed-granted',
+      sessionId: sampleSessionId,
+      workspaceId: app.id,
+      toolName: 'run_command',
+      access: 'execute',
+      target: 'npm run test:coverage',
+      generation: 2,
+      actionDigest: 'sha256:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
+      state: 'granted',
+      decision: 'once',
+      issuedAt: sampleIssuedAt,
+      resolvedAt: sampleIssuedAt + 4_000,
+      expiresAt: sampleIssuedAt + 15 * 60_000,
+    });
+    mockApprovals.set('approval-seed-consumed', {
+      approvalId: 'approval-seed-consumed',
+      sessionId: sampleSessionId,
+      workspaceId: app.id,
+      toolName: 'edit_file',
+      access: 'write',
+      target: 'package.json',
+      generation: 1,
+      actionDigest: 'sha256:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
+      state: 'consumed',
+      decision: 'once',
+      issuedAt: sampleIssuedAt - 10 * 60_000,
+      resolvedAt: sampleIssuedAt - 9 * 60_000,
+      consumedAt: sampleIssuedAt - 8 * 60_000,
+      expiresAt: sampleIssuedAt + 5 * 60_000,
+    });
+    mockWorkerLeases.push(
+      {
+        leaseId: 'wl-a1b2c3d4e5f6',
+        ownerId: 'mission-worker-1',
+        taskId: 'stabilize-test',
+        sessionId: sampleSessionId,
+        fencingToken: 7,
+        pid: 41208,
+        processGroupId: 41208,
+        status: 'quarantined',
+        settlement: 'unknown',
+        quarantineReason: 'Worker process exited during restart before reporting final settlement; inspect worktree before continuing.',
+        acquiredAt: new Date(Date.now() - 18 * 60_000).toISOString(),
+        heartbeatAt: new Date(Date.now() - 14 * 60_000).toISOString(),
+        leaseExpiresAt: new Date(Date.now() - 12 * 60_000).toISOString(),
+      },
+      {
+        leaseId: 'wl-001122334455',
+        ownerId: 'mission-worker-2',
+        taskId: 'fix-validation',
+        sessionId: sampleSessionId,
+        fencingToken: 6,
+        status: 'settled',
+        settlement: 'completed',
+        acquiredAt: new Date(Date.now() - 30 * 60_000).toISOString(),
+        heartbeatAt: new Date(Date.now() - 26 * 60_000).toISOString(),
+        leaseExpiresAt: new Date(Date.now() - 20 * 60_000).toISOString(),
+        settledAt: new Date(Date.now() - 25 * 60_000).toISOString(),
+      },
+    );
   }
 
   // v0.0.47: workspace default teams survive a page reload of the mock (a real host keeps them in its config).
@@ -2015,14 +2114,40 @@ function createMockAgents(options: MockOptions): AgentHostApi {
       startTurn(summary, text, undefined, attached.map(info => ({ name: info.name, kind: info.kind, size: info.size })));
       if (fromPrompt) for (const member of teams.get(sessionId)?.members ?? []) emit(sessionId, { type: 'subagent.spawned', subagentId: member.id, role: member.role, label: member.name });
     },
+    async listApprovals(sessionId?: string): Promise<ExactApprovalView[]> {
+      await latency();
+      const filter = normalizeApprovalSessionFilter(sessionId);
+      const rows = [...mockApprovals.values()]
+        .filter(item => !filter || item.sessionId === filter)
+        .sort((a, b) => b.issuedAt - a.issuedAt);
+      return structuredClone(rows);
+    },
     async resolveApproval(sessionId, approvalId, decision) {
       await latency();
       const request = pending.get(approvalId);
       if (!request || request.sessionId !== sessionId) throw new Error('This approval is no longer pending.');
+      const record = mockApprovals.get(approvalId);
+      if (record && record.sessionId === sessionId) {
+        mockApprovals.set(approvalId, {
+          ...record,
+          state: decision === 'reject' ? 'rejected' : 'granted',
+          decision,
+          resolvedAt: Date.now(),
+        });
+      }
       request.resolve(decision);
     },
     async revokeApproval(sessionId, approvalId) {
       await latency();
+      const record = mockApprovals.get(approvalId);
+      if (record && record.sessionId === sessionId && (record.state === 'pending' || record.state === 'granted')) {
+        mockApprovals.set(approvalId, {
+          ...record,
+          state: 'revoked',
+          revokedAt: Date.now(),
+          revokeReason: 'revoked by user',
+        });
+      }
       const request = pending.get(approvalId);
       if (request && request.sessionId === sessionId) {
         pending.delete(approvalId);
@@ -2038,6 +2163,30 @@ function createMockAgents(options: MockOptions): AgentHostApi {
         networkAccess: 'denied',
         verifiedAt: new Date().toISOString(),
       };
+    },
+    async listWorkerLeases(): Promise<WorkerLeaseView[]> {
+      await latency();
+      return structuredClone(mockWorkerLeases);
+    },
+    async reconcileWorkerLease(leaseId: string, action: WorkerLeaseReconcileAction): Promise<WorkerLeaseView> {
+      await latency();
+      const id = normalizeWorkerLeaseId(leaseId);
+      const normalizedAction = normalizeWorkerLeaseReconcileAction(action);
+      const index = mockWorkerLeases.findIndex(item => item.leaseId === id);
+      if (index < 0) throw new Error('Worker lease not found.');
+      const current = mockWorkerLeases[index]!;
+      if (current.status !== 'quarantined') throw new Error('Only quarantined worker leases can be reconciled.');
+      if (normalizedAction === 'acknowledge') {
+        const updated: WorkerLeaseView = {
+          ...current,
+          status: 'settled',
+          settlement: current.settlement ?? 'unknown',
+          settledAt: new Date().toISOString(),
+        };
+        mockWorkerLeases[index] = updated;
+        return structuredClone(updated);
+      }
+      return structuredClone(current);
     },
     async cancel(sessionId) {
       await latency();
@@ -2445,6 +2594,70 @@ function createMockAgents(options: MockOptions): AgentHostApi {
     async gatewayOverview(): Promise<GatewayOverview> {
       await latency();
       return gatewaySnapshot();
+    },
+    async gatewayDiagnostics(): Promise<GatewayDiagnosticsView> {
+      await latency();
+      const observedAt = iso();
+      const whatsappConnectors = gatewayConnectors.filter(item => item.provider === 'whatsapp');
+      const enabledWhatsapp = whatsappConnectors.filter(
+        item => item.status === 'connected' || item.status === 'degraded',
+      ).length;
+      return {
+        observedAt,
+        watchdog: {
+          state: 'healthy',
+          checkedAt: observedAt,
+          leaseAgeMs: 12,
+          heartbeatAt: observedAt,
+          probeOk: true,
+          reason: 'Host lease is fresh and healthy.',
+        },
+        conformance: {
+          sdkVersion: GATEWAY_ADAPTER_SDK_VERSION,
+          provider: 'webhook-relay',
+          passed: true,
+          checks: [
+            {
+              id: 'sdk-version-and-capabilities',
+              passed: true,
+              detail: `SDK ${GATEWAY_ADAPTER_SDK_VERSION} and capabilities validated for provider "webhook-relay".`,
+            },
+            {
+              id: 'inbound-signature-fail-closed',
+              passed: true,
+              detail: 'Valid request accepted; tampered and unsigned requests rejected fail-closed.',
+            },
+            {
+              id: 'outbound-sanitization-and-redaction',
+              passed: true,
+              detail: 'Outbound payload redacted synthetic bearer token before transmission.',
+            },
+            {
+              id: 'receipt-truthfulness',
+              passed: true,
+              detail: 'Accepted outbound returned non-empty remoteMessageId.',
+            },
+            {
+              id: 'rate-limit-handling',
+              passed: true,
+              detail: 'HTTP 429 mapped truthfully to rate-limited.',
+            },
+            {
+              id: 'ambiguous-timeout-isolation',
+              passed: true,
+              detail: 'Transport timeout isolated to ambiguous-timeout without throwing or claiming delivery.',
+            },
+          ],
+          ranAt: observedAt,
+        },
+        whatsappPosture: {
+          configuredConnectors: whatsappConnectors.length,
+          enabledConnectors: enabledWhatsapp,
+          failClosed: true,
+          allowedSignalCount: 4,
+          serviceWindowHours: 24,
+        },
+      };
     },
     async saveGatewayConnector(input: GatewayConnectorSaveInput): Promise<GatewayOverview> {
       await latency();

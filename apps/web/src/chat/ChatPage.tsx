@@ -404,7 +404,7 @@ export function ChatPage({ t, language, agents, picker, state, onState, selectio
             workspaceName={workspace.name} connection={memoryScope.connection} context={memoryScope.context}
             onOpenSettings={onOpenSettings} onOpenSkills={() => onReviewSkills(workspace.id)} onOpenKnowledge={onOpenKnowledge} />}
           <ChatTeamControls t={t} agents={agents} state={state} workspace={workspace} session={session} connectionId={selectedConnectionId} running={running} control={teamControl} />
-          <details className="chat-session-information"><summary>{t.chat.sessionInfo.title}</summary><ChatSessionInfo t={t} state={state} workspace={workspace} session={session} connectionId={selectedConnectionId} status={statusText} files={changedFiles} /></details>
+          <details className="chat-session-information"><summary>{t.chat.sessionInfo.title}</summary><ChatSessionInfo t={t} state={state} workspace={workspace} session={session} connectionId={selectedConnectionId} status={statusText} files={changedFiles} agents={agents} language={language === 'id' ? 'id' : 'en'} /></details>
           </div>
         </aside>
 

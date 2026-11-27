@@ -55,3 +55,4 @@ export * from './serviceManager.js';
 export * from './gateway/index.js';
 export * from './tools/commandSandbox.js';
 export * from './approvalLedger.js';
+export * from './workerLease.js';
