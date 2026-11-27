@@ -1,4 +1,5 @@
 export { createAgentHost, type AgentHostOptions, type AgentHostRuntime, type WorktreeHostApi } from './service.js';
+export * from './projectProvisioning.js';
 export {
   IntegrationQueue, WorktreeError, WorktreeManager,
   type DiffSummary, type GateResult, type IntegrationGate, type IntegrationProposal, type IntegrationStatus, type WorktreeOrphan, type WorktreeRecord, type WorktreeStatus,
@@ -37,3 +38,20 @@ export {
 } from './migration.js';
 export { PROFILE_SCHEMA, applyProfilePatch, createProfileStore, decodeProfile, emptyProfile, type ProfileStore } from './profile.js';
 export { runObservedCliArchiveReader } from './observedCliArchiveReader.js';
+export {
+  GeneralScheduleManager, ScheduleStoreCorruptionError, ScheduleStoreDowngradeError, buildScheduledSessionOptions,
+  type GeneralScheduleHostCallbacks, type GeneralScheduleManagerOptions, type ScheduleDeferredDispatch,
+  type ScheduleDispatchReceipt, type ScheduleExecutionTarget, type ScheduleMigrationDiagnostics,
+  type ScheduleRetryContext, type TurnBindingInput, type TurnSettlementDetails, type TurnSettlementMatch, type VerificationDetails,
+} from './schedules.js';
+export {
+  ScheduleStore, SCHEDULE_STORE_SCHEMA_VERSION,
+  buildAutomaticOccurrenceKey, buildManualOccurrenceKey,
+  type AdmitScheduleOccurrenceInput, type AdmitScheduleOccurrenceResult,
+  type LegacyMigrationResult as ScheduleLegacyMigrationResult,
+  type RecordDeliveryInput, type StoredScheduleCatalogState,
+} from './scheduleStore.js';
+export * from './serviceManager.js';
+export * from './gateway/index.js';
+export * from './tools/commandSandbox.js';
+export * from './approvalLedger.js';

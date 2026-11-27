@@ -12,7 +12,8 @@ describe('Preferences storage persistence', () => {
       material: 'liquid-glass',
       language: 'id',
       sidebar: 'compact',
-      font: 'quicksand'
+      font: 'quicksand',
+      landingPage: 'office',
     });
 
     const current = loadPreferences();
@@ -21,6 +22,7 @@ describe('Preferences storage persistence', () => {
     expect(current.language).toBe('id');
     expect(current.sidebar).toBe('compact');
     expect(current.font).toBe('quicksand');
+    expect(current.landingPage).toBe('office');
   });
 
   it('provides safe fallback defaults', () => {
@@ -29,6 +31,7 @@ describe('Preferences storage persistence', () => {
     expect(DEFAULT_PREFERENCES.language).toBe('en');
     expect(DEFAULT_PREFERENCES.sidebar).toBe('expanded');
     expect(DEFAULT_PREFERENCES.font).toBe('quicksand');
+    expect(DEFAULT_PREFERENCES.landingPage).toBe('chat');
   });
 });
 
@@ -47,9 +50,9 @@ describe('Preferences decoding and migration', () => {
     expect(decodePreferences('liquid-glass-pro')).toEqual(DEFAULT_PREFERENCES);
   });
 
-  it('keeps stores written before Liquid Glass Pro existed (no font field)', () => {
+  it('keeps stores written before Liquid Glass Pro existed (no font or landingPage field)', () => {
     expect(decodePreferences({ theme: 'light', material: 'standard', language: 'id', sidebar: 'compact' })).toEqual({
-      theme: 'light', material: 'standard', language: 'id', sidebar: 'compact', font: DEFAULT_PREFERENCES.font
+      theme: 'light', material: 'standard', language: 'id', sidebar: 'compact', font: DEFAULT_PREFERENCES.font, landingPage: DEFAULT_PREFERENCES.landingPage,
     });
   });
 
@@ -59,9 +62,9 @@ describe('Preferences decoding and migration', () => {
     const previous = (globalThis as { localStorage?: unknown }).localStorage;
     (globalThis as { localStorage?: unknown }).localStorage = storage;
     try {
-      data.set('extalia.ui.v1', JSON.stringify({ version: 1, state: { theme: 'dark', material: 'liquid-glass-pro', language: 'id', sidebar: 'expanded', font: 'geist' } }));
+      data.set('extalia.ui.v1', JSON.stringify({ version: 1, state: { theme: 'dark', material: 'liquid-glass-pro', language: 'id', sidebar: 'expanded', font: 'geist', landingPage: 'office' } }));
       await usePreferencesStore.persist.rehydrate();
-      expect(loadPreferences()).toEqual({ theme: 'dark', material: 'liquid-glass-pro', language: 'id', sidebar: 'expanded', font: 'geist' });
+      expect(loadPreferences()).toEqual({ theme: 'dark', material: 'liquid-glass-pro', language: 'id', sidebar: 'expanded', font: 'geist', landingPage: 'office' });
 
       data.set('extalia.ui.v1', JSON.stringify({ version: 1, state: { theme: 'neon', material: 'glass-ultra', language: 'en', sidebar: 'compact', font: 'comic' } }));
       await usePreferencesStore.persist.rehydrate();

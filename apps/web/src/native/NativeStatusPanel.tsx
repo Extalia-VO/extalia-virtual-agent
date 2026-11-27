@@ -15,9 +15,9 @@ export interface NativeStatusProps {
   onOpenMissions(sessionId: string, workspaceId: string, missionId?: string): void;
 }
 
-function knownSession(state: HostState, item: { sessionId: string; workspaceId: string }) {
+function knownSession(state: HostState, item: { sessionId: string; workspaceId: string | null }) {
   return state.sessions.find(session => session.id === item.sessionId && session.workspaceId === item.workspaceId)
-    && state.workspaces.some(workspace => workspace.id === item.workspaceId);
+    && (item.workspaceId === null || state.workspaces.some(workspace => workspace.id === item.workspaceId));
 }
 
 /** Pure presentation also used for server-rendered evidence checks. */
@@ -31,10 +31,10 @@ export function NativeStatusContent({ t, state, view, requested = new Set<string
   const fresh = view.phase === 'ready';
   const disabled = !fresh || busy;
   const stateLabel = (value: string) => c.states[value] ?? c.unknownState;
-  const links = (item: { sessionId: string; workspaceId: string; missionId?: string; kind?: string }) => knownSession(state, item)
-    ? <><p className="native-status-scope muted small">{t.inspect.workspace}: {state.workspaces.find(workspace => workspace.id === item.workspaceId)?.name ?? item.workspaceId}</p><div className="native-status-actions">
-      <button type="button" className="button small" disabled={disabled} onClick={() => onChat?.(item.sessionId, item.workspaceId)}>{c.openChat}</button>
-      {item.missionId && (item.kind !== 'preparation' || data?.missions.some(mission => mission.id === item.missionId && mission.sessionId === item.sessionId)) && <button type="button" className="button small" disabled={disabled} onClick={() => onMission?.(item.sessionId, item.workspaceId, item.missionId)}>{c.openMissions}</button>}
+  const links = (item: { sessionId: string; workspaceId: string | null; missionId?: string; kind?: string }) => knownSession(state, item)
+    ? <><p className="native-status-scope muted small">{t.inspect.workspace}: {item.workspaceId ? (state.workspaces.find(workspace => workspace.id === item.workspaceId)?.name ?? item.workspaceId) : 'Unassigned'}</p><div className="native-status-actions">
+      <button type="button" className="button small" disabled={disabled} onClick={() => onChat?.(item.sessionId, item.workspaceId ?? '')}>{c.openChat}</button>
+      {item.missionId && item.workspaceId && (item.kind !== 'preparation' || data?.missions.some(mission => mission.id === item.missionId && mission.sessionId === item.sessionId)) && <button type="button" className="button small" disabled={disabled} onClick={() => onMission?.(item.sessionId, item.workspaceId!, item.missionId)}>{c.openMissions}</button>}
     </div></> : <p className="muted small">{c.unknownSession}</p>;
   const sessionTitle = (sessionId: string) => state.sessions.find(session => session.id === sessionId)?.title;
   const section = (key: keyof NativeStatus['totals'], title: string, empty: string, children: ReactNode) => <section className="native-status-section" aria-label={title}>

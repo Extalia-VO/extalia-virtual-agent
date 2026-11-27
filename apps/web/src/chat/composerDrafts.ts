@@ -5,10 +5,10 @@ export interface ComposerDraftSnapshot { text: string; sending: boolean; deliver
 export interface ComposerDraftLease { finish(outcome: Exclude<ComposerDelivery, 'submitting'>): void }
 
 /** Actual target identity, excluding hook-hydrated labels, status, model and project path. */
-export function composerDraftKey(session?: SessionSummary, workspaceId?: string): string {
+export function composerDraftKey(session?: SessionSummary, workspaceId?: string | null): string {
   return session ? JSON.stringify(['session', session.id, session.control ?? 'managed',
     session.observation?.sourceId ?? '', session.observation?.nativeSessionId ?? ''])
-    : JSON.stringify(['new', workspaceId ?? '']);
+    : JSON.stringify(['new', workspaceId === null ? '__unassigned__' : (workspaceId ?? '')]);
 }
 
 class ComposerDraftEntry {
@@ -68,7 +68,7 @@ export class ComposerDraftStore {
     return entry;
   }
   /** Follow this input's own freshly-created session before selection or upload. */
-  bindSession(workspaceId: string, sessionId: string): boolean {
+  bindSession(workspaceId: string | null, sessionId: string): boolean {
     if (!sessionId.trim()) return false;
     const from = composerDraftKey(undefined, workspaceId), to = composerDraftKey({ id: sessionId, control: 'managed' } as SessionSummary);
     const entry = this.entries.get(from), existing = this.entries.get(to)?.getSnapshot();

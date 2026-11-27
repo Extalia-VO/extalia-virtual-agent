@@ -43,10 +43,10 @@ export function ContinueInExtalia({ t, agents, state, source, projectPath, compa
     {open && <SessionHandoverDialog agents={agents} state={state} session={observed} t={t.sessionHandover} cliResumeMessages={t.observedCliResume} antigravityMessages={t.observedAntigravity} initialKind={observed.workspaceId ? (state.workflow === 'observe' ? 'observed' : 'native') : 'observed'}
       workspaceLinkMessages={t.observedWorkspaceLink} onState={onState} onOpenSettings={() => { setOpen(false); onOpenSettings(); }}
       destinationSetup={(destination, changed) => destination.observation?.sourceId === 'hermes' ? <ObservedHermesControls t={t} agents={agents} session={destination} settingsOnly onChanged={changed} /> : undefined}
-      onOpenDestination={id => { setOpen(false); onContinued(id, observed.workspaceId); }}
+      onOpenDestination={id => { setOpen(false); onContinued(id, observed.workspaceId ?? ''); }}
       onClose={() => setOpen(false)} onApplied={receipt => {
         if (receipt.state === 'native-ready' && receipt.targetSessionId) {
-          setOpen(false); onContinued(receipt.targetSessionId, observed.workspaceId);
+          setOpen(false); onContinued(receipt.targetSessionId, observed.workspaceId ?? '');
         }
       }} />}
   </div>;

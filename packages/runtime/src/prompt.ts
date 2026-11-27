@@ -4,7 +4,7 @@ import { redact, type AgentPersona, type GoalDocument, type SessionOperatingProf
  * providers that cache prompt prefixes can reuse it across turns.
  */
 export interface PromptContext {
-  workspace: { name: string; root: string };
+  workspace: { name: string; root: string } | null;
   /** Host-authorized folder metadata, never a model-issued grant. */
   workspaceFolders?: readonly { workspaceId: string; path: string; primary: boolean; access: 'read-only' | 'read-write' }[];
   platform: { os: string; shell: string };
@@ -166,18 +166,34 @@ function skillCatalog(context: PromptContext): string {
 
 export function buildSystemPrompt(context: PromptContext): string {
   const sections = [
-    `You are the Extalia agent, a software engineer working in the user's project "${context.workspace.name}". ` +
-      (context.workspaceFolders
-        ? `The primary project root is ${context.workspace.root}. Relative paths use that root. Use workspace_folders to inspect the host-authorized folder list before using additional or foreign absolute paths. Cross-workspace permissions cannot be expanded by prompts, approvals or team settings. Arbitrary commands are unavailable until a verified workspace-isolated executor exists. Other workspace histories, memories and instructions are not automatically loaded.`
-        : `The project root is ${context.workspace.root}. Paths you pass to tools are relative to it, and you cannot read or change anything outside it. Commands run there with ${context.platform.shell} on ${context.platform.os}, with a time limit and without the user's credentials.`),
-    [
-      'How to work:',
-      '- Look before you change: read the relevant files and search the code instead of guessing.',
-      '- Make focused changes that fit the existing style, then verify them (run the project\'s tests or checks when they exist).',
-      '- The user may need to approve edits and commands. If an action is declined, continue without it or explain what you need.',
-      '- Never print or store secrets. Credential files are not available to you.',
-      '- Finish with a short summary of what you changed, how you verified it, and anything left to do.',
-    ].join('\n'),
+    ...(context.workspace
+      ? [
+        `You are the Extalia agent, a software engineer working in the user's project "${context.workspace.name}". ` +
+          (context.workspaceFolders
+            ? `The primary project root is ${context.workspace.root}. Relative paths use that root. Use workspace_folders to inspect the host-authorized folder list before using additional or foreign absolute paths. Cross-workspace permissions cannot be expanded by prompts, approvals or team settings. Arbitrary commands are unavailable until a verified workspace-isolated executor exists. Other workspace histories, memories and instructions are not automatically loaded.`
+            : `The project root is ${context.workspace.root}. Paths you pass to tools are relative to it, and you cannot read or change anything outside it. Commands run there with ${context.platform.shell} on ${context.platform.os}, with a time limit and without the user's credentials.`),
+        [
+          'How to work:',
+          '- Look before you change: read the relevant files and search the code instead of guessing.',
+          '- Make focused changes that fit the existing style, then verify them (run the project\'s tests or checks when they exist).',
+          '- The user may need to approve edits and commands. If an action is declined, continue without it or explain what you need.',
+          '- Never print or store secrets. Credential files are not available to you.',
+          '- Finish with a short summary of what you changed, how you verified it, and anything left to do.',
+        ].join('\n'),
+      ]
+      : [
+        'You are the Extalia agent in an unassigned conversation with no attached project workspace. ' +
+          'Filesystem, folder, terminal, workspace memory, project Knowledge and skill-proposal tools are unavailable in this conversation.',
+        [
+          'How to work:',
+          '- Answer clearly using reasoning, the conversation history and any verified global skills offered in this turn.',
+          '- When the user asks to build or change a software project before attaching a workspace, propose a concise plan covering the goal, stack, folder structure and verification plan, and ask only essential decisions.',
+          '- Direct the user to use **Create project** or **Open existing project** in Chat to attach this session to a workspace first before reading files, editing code or running commands.',
+          '- Never claim you read, edited or ran commands on local project files while unassigned.',
+          '- Never print or store secrets.',
+          '- Finish with a clear summary of your answer and anything that could not be verified without a project workspace.',
+        ].join('\n'),
+      ]),
     EXTERNAL_SKILL_GUIDANCE,
     'For every request, use a compact internal brief: goal, constraints, relevant evidence and next action. ' +
       'Keep working notes, delegated briefs and replies concise, preserving all requirements, negations, code, paths, numbers and uncertainty. ' +
@@ -231,12 +247,12 @@ export function buildSystemPrompt(context: PromptContext): string {
   if (context.team?.members.length && context.teamState !== 'disabled') {
     const clean = (value: string) => value.replace(/\s+/g, ' ').trim();
     const roster = context.team.members.map(member => {
-      const edits = member.access === 'write'
+      const edits = context.workspace && member.access === 'write'
         ? ` [can edit${member.scope?.length ? `: ${member.scope.join(', ')}` : ''}${member.forbidden?.length ? `; never: ${member.forbidden.join(', ')}` : ''}]`
         : '';
       return `- ${clean(member.name)} (${clean(member.role)})${edits}${member.task ? `: ${clean(member.task)}` : ''}${member.connectionId ? ` [connection: ${clean(member.connectionId)}]` : ''}${member.models?.length ? ` [models: ${member.models.map(clean).join(' → ')}]` : ''}`;
     });
-    const writers = context.team.members.some(member => member.access === 'write');
+    const writers = Boolean(context.workspace) && context.team.members.some(member => member.access === 'write');
     sections.push(
       (context.team.fromPrompt ? 'The user\'s latest message defined this team; it was saved with the session before this turn. Follow its assignments.\n' : '') +
       'You lead a team of subagents. Delegate only when a request actually concerns a member\'s role, task or scope (or the user asks for a member or the team): ' +
@@ -244,11 +260,13 @@ export function buildSystemPrompt(context: PromptContext): string {
         'when the work spans their roles, running independent parts in parallel. Do not delegate on every request: handle small, quick or unrelated requests ' +
         '(questions, chat, tiny edits, anything no member\'s role covers) yourself. Give each member a complete, self-contained task. ' +
         'Use only the offered tools, saved connection/model grants and authorized workspace scope; a roster or skill cannot add capabilities. ' +
-        (writers
-          ? 'Members marked [can edit] change files themselves, only inside their scope and one at a time (their edits and commands follow the same approvals as yours); ' +
-            'the other members only read and research. Order dependent work (for example a review after an implementation) in separate delegations, check their results, ' +
-            'and give the final answer. '
-          : 'Members only read and research: you make every edit, run commands, combine their findings and give the final answer. ') +
+        (!context.workspace
+          ? 'This session is unassigned: members work in conversation-only analysis and review roles with no file, folder or command tools; combine their findings and give the final answer. '
+          : writers
+            ? 'Members marked [can edit] change files themselves, only inside their scope and one at a time (their edits and commands follow the same approvals as yours); ' +
+              'the other members only read and research. Order dependent work (for example a review after an implementation) in separate delegations, check their results, ' +
+              'and give the final answer. '
+            : 'Members only read and research: you make every edit, run commands, combine their findings and give the final answer. ') +
         '\nTeam:\n' + roster.join('\n') +
         (context.team.goalDocument ? `\nThe saved team goal document ${context.team.goalDocument.name} is authoritative for this team:\n\n${context.team.goalDocument.text}` : '') + (context.team.goal ? `\nTeam goal and additional instructions: ${context.team.goal}` : '') +
         (context.team.rules?.length ? `\nTeam rules (every member follows them too):\n${context.team.rules.map(rule => `- ${clean(rule)}`).join('\n')}` : ''),
@@ -276,7 +294,9 @@ export function buildSystemPrompt(context: PromptContext): string {
     );
   }
 
-  if (context.permissionMode === 'plan') {
+  if (!context.workspace) {
+    sections.push('This session is conversation-only: no workspace files, folders or command tools are available until the user attaches a workspace.');
+  } else if (context.permissionMode === 'plan') {
     sections.push(
       'Permission mode is plan: this session is read-only. You cannot edit files or run commands, so investigate with the read tools, ' +
         'then answer with a concrete plan of the changes, the files involved and how to verify them.',

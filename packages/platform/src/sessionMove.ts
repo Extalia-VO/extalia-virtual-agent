@@ -14,7 +14,9 @@ export interface SessionMovePreview {
   sessionId: string;
   reviewId: string;
   expiresAt: string;
-  source: SessionMoveWorkspace;
+  /** Whether this reviewed operation attaches an unassigned conversation (`attach`) or moves between workspaces (`move`). */
+  kind?: 'attach' | 'move';
+  source: SessionMoveWorkspace | null;
   destination: SessionMoveWorkspace;
   accessibleFolders: { workspaceId: string; path: string; access: 'read-only' | 'read-write' }[];
   transfersHistory: boolean;

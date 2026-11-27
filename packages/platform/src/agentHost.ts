@@ -14,6 +14,7 @@ import type { PromptSuggestionsStatus } from './promptSuggestions.js';
 import type { CodexPermissionHookStatus, CodexPermissionHookAnswer, CodexPermissionSetupPlan } from './codexPermissionHook.js';
 import type { PromptQueueStatus, PromptQueueChange } from './promptQueue.js';
 import type { SessionMovePreview, SessionMoveRequest, SessionProjectRootRequest, SessionWorkspaceFileScope } from './sessionMove.js';
+import type { ProjectProvisionApplyInput, ProjectProvisionPreview, ProjectProvisionPreviewInput, ProjectProvisionReceipt } from './projectProvisioning.js';
 import type { ObservedReplyStatus, ObservedReplyAnswer } from './observedReply.js';
 import type { ObservedControlStatus, ObservedControlDispatchInput, ObservedControlReceipt } from './observedControl.js';
 import type { ObservedInboxStatus } from './observedInbox.js';
@@ -31,7 +32,7 @@ import type { AttachmentPreview, PromptAttachment, PromptAttachmentInput } from 
 import type { BuiltinSkillInfo, SkillConsentInput, WorkspaceSkills } from './skills.js';
 import type { SkillActionResult, SkillApprovalInput, SkillEvaluationInput, SkillImportSource, SkillRegistryReport, SkillRegistryPage, SkillRegistryPageInput, SkillReviewInput, SkillRevisionDetails, SkillPreflightInput, SkillPreflightReport, SkillRoutingInput, SkillRoutingReport } from './skillRegistry.js';
 import type {
-  IntegrationApproval, IntegrationGateInput, IntegrationProposalView, IntegrationRequest, WorktreeDiffView, WorktreeDiscardConfirmation, WorktreeOrphanView, WorktreeStatusView, WorktreeView,
+  CommandSandboxStatus, IntegrationApproval, IntegrationGateInput, IntegrationProposalView, IntegrationRequest, WorktreeDiffView, WorktreeDiscardConfirmation, WorktreeOrphanView, WorktreeStatusView, WorktreeView,
 } from './worktrees.js';
 import type {
   KnowledgeGraph, KnowledgeLinkPage, KnowledgeNodeLookup, KnowledgeNoteResult, KnowledgeOverview, KnowledgeOverviewOptions, KnowledgeSearchResult, KnowledgeStatus, KnowledgeSyncMode,
@@ -46,7 +47,29 @@ import type { WorkspaceKnowledgeBinding, WorkspaceKnowledgeMethod } from './work
 import type { SkillMarketSearchResult, SkillMarketPreviewInput, SkillMarketPreview } from './skillMarket.js';
 import type { ContinuityView, ContinuityReadInput, ContinuityReadPage, HandoverPreviewInput, HandoverPreview, HandoverApplyInput, HandoverReconcileInput, HandoverReceipt } from './handover.js';
 import { VAULT_PROFILE_HOST_METHODS, type VaultProfilesCatalog, type SaveVaultProfileInput } from './vaultProfiles.js';
-import { GENERAL_SCHEDULE_HOST_METHODS, type GeneralScheduleCatalog, type SaveGeneralScheduleInput } from './schedules.js';
+import {
+  GATEWAY_HOST_METHODS,
+  type ChatSystemReportsView,
+  type GatewayConfirmLinkInput,
+  type GatewayConnectorSaveInput,
+  type GatewayConnectorState,
+  type GatewayIssueChallengeInput,
+  type GatewayLinkChallengeView,
+  type GatewayOverview,
+  type GatewayRouteSaveInput,
+  type WorkspaceReportsInboxView,
+} from './gateway.js';
+import {
+  GENERAL_SCHEDULE_HOST_METHODS,
+  type GeneralScheduleCatalog,
+  type NextRunPreview,
+  type SaveGeneralScheduleInput,
+  type ScheduleReviewDecision,
+  type ScheduleRunDetail,
+  type ScheduleRunFilter,
+  type ScheduleRunPage,
+  type ScheduleTrigger,
+} from './schedules.js';
 
 /**
  * The agent host runs the Extalia Native runtime where files and commands are
@@ -71,6 +94,12 @@ export interface ConnectionView extends Connection {
  * Native, the workspace's or profile's model for Hermes Agent).
  */
 export interface SessionOptions {
+  /** Saved Native connection id when creating an unassigned session (`workspaceId === null`). */
+  connectionId?: string;
+  /** Saved operating profile id applied as defaults when creating an unassigned session. */
+  operatingProfileId?: string;
+  /** Client UUID for fail-closed idempotent `createSession` retries. */
+  clientRequestId?: string;
   operatingProfile?: SessionOperatingProfileInput;
   model?: string;
   effort?: Effort;
@@ -169,6 +198,24 @@ export function normalizeSessionOptions(raw: unknown): SessionOptions {
   if (typeof raw !== 'object' || Array.isArray(raw)) throw new Error('Invalid session options.');
   const value = raw as Record<string, unknown>;
   const options: SessionOptions = {};
+  if (value.connectionId !== undefined && value.connectionId !== null && value.connectionId !== '') {
+    if (typeof value.connectionId !== 'string') throw new Error('Invalid connection id.');
+    const trimmed = value.connectionId.trim();
+    if (!trimmed || trimmed.length > 160 || /\p{Cc}/u.test(trimmed)) throw new Error('Invalid connection id.');
+    options.connectionId = trimmed;
+  }
+  if (value.operatingProfileId !== undefined && value.operatingProfileId !== null && value.operatingProfileId !== '') {
+    if (typeof value.operatingProfileId !== 'string') throw new Error('Invalid operating profile id.');
+    const trimmed = value.operatingProfileId.trim();
+    if (!trimmed || trimmed.length > 160 || /\p{Cc}/u.test(trimmed)) throw new Error('Invalid operating profile id.');
+    options.operatingProfileId = trimmed;
+  }
+  if (value.clientRequestId !== undefined && value.clientRequestId !== null && value.clientRequestId !== '') {
+    if (typeof value.clientRequestId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value.clientRequestId)) {
+      throw new Error('The request id must be a valid UUID.');
+    }
+    options.clientRequestId = value.clientRequestId.toLowerCase();
+  }
   const model = typeof value.model === 'string' ? value.model.trim() : value.model;
   if (model !== undefined && model !== null && model !== '') {
     if (!isModelId(model)) throw new Error('Use a model id of up to 200 letters, digits and . _ : / @ + - characters.');
@@ -247,7 +294,8 @@ export interface SessionContextUsage {
 export interface SessionSummary {
   operatingProfile?: Pick<SessionOperatingProfile, 'id' | 'name' | 'revision'>;
   id: string;
-  workspaceId: string;
+  /** Owning workspace id, or `null` for an unassigned Extalia Native session. */
+  workspaceId: string | null;
   /** Native folder/access grants differ from this session's recorded context; offer an explicit workspace review. */
   workspaceReviewRequired?: boolean;
   /** Active registered working folder override for a saved Native session. */
@@ -398,6 +446,7 @@ export interface ProfilePreferences {
   material?: string;
   font?: string;
   sidebar?: string;
+  landingPage?: 'chat' | 'office';
 }
 
 /** Host-owned UI state. Browser storage is a disposable mirror, never its authority. */
@@ -866,6 +915,8 @@ export interface AgentHostApi extends ObservedMemoryApi {
   checkFolder(path: string): Promise<FolderCheck>;
   browseDirectories(path?: string): Promise<DirectoryListing>;
   saveWorkspace(input: WorkspaceInput): Promise<HostState>;
+  previewProjectProvision?(input: ProjectProvisionPreviewInput): Promise<ProjectProvisionPreview>;
+  applyProjectProvision?(input: ProjectProvisionApplyInput): Promise<ProjectProvisionReceipt>;
   /** Explicitly permit additional saved model connections for this workspace's native missions. */
   setWorkspaceMissionConnections(workspaceId: string, connectionIds: string[]): Promise<HostState>;
   deleteWorkspace(id: string): Promise<HostState>;
@@ -944,14 +995,14 @@ export interface AgentHostApi extends ObservedMemoryApi {
    * polling, read-only). Returns the locations with their updated `autoWatch`.
    */
   setAutoWatch(locationId: string, enabled: boolean): Promise<ImportLocation[]>;
-  /** Start a managed session, optionally with its own model and effort (see `modelChoices`). */
-  createSession(workspaceId: string, options?: SessionOptions): Promise<SessionSummary>;
+  /** Start a managed session, optionally with its own model and effort (see `modelChoices`). Pass `null` for an unassigned Native session. */
+  createSession(workspaceId: string | null, options?: SessionOptions): Promise<SessionSummary>;
   /** Replace a managed session's model and effort override for its next turns; empty fields go back to the defaults. */
   setSessionOptions(sessionId: string, options: SessionOptions): Promise<SessionSummary>;
-  /** Models and efforts for a new workspace session, or an existing managed session's saved runtime/connection. Credentials are never returned. */
-  modelChoices(workspaceId: string, sessionId?: string): Promise<ModelChoices>;
+  /** Models and efforts for a new workspace/unassigned session, or an existing managed session's saved runtime/connection. Credentials are never returned. */
+  modelChoices(workspaceId: string | null, sessionId?: string, connectionId?: string): Promise<ModelChoices>;
   /** Inspect a saved Native connection's catalog for the team editor. This does not authorize delegation or return credentials. */
-  teamModelChoices(workspaceId: string, connectionId: string, sessionId?: string): Promise<ModelChoices>;
+  teamModelChoices(workspaceId: string | null, connectionId: string, sessionId?: string): Promise<ModelChoices>;
   /** A managed session's subagent team, if it has one. */
   getSessionTeam(sessionId: string): Promise<AgentTeam | undefined>;
   /**
@@ -971,7 +1022,7 @@ export interface AgentHostApi extends ObservedMemoryApi {
    * runs on this computer), or a deterministic plan is used (`'heuristic'`, with a `note`).
    * Without allowed models the plan picks from the workspace's models and returns them as `allowedModels`.
    */
-  planTeam(workspaceId: string, request: TeamPlanRequest, sessionId?: string): Promise<TeamPlan>;
+  planTeam(workspaceId: string | null, request: TeamPlanRequest, sessionId?: string): Promise<TeamPlan>;
   /** One shared profile-local planning reference. Optional for older hosts. */
   getModelSelectionGuide?(): Promise<ModelSelectionGuide | null>;
   /** Replace the guide, or clear it with null. The host assigns updatedAt. */
@@ -1021,7 +1072,7 @@ export interface AgentHostApi extends ObservedMemoryApi {
    * Send a prompt; `attachmentIds` name files uploaded with `uploadAttachment` to this session (up to ten).
    * Their contents go to the model for this turn only; the stored history keeps their names.
    */
-  sendPrompt(sessionId: string, text: string, options?: { attachmentIds?: string[]; learnSkill?: boolean }): Promise<void>;
+  sendPrompt(sessionId: string, text: string, options?: { attachmentIds?: string[]; learnSkill?: boolean; clientRequestId?: string }): Promise<void>;
   /**
    * Store a file to attach to the session's next prompt. Images up to 5 MB (png, jpeg, webp, gif), text files
    * up to 1 MB, other files up to 10 MB (named to the model, not read). Kept privately in the data directory,
@@ -1036,6 +1087,10 @@ export interface AgentHostApi extends ObservedMemoryApi {
    */
   attachmentPreview(sessionId: string, ref: string): Promise<AttachmentPreview | undefined>;
   resolveApproval(sessionId: string, approvalId: string, decision: ApprovalDecisionInput): Promise<void>;
+  /** Revoke a pending or unexecuted exact-action approval so effect-time verification denies execution. */
+  revokeApproval?(sessionId: string, approvalId: string): Promise<void>;
+  /** Inspect the host's verified per-OS command sandbox capability without assuming availability. */
+  commandSandboxStatus?(): Promise<CommandSandboxStatus>;
   /** A status-panel cancellation is bound to its exact Native invocation; legacy callers may omit the guard. */
   cancel(sessionId: string, expectedNativeRunId?: string): Promise<void>;
   /** Native history locations Extalia knows how to look in. Nothing is read until a scan. */
@@ -1216,6 +1271,20 @@ export interface AgentHostApi extends ObservedMemoryApi {
   setScheduleEnabled?(id: string, enabled: boolean, expectedRevision?: number): Promise<GeneralScheduleCatalog>;
   runScheduleNow?(id: string, expectedRevision?: number): Promise<GeneralScheduleCatalog>;
   deleteSchedule?(id: string, expectedRevision?: number): Promise<GeneralScheduleCatalog>;
+  listScheduleRuns?(filter: ScheduleRunFilter): Promise<ScheduleRunPage>;
+  scheduleRunDetail?(runId: string): Promise<ScheduleRunDetail>;
+  previewScheduleNextRuns?(trigger: ScheduleTrigger, count?: number): Promise<NextRunPreview>;
+  reviewUnknownScheduleRun?(runId: string, expectedRevision: number, decision: ScheduleReviewDecision): Promise<ScheduleRunDetail>;
+  gatewayOverview?(): Promise<GatewayOverview>;
+  saveGatewayConnector?(input: GatewayConnectorSaveInput): Promise<GatewayOverview>;
+  setGatewayConnectorStatus?(connectorId: string, status: GatewayConnectorState): Promise<GatewayOverview>;
+  issueGatewayLinkChallenge?(input: GatewayIssueChallengeInput): Promise<GatewayLinkChallengeView>;
+  confirmGatewayPrincipalLink?(input: GatewayConfirmLinkInput): Promise<GatewayOverview>;
+  revokeGatewayPrincipalLink?(linkId: string, reason?: string): Promise<GatewayOverview>;
+  saveGatewayRoute?(input: GatewayRouteSaveInput): Promise<GatewayOverview>;
+  deleteGatewayRoute?(routeId: string): Promise<GatewayOverview>;
+  listWorkspaceReports?(workspaceId: string): Promise<WorkspaceReportsInboxView>;
+  listSessionSystemReports?(workspaceId: string, sessionId: string): Promise<ChatSystemReportsView>;
   /** Host resolves the registered vault; an optional expected binding only refuses stale callers. */
   workspaceKnowledge?(workspaceId: string, method: WorkspaceKnowledgeMethod, args: unknown[], expectedBinding?: WorkspaceKnowledgeBinding): Promise<unknown>;
   /** Live protocol events for every session. Returns an unsubscribe function. */
@@ -1225,11 +1294,12 @@ export interface AgentHostApi extends ObservedMemoryApi {
 /** Methods a transport may forward. `subscribe` is carried separately (IPC push or SSE). */
 export const AGENT_HOST_METHODS = [
   'sessionBrowserGroups', 'sessionBrowserSessions',
-  'getStateSummary', 'getState', 'getProfile', 'saveProfile', 'saveConnection', 'deleteConnection', 'testConnection', 'checkFolder', 'browseDirectories', 'saveWorkspace', 'deleteWorkspace',
+  'getStateSummary', 'getState', 'getProfile', 'saveProfile', 'saveConnection', 'deleteConnection', 'testConnection', 'checkFolder', 'browseDirectories', 'saveWorkspace', 'previewProjectProvision', 'applyProjectProvision', 'deleteWorkspace',
   'nativeStatus', 'refreshNativeStatus', 'setWorkspaceMissionConnections', 'planNativeMission', 'startNativeMission', 'cancelNativeMission', 'nativeMissionRun', 'listNativeMissions', 'refreshNativeMissionRecovery',
   ...OPERATING_PROFILE_HOST_METHODS,
   ...GENERAL_SCHEDULE_HOST_METHODS,
-  'completeSetup', 'createSession', 'setSessionOptions', 'modelChoices', 'teamModelChoices', 'getSessionTeam', 'saveSessionTeam', 'saveWorkspaceTeam', 'planTeam', 'continueSession', 'renameSession', 'previewSessionMove', 'moveSession', 'setSessionProjectRoot', 'sessionContinuity', 'handoverHarnesses', 'createHandoverDestination', 'previewHandover', 'applyHandover', 'readContinuity', 'reconcileHandover', 'deleteSession', 'sessionEvents', 'sendPrompt', 'uploadAttachment', 'removeAttachment', 'attachmentPreview', 'resolveApproval', 'cancel',
+  ...GATEWAY_HOST_METHODS,
+  'completeSetup', 'createSession', 'setSessionOptions', 'modelChoices', 'teamModelChoices', 'getSessionTeam', 'saveSessionTeam', 'saveWorkspaceTeam', 'planTeam', 'continueSession', 'renameSession', 'previewSessionMove', 'moveSession', 'setSessionProjectRoot', 'sessionContinuity', 'handoverHarnesses', 'createHandoverDestination', 'previewHandover', 'applyHandover', 'readContinuity', 'reconcileHandover', 'deleteSession', 'sessionEvents', 'sendPrompt', 'uploadAttachment', 'removeAttachment', 'attachmentPreview', 'resolveApproval', 'revokeApproval', 'commandSandboxStatus', 'cancel',
   'setWorkflow', 'observeImports', 'observationSession', 'markObservedRead', 'setObservation', 'setAutoWatch',
   'observedWorkspaceLink', 'setObservedWorkspaceLink',
   'observedUserInputStatus', 'answerObservedUserInput',

@@ -3,12 +3,19 @@ import { constants } from 'node:os';
 import { StringDecoder } from 'node:string_decoder';
 import { redact, safeLabel, safeText } from '@extalia/core';
 import type { ActivityKind, RiskLevel } from '@extalia/protocol';
-import type { ToolDefinition, ToolRunContext } from '@extalia/runtime';
+import type { CommandSettlementStatus, ToolDefinition, ToolOutcome, ToolRunContext } from '@extalia/runtime';
+import type { CommandSandboxExecutor } from './commandSandbox.js';
 import { integer, text } from './shared.js';
 
 export interface CommandToolOptions {
   /** Refuse commands until a verified workspace-isolated executor is available. */
   filesystemBoundary?: 'required';
+  /** Verified OS command sandbox executor; used when `filesystemBoundary === 'required'`. */
+  sandbox?: CommandSandboxExecutor;
+  /** Extalia data directory to shield from sandboxed commands. */
+  dataDirectory?: string;
+  /** Home directory whose sensitive entries are shielded from sandboxed commands. */
+  homeDirectory?: string;
   /** Environment the command inherits before credentials are removed. Defaults to `process.env`. */
   env?: Readonly<Record<string, string | undefined>>;
   /** Time between SIGTERM and SIGKILL when a command is stopped. Defaults to 2000 ms. */
@@ -17,7 +24,8 @@ export interface CommandToolOptions {
   outputIntervalMs?: number;
 }
 
-type CommandSettings = Required<Omit<CommandToolOptions, 'filesystemBoundary'>>;
+type CommandSettings = Required<Pick<CommandToolOptions, 'env' | 'killGraceMs' | 'outputIntervalMs'>>
+  & Pick<CommandToolOptions, 'sandbox' | 'dataDirectory' | 'homeDirectory'>;
 
 type CommandInput = { command: string; timeout_seconds?: number };
 type Stream = 'stdout' | 'stderr';
@@ -145,109 +153,156 @@ function firstLine(command: string): string {
   return command.trim().includes('\n') ? `${line} …` : line;
 }
 
-async function runCommand(root: string, input: CommandInput, context: ToolRunContext, options: CommandSettings) {
+async function runCommand(root: string, input: CommandInput, context: ToolRunContext, options: CommandSettings): Promise<ToolOutcome> {
   const command = text(input.command);
-  if (!command.trim()) return { ok: false, output: 'The command is empty.' };
+  if (!command.trim()) return { ok: false, output: 'The command is empty.', settlement: 'failed' };
   const timeoutSeconds = integer(input.timeout_seconds, 120, 1, 600);
-  if (context.signal.aborted) return { ok: false, output: `The command was cancelled before it started.\nexit code ${CANCELLED_EXIT_CODE}` };
+  if (context.signal.aborted) return { ok: false, output: `The command was cancelled before it started.\nexit code ${CANCELLED_EXIT_CODE}`, settlement: 'cancelled' };
 
   const commandId = context.toolCallId;
   const started = Date.now();
   context.emit({ type: 'command.started', commandId, command: redact(command), cwd: '.' });
 
-  const child = spawn(command, {
-    shell: true,
-    cwd: root,
-    // Its own process group, so a timeout or cancel can stop everything the command started.
-    detached: process.platform !== 'win32',
-    env: commandEnvironment(options.env),
-    stdio: ['ignore', 'pipe', 'pipe'],
-    windowsHide: true,
-  });
-
-  const capture = new OutputCapture();
-  const pending: Record<Stream, string> = { stdout: '', stderr: '' };
-  const buffers: Record<Stream, LineBuffer> = { stdout: new LineBuffer(), stderr: new LineBuffer() };
-  let flushTimer: NodeJS.Timeout | undefined;
-  let lastFlush = 0;
-
-  const flush = () => {
-    flushTimer = undefined;
-    lastFlush = Date.now();
-    for (const stream of ['stdout', 'stderr'] as const) {
-      let value = pending[stream];
-      if (!value) continue;
-      pending[stream] = '';
-      if (value.length > EVENT_TEXT_LIMIT) value = `… [${value.length - EVENT_TEXT_LIMIT} characters skipped]\n${value.slice(-EVENT_TEXT_LIMIT)}`;
-      context.emit({ type: 'command.output', commandId, stream, text: value });
+  const cleanEnv = commandEnvironment(options.env);
+  let child: ChildProcess;
+  let cleanup: (() => Promise<void>) | undefined;
+  try {
+    if (options.sandbox?.status.supported) {
+      const spawned = await options.sandbox.spawn(command, {
+        cwd: root,
+        env: cleanEnv,
+        ...(options.dataDirectory ? { dataDirectory: options.dataDirectory } : {}),
+        ...(options.homeDirectory ? { homeDirectory: options.homeDirectory } : {}),
+      });
+      child = spawned.child;
+      cleanup = spawned.cleanup;
+    } else {
+      child = spawn(command, {
+        shell: true,
+        cwd: root,
+        // Its own process group, so a timeout or cancel can stop everything the command started.
+        detached: process.platform !== 'win32',
+        env: cleanEnv,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true,
+      });
     }
-  };
-  const accept = (stream: Stream, raw: string) => {
-    if (!raw) return;
-    const clean = redact(raw);
-    capture.add(clean);
-    pending[stream] += clean;
-    flushTimer ??= setTimeout(flush, Math.max(0, lastFlush + options.outputIntervalMs - Date.now()));
-  };
-  child.stdout?.on('data', (chunk: Buffer) => accept('stdout', buffers.stdout.push(chunk)));
-  child.stderr?.on('data', (chunk: Buffer) => accept('stderr', buffers.stderr.push(chunk)));
-
-  let stopReason: 'timeout' | 'cancelled' | undefined;
-  const stop = (reason: 'timeout' | 'cancelled') => {
-    if (stopReason) return;
-    stopReason = reason;
-    terminate(child, options.killGraceMs);
-    // If the process cannot be reaped (for example stuck in the kernel), report anyway.
-    setTimeout(() => finish(null, null), options.killGraceMs + 3000).unref();
-  };
-  const timeout = setTimeout(() => stop('timeout'), timeoutSeconds * 1000);
-  const onAbort = () => stop('cancelled');
-  context.signal.addEventListener('abort', onAbort, { once: true });
-
-  let spawnError: Error | undefined;
-  let resolveDone!: (value: { code: number | null; signal: NodeJS.Signals | null }) => void;
-  const done = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(resolve => { resolveDone = resolve; });
-  let finished = false;
-  function finish(code: number | null, signal: NodeJS.Signals | null) {
-    if (finished) return;
-    finished = true;
-    resolveDone({ code, signal });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    context.emit({ type: 'command.completed', commandId, exitCode: 127, durationMs: Date.now() - started });
+    return { ok: false, output: `Could not start the command: ${message}\nexit code 127`, settlement: 'failed' };
   }
-  child.on('error', error => { spawnError = error; finish(127, null); });
-  child.on('close', (code, signal) => finish(code, signal));
-  // A background process may keep the pipes open after the shell exits; do not wait for it forever.
-  child.on('exit', (code, signal) => { setTimeout(() => finish(code, signal), 1000).unref(); });
 
-  const { code, signal } = await done;
-  clearTimeout(timeout);
-  context.signal.removeEventListener('abort', onAbort);
-  child.stdout?.destroy();
-  child.stderr?.destroy();
-  accept('stdout', buffers.stdout.end());
-  accept('stderr', buffers.stderr.end());
-  if (flushTimer) clearTimeout(flushTimer);
-  flush();
+  try {
+    const capture = new OutputCapture();
+    const pending: Record<Stream, string> = { stdout: '', stderr: '' };
+    const buffers: Record<Stream, LineBuffer> = { stdout: new LineBuffer(), stderr: new LineBuffer() };
+    let flushTimer: NodeJS.Timeout | undefined;
+    let lastFlush = 0;
 
-  const exitCode = stopReason === 'timeout' ? TIMEOUT_EXIT_CODE
-    : stopReason === 'cancelled' ? CANCELLED_EXIT_CODE
-    : code ?? (signal ? 128 + (constants.signals[signal] ?? 0) : 1);
-  context.emit({ type: 'command.completed', commandId, exitCode, durationMs: Date.now() - started });
+    const flush = () => {
+      flushTimer = undefined;
+      lastFlush = Date.now();
+      for (const stream of ['stdout', 'stderr'] as const) {
+        let value = pending[stream];
+        if (!value) continue;
+        pending[stream] = '';
+        if (value.length > EVENT_TEXT_LIMIT) value = `… [${value.length - EVENT_TEXT_LIMIT} characters skipped]\n${value.slice(-EVENT_TEXT_LIMIT)}`;
+        context.emit({ type: 'command.output', commandId, stream, text: value });
+      }
+    };
+    const accept = (stream: Stream, raw: string) => {
+      if (!raw) return;
+      const clean = redact(raw);
+      capture.add(clean);
+      pending[stream] += clean;
+      flushTimer ??= setTimeout(flush, Math.max(0, lastFlush + options.outputIntervalMs - Date.now()));
+    };
+    child.stdout?.on('data', (chunk: Buffer) => accept('stdout', buffers.stdout.push(chunk)));
+    child.stderr?.on('data', (chunk: Buffer) => accept('stderr', buffers.stderr.push(chunk)));
 
-  const lines = [capture.result().trimEnd() || '(no output)'];
-  if (spawnError) lines.push(`Could not start the command: ${spawnError.message}`);
-  if (stopReason === 'timeout') lines.push(`The command timed out after ${timeoutSeconds} s and was stopped.`);
-  if (stopReason === 'cancelled') lines.push('The command was cancelled.');
-  lines.push(`exit code ${exitCode}`);
-  return { ok: exitCode === 0, output: lines.join('\n') };
+    let stopReason: 'timeout' | 'cancelled' | undefined;
+    let reapTimedOut = false;
+    let reapTimer: NodeJS.Timeout | undefined;
+    const stop = (reason: 'timeout' | 'cancelled') => {
+      if (stopReason) return;
+      stopReason = reason;
+      terminate(child, options.killGraceMs);
+      // If the process cannot be reaped (for example stuck in the kernel), report anyway.
+      reapTimer = setTimeout(() => { reapTimedOut = true; finish(null, null); }, options.killGraceMs + 3000);
+      reapTimer.unref();
+    };
+    const timeout = setTimeout(() => stop('timeout'), timeoutSeconds * 1000);
+    const onAbort = () => stop('cancelled');
+    context.signal.addEventListener('abort', onAbort, { once: true });
+
+    let spawnError: Error | undefined;
+    let resolveDone!: (value: { code: number | null; signal: NodeJS.Signals | null }) => void;
+    const done = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(resolve => { resolveDone = resolve; });
+    let finished = false;
+    function finish(code: number | null, signal: NodeJS.Signals | null) {
+      if (finished) return;
+      finished = true;
+      resolveDone({ code, signal });
+    }
+    child.on('error', error => { spawnError = error; finish(127, null); });
+    child.on('close', (code, signal) => finish(code, signal));
+    // A background process may keep the pipes open after the shell exits; do not wait for it forever.
+    child.on('exit', (code, signal) => { setTimeout(() => finish(code, signal), 1000).unref(); });
+
+    const { code, signal } = await done;
+    clearTimeout(timeout);
+    if (reapTimer) clearTimeout(reapTimer);
+    context.signal.removeEventListener('abort', onAbort);
+    child.stdout?.destroy();
+    child.stderr?.destroy();
+    accept('stdout', buffers.stdout.end());
+    accept('stderr', buffers.stderr.end());
+    if (flushTimer) clearTimeout(flushTimer);
+    flush();
+
+    const exitCode = stopReason === 'timeout' ? TIMEOUT_EXIT_CODE
+      : stopReason === 'cancelled' ? CANCELLED_EXIT_CODE
+      : code ?? (signal ? 128 + (constants.signals[signal] ?? 0) : 1);
+    context.emit({ type: 'command.completed', commandId, exitCode, durationMs: Date.now() - started });
+
+    const settlement: CommandSettlementStatus = reapTimedOut
+      ? 'unknown'
+      : stopReason === 'timeout'
+        ? 'timed_out'
+        : stopReason === 'cancelled'
+          ? 'cancelled'
+          : exitCode === 0
+            ? 'passed'
+            : 'failed';
+
+    const lines = [capture.result().trimEnd() || '(no output)'];
+    if (spawnError) lines.push(`Could not start the command: ${spawnError.message}`);
+    if (stopReason === 'timeout') lines.push(`The command timed out after ${timeoutSeconds} s and was stopped.`);
+    if (stopReason === 'cancelled') lines.push('The command was cancelled.');
+    if (reapTimedOut) lines.push('The command process could not be reaped before settlement; its final effect is unknown.');
+    lines.push(`exit code ${exitCode}`);
+    return { ok: !reapTimedOut && exitCode === 0, output: lines.join('\n'), settlement };
+  } finally {
+    await cleanup?.().catch(() => undefined);
+  }
 }
 
-/** `run_command`: refuses when workspace isolation is required; otherwise retains the legacy shell executor. */
+/** `run_command`: refuses when workspace isolation is required without a verified sandbox; otherwise runs inside the sandbox or legacy shell executor. */
 export function createCommandTool(root: string, options: CommandToolOptions = {}): ToolDefinition<CommandInput> {
-  const settings: CommandSettings = { env: options.env ?? process.env, killGraceMs: options.killGraceMs ?? 2000, outputIntervalMs: options.outputIntervalMs ?? 200 };
+  const settings: CommandSettings = {
+    env: options.env ?? process.env,
+    killGraceMs: options.killGraceMs ?? 2000,
+    outputIntervalMs: options.outputIntervalMs ?? 200,
+    ...(options.sandbox?.status.supported ? { sandbox: options.sandbox } : {}),
+    ...(options.dataDirectory ? { dataDirectory: options.dataDirectory } : {}),
+    ...(options.homeDirectory ? { homeDirectory: options.homeDirectory } : {}),
+  };
   const boundaryRequired = options.filesystemBoundary === 'required';
+  const unavailable = boundaryRequired && !options.sandbox?.status.supported;
   return {
     name: 'run_command',
-    description: boundaryRequired ? WORKSPACE_COMMAND_UNAVAILABLE : 'Run a shell command in the workspace root and return its combined output and exit code. stdin is closed, so interactive programs fail; pass non-interactive flags. Credentials are not available in the environment.',
+    description: unavailable ? WORKSPACE_COMMAND_UNAVAILABLE : 'Run a shell command in the workspace root and return its combined output and exit code. stdin is closed, so interactive programs fail; pass non-interactive flags. Credentials are not available in the environment.',
     parameters: {
       type: 'object',
       properties: {
@@ -259,11 +314,11 @@ export function createCommandTool(root: string, options: CommandToolOptions = {}
     },
     access: 'execute',
     kind: 'command',
-    precheck: boundaryRequired ? () => WORKSPACE_COMMAND_UNAVAILABLE : undefined,
+    precheck: unavailable ? () => WORKSPACE_COMMAND_UNAVAILABLE : undefined,
     describe: input => {
       const command = text(input.command);
-      return { label: boundaryRequired ? 'Native commands unavailable' : safeLabel(`Running ${firstLine(command)}`, 80), detail: boundaryRequired ? WORKSPACE_COMMAND_UNAVAILABLE : safeText(command, 4000), risk: commandRisk(command) };
+      return { label: unavailable ? 'Native commands unavailable' : safeLabel(`Running ${firstLine(command)}`, 80), detail: unavailable ? WORKSPACE_COMMAND_UNAVAILABLE : safeText(command, 4000), risk: commandRisk(command) };
     },
-    run: (input, context) => boundaryRequired ? Promise.resolve({ ok: false, output: WORKSPACE_COMMAND_UNAVAILABLE }) : runCommand(root, input, context, settings),
+    run: (input, context) => unavailable ? Promise.resolve({ ok: false, output: WORKSPACE_COMMAND_UNAVAILABLE }) : runCommand(root, input, context, settings),
   };
 }

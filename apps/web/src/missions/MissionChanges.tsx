@@ -1,6 +1,6 @@
 import type { Workspace } from '@extalia/core';
 import type {
-  AgentHostApi, HostMissionRun, HostMissionTask, IntegrationProposalView, WorktreeDiffView, WorktreeOrphanView, WorktreeStatusView, WorktreeView,
+  AgentHostApi, HostMissionRun, HostMissionTask, IntegrationGateOutcome, IntegrationProposalView, WorktreeDiffView, WorktreeOrphanView, WorktreeStatusView, WorktreeView,
 } from '@extalia/platform';
 import { useEffect, useState } from 'react';
 import { errorMessage } from '../host/remote';
@@ -92,6 +92,14 @@ export const proposeRequest = (form: ProposeForm, workspaceGate?: WorkspaceGate)
 
 const short = (value: string) => value.replace(/^sha256:/, '').slice(0, 12);
 const statusTone: Record<string, string> = { ready: 'ok', applied: 'ok', conflict: 'error', gate_failed: 'error', gate_missing: 'warn', stale: 'warn', empty: 'off' };
+const gateOutcomeTone: Record<IntegrationGateOutcome, string> = {
+  passed: 'ok',
+  failed: 'error',
+  timed_out: 'error',
+  not_run: 'warn',
+  cancelled: 'warn',
+  unknown: 'warn',
+};
 const totals = (diff: Pick<WorktreeDiffView, 'files'>) => diff.files.reduce((sum, file) => ({ added: sum.added + (file.added ?? 0), deleted: sum.deleted + (file.deleted ?? 0) }), { added: 0, deleted: 0 });
 
 export interface MissionChangesViewProps {
@@ -162,18 +170,32 @@ export function MissionChangesView(props: MissionChangesViewProps) {
             <ul>{proposal.conflicts.map(file => <li key={file}><code>{file}</code></li>)}</ul>
           </div>
         )}
-        {proposal.gate && (
-          <div className="mission-gate">
-            <p className="small"><Icon name={proposal.gate.ok ? 'check' : 'alert'} /><code>{c.gateResult(proposal.gate.command, proposal.gate.exitCode, (proposal.gate.durationMs / 1000).toFixed(1))}</code>
-              {proposal.gateSource === 'workspace' && <span className="muted"> · {c.gateSourceWorkspace}</span>}</p>
-            {!proposal.gate.ok && proposal.gate.log && (
-              <details className="mission-gate-log" open>
-                <summary>{c.log}</summary>
-                <pre>{proposal.gate.log.length > LOG_EXCERPT ? `…${proposal.gate.log.slice(-LOG_EXCERPT)}` : proposal.gate.log}</pre>
-              </details>
-            )}
-          </div>
-        )}
+        {proposal.gate && (() => {
+          const outcome = proposal.gate.outcome ?? (proposal.gate.basis === 'not_run' ? 'not_run' : proposal.gate.ok ? 'passed' : 'failed');
+          const passed = outcome === 'passed';
+          const executor = proposal.gate.executor;
+          return (
+            <div className="mission-gate">
+              <p className="small">
+                <Icon name={passed ? 'check' : 'alert'} />
+                <span className={`badge ${gateOutcomeTone[outcome]}`} data-outcome={outcome}>{c.gateOutcomes[outcome] ?? outcome}</span>
+                <code>{c.gateResult(proposal.gate.command, proposal.gate.exitCode, (proposal.gate.durationMs / 1000).toFixed(1))}</code>
+                {proposal.gateSource === 'workspace' && <span className="muted"> · {c.gateSourceWorkspace}</span>}
+                {executor && (
+                  <span className={`badge ${executor.isolated ? 'subtle' : 'warn'}`} data-executor={executor.kind}>
+                    {c.gateExecutors[executor.kind] ?? executor.kind}
+                  </span>
+                )}
+              </p>
+              {!passed && proposal.gate.log && (
+                <details className="mission-gate-log" open>
+                  <summary>{c.log}</summary>
+                  <pre>{proposal.gate.log.length > LOG_EXCERPT ? `…${proposal.gate.log.slice(-LOG_EXCERPT)}` : proposal.gate.log}</pre>
+                </details>
+              )}
+            </div>
+          );
+        })()}
         {proposal.diffDigest && proposal.status === 'ready' && (
           <p className="muted small mission-digest-line"><span>{c.digest}:</span> <code title={proposal.diffDigest}>{short(proposal.diffDigest)}</code></p>
         )}

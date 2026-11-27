@@ -3,11 +3,11 @@ import { DEFAULT_PERMISSIONS, workspaceCrossAccess, type Workspace } from '@exta
 import type { PermissionMode, SessionMovePreview } from '@extalia/platform';
 import type { SessionRecord } from './sessions.js';
 import type { WorkspaceAccess } from './workspaceAccess.js';
-import { workspaceSessionBoundaryKey } from './workspaceBoundary.js';
+import { UNASSIGNED_SESSION_BOUNDARY, workspaceSessionBoundaryKey } from './workspaceBoundary.js';
 
 interface Snapshot {
   record: SessionRecord;
-  source: Workspace;
+  source: Workspace | null;
   destination: Workspace;
   workspaces: readonly Workspace[];
   messages: readonly unknown[];
@@ -17,7 +17,7 @@ interface Snapshot {
 }
 const fingerprint = (snapshot: Snapshot): string => createHash('sha256').update(JSON.stringify([
   snapshot.record, snapshot.source, snapshot.destination, snapshot.messages,
-  workspaceSessionBoundaryKey(snapshot.source.id, snapshot.workspaces),
+  snapshot.source ? workspaceSessionBoundaryKey(snapshot.source.id, snapshot.workspaces) : UNASSIGNED_SESSION_BOUNDARY,
   workspaceSessionBoundaryKey(snapshot.destination.id, snapshot.workspaces), snapshot.access.folders(), snapshot.lastEventId,
 ])).digest('hex');
 const workspaceView = (workspace: Workspace) => ({ id: workspace.id, name: workspace.name,
@@ -34,7 +34,9 @@ export class SessionMoveReviews {
     const reviewId = randomUUID(), expires = now + 10 * 60_000;
     this.reviews.set(reviewId, { digest: fingerprint(snapshot), expires });
     return { sessionId: snapshot.record.id, reviewId, expiresAt: new Date(expires).toISOString(),
-      source: workspaceView(snapshot.source), destination: workspaceView(snapshot.destination),
+      kind: snapshot.source ? 'move' : 'attach',
+      source: snapshot.source ? workspaceView(snapshot.source) : null,
+      destination: workspaceView(snapshot.destination),
       transfersHistory: snapshot.messages.length > 0,
       permissionMode: snapshot.permissionMode,
       accessibleFolders: snapshot.access.folders().map(({ workspaceId, path, access }) => ({ workspaceId, path, access })),

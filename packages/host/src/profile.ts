@@ -15,8 +15,9 @@ export const PROFILE_SCHEMA = 'extalia.profile.v1';
 export const PROFILE_FILE = 'profile.json';
 export const DISPLAY_NAME_LIMIT = 80;
 const NEVER_SAVED = new Date(0).toISOString();
-const PREFERENCE_KEYS = ['language', 'theme', 'material', 'font', 'sidebar'] as const satisfies readonly (keyof ProfilePreferences)[];
+const PREFERENCE_KEYS = ['language', 'theme', 'material', 'font', 'sidebar', 'landingPage'] as const satisfies readonly (keyof ProfilePreferences)[];
 const LANGUAGES = ['en', 'id'] as const;
+const LANDING_PAGES = ['chat', 'office'] as const;
 const CLIENT_STATE_KEYS = ['lastWorkspaceId', 'officeLights', 'approvalNotifications', 'earlierOpen'] as const satisfies readonly (keyof ProfileClientState)[];
 
 function validClientValue(key: keyof ProfileClientState, value: unknown): value is string {
@@ -47,7 +48,9 @@ function cleanName(value: unknown): string | undefined {
 
 function validPreference(key: keyof ProfilePreferences, value: unknown): value is string {
   if (typeof value !== 'string') return false;
-  return key === 'language' ? (LANGUAGES as readonly string[]).includes(value) : TOKEN.test(value);
+  if (key === 'language') return (LANGUAGES as readonly string[]).includes(value);
+  if (key === 'landingPage') return (LANDING_PAGES as readonly string[]).includes(value);
+  return TOKEN.test(value);
 }
 
 /** Decode a stored profile field by field; invalid fields are dropped, never passed on. */

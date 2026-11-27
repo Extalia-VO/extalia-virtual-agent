@@ -2,8 +2,22 @@ import type * as React from 'react';
 import type * as ReactDom from 'react-dom';
 import { createElement, isValidElement, type ReactElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { Position, ReactFlow, type EdgeProps, type NodeProps } from '@xyflow/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ResourceUsageDiagram, resourceUsageCanvasLayout } from '../src/chat/ResourceUsageDiagram';
+import {
+  AgentFlowNode,
+  ResourceFlowEdge,
+  ResourceFlowNode,
+  ResourceUsageDiagram,
+  TeamFlowNode,
+  buildResourceUsageFlow,
+  resourceUsageCanvasLayout,
+  type AgentFlowNodeType,
+  type ResourceFlowNodeType,
+  type ResourceUsageFlowEdge,
+  type ResourceUsageFlowNode,
+  type TeamFlowNodeType,
+} from '../src/chat/ResourceUsageDiagram';
 import type { ResourceUsageCopy, ResourceUsageGraph, ResourceUsageNode } from '../src/chat/resourceUsageTypes';
 
 const hooks = vi.hoisted(() => ({ index: 0, states: [] as unknown[], effects: [] as (() => void | (() => void))[] }));
@@ -11,6 +25,7 @@ vi.mock('react', async original => ({ ...await original<typeof React>(),
   useState: (initial: unknown) => { const index = hooks.index++; if (!(index in hooks.states)) hooks.states[index] = typeof initial === 'function' ? initial() : initial;
     return [hooks.states[index], (next: unknown) => { hooks.states[index] = typeof next === 'function' ? next(hooks.states[index]) : next; }]; },
   useMemo: (compute: () => unknown) => compute(),
+  useCallback: (fn: unknown) => fn,
   useRef: (initial: unknown) => { const index = hooks.index++; return hooks.states[index] ??= { current: initial }; },
   useEffect: (run: () => void | (() => void)) => { hooks.effects.push(run); },
   useId: () => 'resource-usage-test',
@@ -36,24 +51,40 @@ const graph = (): ResourceUsageGraph => ({ scopeKey: 'session-a:turn-a', teams: 
   nodes: [resource('lead-skill', { resourceKey: 'skill:registry:review:v1' }), resource('worker-skill', { agentId: 'reviewer', resourceKey: 'skill:registry:review:v1', status: 'active', count: 3 }),
     resource('worker-knowledge', { agentId: 'reviewer', kind: 'knowledge', label: 'Project decisions', status: 'completed', detail: 'Read exact project note', source: 'notes/decisions.md', resourceKey: 'knowledge:notes/decisions.md' }),
     resource('builder-skill', { agentId: 'builder', status: 'waiting', label: 'Build checks' })], truncated: false });
+
+const renderAgentNode = (node: AgentFlowNodeType) => AgentFlowNode({ id: node.id, type: 'agent', data: node.data, dragging: false, isConnectable: false, selected: false, zIndex: 0, positionAbsoluteX: node.position.x, positionAbsoluteY: node.position.y } as NodeProps<AgentFlowNodeType>);
+const renderTeamNode = (node: TeamFlowNodeType) => TeamFlowNode({ id: node.id, type: 'team', data: node.data, dragging: false, isConnectable: false, selected: false, zIndex: 0, positionAbsoluteX: node.position.x, positionAbsoluteY: node.position.y } as NodeProps<TeamFlowNodeType>);
+const renderResourceNode = (node: ResourceFlowNodeType) => ResourceFlowNode({ id: node.id, type: 'resource', data: node.data, dragging: false, isConnectable: false, selected: false, zIndex: 0, positionAbsoluteX: node.position.x, positionAbsoluteY: node.position.y } as NodeProps<ResourceFlowNodeType>);
+const renderFlowEdge = (edge: ResourceUsageFlowEdge) => ResourceFlowEdge({
+  id: edge.id, source: edge.source, target: edge.target, data: edge.data, selected: false,
+  sourceX: edge.data!.fromPort.x, sourceY: edge.data!.fromPort.y, targetX: edge.data!.toPort.x, targetY: edge.data!.toPort.y,
+  sourcePosition: Position.Bottom, targetPosition: Position.Top,
+} as EdgeProps<ResourceUsageFlowEdge>);
+
 function harness(value = graph(), visible?: boolean) {
   const props = { graph: value, copy, language: 'en', visible };
   const draw = () => { hooks.index = 0; return invoke(ResourceUsageDiagram(props) as Element); };
   const body = () => invoke(nodes(draw()).find(node => typeof node.type === 'function' && 'graph' in node.props && 'patch' in node.props)!);
   const canvas = () => invoke(nodes(body()).find(node => typeof node.type === 'function' && 'agents' in node.props && 'nodes' in node.props)!);
-  const branches = () => nodes(canvas()).filter(node => typeof node.type === 'function' && 'agent' in node.props && 'nodes' in node.props);
-  const select = (id: string) => { for (const branch of branches()) {
-    const row = nodes(invoke(branch)).find(node => node.props['data-resource-id'] === id);
-    const button = row && nodes(row).find(node => node.type === 'button');
-    if (button) { (button.props.onClick as () => void)(); return; }
-  } throw new Error(`Missing node ${id}`); };
+  const flow = () => nodes(canvas()).find(node => node.type === ReactFlow)!;
+  const flowNodes = () => (flow().props.nodes as ResourceUsageFlowNode[]);
+  const flowEdges = () => (flow().props.edges as ResourceUsageFlowEdge[]);
+  const agentNodes = () => flowNodes().filter((node): node is AgentFlowNodeType => node.type === 'agent');
+  const teamNodes = () => flowNodes().filter((node): node is TeamFlowNodeType => node.type === 'team');
+  const resourceNodes = () => flowNodes().filter((node): node is ResourceFlowNodeType => node.type === 'resource');
+  const select = (id: string) => {
+    const match = resourceNodes().find(node => node.data.node.id === id);
+    if (!match) throw new Error(`Missing node ${id}`);
+    const button = nodes(renderResourceNode(match)).find(node => node.type === 'button')!;
+    (button.props.onClick as () => void)();
+  };
   const detail = () => nodes(body()).find(node => typeof node.type === 'function' && 'node' in node.props && 'formatTime' in node.props);
   const filter = (label: string, value: string) => {
     const field = nodes(body()).find(node => node.type === 'label' && text(node).startsWith(label))!;
     const select = nodes(field).find(node => node.type === 'select')!;
     (select.props.onChange as (event: unknown) => void)({ currentTarget: { value } });
   };
-  return { props, draw, body, canvas, branches, select, detail, filter };
+  return { props, draw, body, canvas, flow, flowNodes, flowEdges, agentNodes, teamNodes, resourceNodes, select, detail, filter };
 }
 beforeEach(() => { hooks.index = 0; hooks.states = []; hooks.effects = []; });
 afterEach(() => vi.unstubAllGlobals());
@@ -72,6 +103,7 @@ describe('live resource usage diagram', () => {
     (modal.props.onClose as () => void)();
     expect(h.draw()).toBeNull();
   });
+
   it('toggles a selected resource closed and exposes a dedicated detail close button', () => {
     const h = harness();
     h.select('worker-skill'); expect(h.detail()).toBeDefined();
@@ -81,26 +113,38 @@ describe('live resource usage diagram', () => {
     (close.props.onClick as () => void)();
     expect(h.detail()).toBeUndefined();
   });
-  it('uses endpoint gradients only for live cables, including zero-width vertical paths', () => {
-    const h = harness(), canvas = h.canvas();
-    const edges = nodes(canvas).filter(node => node.type === 'g' && node.props['data-edge-kind']);
+
+  it('uses endpoint gradients only for live React Flow cables, including zero-width vertical paths', () => {
+    const h = harness();
     const layout = resourceUsageCanvasLayout(h.props.graph.agents, h.props.graph.teams, h.props.graph.nodes, false, 240);
-    for (const group of edges) {
+    const edges = h.flowEdges();
+    expect(edges.length).toBeGreaterThan(0);
+    for (const flowEdge of edges) {
+      const rendered = renderFlowEdge(flowEdge);
+      const group = nodes(rendered).find(node => node.type === 'g' && node.props['data-edge-kind'])!;
       const gradient = nodes(group).find(node => node.type === 'linearGradient');
-      const line = nodes(group).find(node => node.type === 'path' && node.props.className === 'resource-usage-connector')!;
+      const baseEdge = nodes(group).find(node => node.props.className === 'resource-usage-connector')!;
       if (!group.props['data-active']) {
-        expect(gradient).toBeUndefined(); expect(line.props.style).toBeUndefined(); continue;
+        expect(gradient).toBeUndefined(); expect(baseEdge.props.style).toBeUndefined(); continue;
       }
-      const edge = layout.edges.find(edge => edge.from === group.props['data-from'] && edge.to === group.props['data-to'])!;
+      const edge = layout.edges.find(item => item.from === group.props['data-from'] && item.to === group.props['data-to'])!;
       expect(gradient?.props).toMatchObject({ gradientUnits: 'userSpaceOnUse', x1: edge.fromPort.x, y1: edge.fromPort.y, x2: edge.toPort.x, y2: edge.toPort.y });
-      expect(line.props.style).toEqual({ stroke: `url(#${gradient!.props.id})` });
+      expect(baseEdge.props.style).toEqual({ stroke: `url(#${gradient!.props.id})` });
+      expect(nodes(group).some(node => node.props.className === 'resource-usage-capsule')).toBe(true);
     }
     h.props.graph = { ...h.props.graph, nodes: h.props.graph.nodes.map(node => ({ ...node, status: 'completed' })) };
-    expect(nodes(h.canvas()).some(node => node.type === 'linearGradient')).toBe(false);
-    expect(nodes(h.canvas()).some(node => node.props.className === 'resource-usage-capsule')).toBe(false);
+    for (const flowEdge of h.flowEdges()) {
+      const rendered = renderFlowEdge(flowEdge);
+      expect(nodes(rendered).some(node => node.type === 'linearGradient')).toBe(false);
+      expect(nodes(rendered).some(node => node.props.className === 'resource-usage-capsule')).toBe(false);
+    }
   });
-  it('renders distinct owner nodes and factual status attributes without turning loaded receipts into activity', () => {
+
+  it('renders React Flow nodes, handles and factual status attributes without turning loaded receipts into activity', () => {
     const value = graph(), html = renderToStaticMarkup(createElement(ResourceUsageDiagram, { graph: value, copy, language: 'en' }));
+    expect(html).toContain('react-flow');
+    expect(html).toContain('react-flow__node');
+    expect(html).toContain('react-flow__handle');
     expect(html).toContain('data-resource-id="lead-skill"'); expect(html).toContain('data-resource-id="worker-skill"');
     expect(html).toMatch(/data-status="loaded" data-resource-id="lead-skill"/);
     expect(html).toMatch(/data-status="active" data-resource-id="worker-skill"/);
@@ -109,10 +153,36 @@ describe('live resource usage diagram', () => {
     expect(html).not.toContain('<textarea'); expect(html).not.toContain('<form');
     expect(html).toContain('--usage-pulse-duration:.9s');
     const h = harness(value);
-    const lead = h.branches().find(branch => (branch.props.agent as { id: string }).id === 'lead')!;
-    expect(nodes(invoke(lead)).find(node => node.props['data-agent-id'] === 'lead')?.props['data-resource-active']).toBeUndefined();
-    expect(nodes(h.canvas()).find(node => node.props['data-team-id'] === 'team-a')?.props['data-active']).toBe(true);
-    expect(nodes(h.canvas()).find(node => node.props['data-team-id'] === 'team-b')?.props['data-active']).toBeUndefined();
+    const lead = h.agentNodes().find(node => node.data.agent.id === 'lead')!;
+    expect(nodes(renderAgentNode(lead)).find(node => node.props['data-agent-id'] === 'lead')?.props['data-resource-active']).toBeUndefined();
+    const teamA = h.teamNodes().find(node => node.data.team.id === 'team-a')!;
+    const teamB = h.teamNodes().find(node => node.data.team.id === 'team-b')!;
+    expect(nodes(renderTeamNode(teamA)).find(node => node.props['data-team-id'] === 'team-a')?.props['data-active']).toBe(true);
+    expect(nodes(renderTeamNode(teamB)).find(node => node.props['data-team-id'] === 'team-b')?.props['data-active']).toBeUndefined();
+    expect(h.flow().props.nodesDraggable).toBe(true);
+    expect(h.flow().props.nodesConnectable).toBe(false);
+    expect(h.flow().props.fitView).toBe(false);
+    expect(h.flow().props.defaultViewport).toEqual({ x: 0, y: 0, zoom: 1 });
+    expect(h.flow().props.panOnScroll).toBe(true);
+    expect(h.flow().props.panOnScrollMode).toBe('vertical');
+    expect(h.flow().props.proOptions).toEqual({ hideAttribution: true });
+    expect(html).not.toContain('react-flow__minimap');
+  });
+
+  it('shows AgentDetail without hiding other nodes when clicking an agent, and jumps cleanly to ResourceDetail', () => {
+    const h = harness();
+    const reviewer = h.agentNodes().find(node => node.data.agent.id === 'reviewer')!;
+    const agentButton = nodes(renderAgentNode(reviewer)).find(node => node.type === 'button')!;
+    (agentButton.props.onClick as () => void)();
+    expect(h.agentNodes().map(node => node.data.agent.id)).toEqual(['lead', 'reviewer', 'builder']);
+    const agentDetail = nodes(h.body()).find(node => typeof node.type === 'function' && 'agent' in node.props && 'onSelectResource' in node.props)!;
+    expect(agentDetail).toBeDefined();
+    const renderedDetail = invoke(agentDetail);
+    expect(text(renderedDetail)).toContain('Researcher');
+    expect(text(renderedDetail)).toContain('Project decisions');
+    const itemButton = nodes(renderedDetail).find(node => node.props.className === 'resource-usage-detail-item' && text(node).includes('Project decisions'))!;
+    (itemButton.props.onClick as () => void)();
+    expect(h.detail()?.props.node).toMatchObject({ id: 'worker-knowledge' });
   });
 
   it('opens exact resource details and lists only explicitly shared resource accessors', () => {
@@ -131,28 +201,29 @@ describe('live resource usage diagram', () => {
     h.props.graph = { ...h.props.graph, nodes: h.props.graph.nodes.map(node => node.id === 'worker-skill' ? { ...node, count: 4, status: 'completed' as const } : node).concat(resource('new-resource', { agentId: 'reviewer' })) };
     const detail = h.detail()!;
     expect(detail.props.node).toMatchObject({ id: 'worker-skill', count: 4, status: 'completed' });
-    expect(h.branches().map(branch => (branch.props.agent as { id: string }).id)).toEqual(['reviewer']);
-    expect((h.branches().at(-1)!.props.nodes as ResourceUsageNode[]).map(node => node.id)).toEqual(['worker-skill', 'worker-knowledge', 'new-resource']);
+    expect(h.agentNodes().map(node => node.data.agent.id)).toEqual(['reviewer']);
+    expect(h.resourceNodes().map(node => node.data.node.id)).toEqual(['worker-skill', 'worker-knowledge', 'new-resource']);
     h.filter(copy.allAgents, 'reviewer');
     expect(h.detail()?.props.node).toMatchObject({ id: 'worker-skill' });
     h.filter(copy.allTeams, 'team-b'); expect(h.detail()).toBeUndefined();
-    expect(h.branches().map(branch => (branch.props.agent as { id: string }).id)).toEqual(['builder']);
+    expect(h.agentNodes().map(node => node.data.agent.id)).toEqual(['builder']);
   });
 
   it('groups only actual team membership and focuses that team without assigning unknown delegates', () => {
     const value = graph();
     value.agents.push({ id: 'nested', label: 'Nested delegate', parentId: 'reviewer', status: 'active' });
     value.nodes.push(resource('nested-resource', { agentId: 'nested' }));
-    const h = harness(value), team = nodes(h.canvas()).find(node => node.props['data-team-id'] === 'team-a')!;
+    const h = harness(value), team = h.teamNodes().find(node => node.data.team.id === 'team-a')!;
     const layout = resourceUsageCanvasLayout(value.agents, value.teams, value.nodes, false);
     expect(layout.edges.filter(edge => edge.kind === 'team' && edge.from === 'team-a').map(edge => edge.to)).toEqual(['reviewer']);
-    const nested = h.branches().find(node => (node.props.agent as { id: string }).id === 'nested')!;
-    expect(nested.props.parent).toMatchObject({ id: 'reviewer' });
-    expect(nested.props.team).toBeUndefined();
-    const focus = nodes(team).find(node => node.type === 'button')!;
+    const nested = h.agentNodes().find(node => node.data.agent.id === 'nested')!;
+    expect(nested.data.parent).toMatchObject({ id: 'reviewer' });
+    expect(nested.data.team).toBeUndefined();
+    const focus = nodes(renderTeamNode(team)).find(node => node.type === 'button')!;
     (focus.props.onClick as () => void)();
-    expect(h.branches().map(node => (node.props.agent as { id: string }).id)).toEqual(['reviewer']);
-    expect(nodes(h.canvas()).find(node => node.props.className === 'resource-usage-team-heading')?.props['aria-pressed']).toBe(true);
+    expect(h.agentNodes().map(node => node.data.agent.id)).toEqual(['reviewer']);
+    const focusedTeam = h.teamNodes().find(node => node.data.team.id === 'team-a')!;
+    expect(nodes(renderTeamNode(focusedTeam)).find(node => node.props.className === 'resource-usage-team-heading')?.props['aria-pressed']).toBe(true);
   });
 
   it('lays out spatial cards and curved actual-ownership edges with stable owner columns', () => {
@@ -179,6 +250,23 @@ describe('live resource usage diagram', () => {
     expect(teamOnly.edges.some(edge => edge.kind === 'parent')).toBe(false);
   });
 
+  it('builds prefixed React Flow nodes and edges with explicit handles for every port', () => {
+    const value = graph();
+    const { flowNodes, flowEdges } = buildResourceUsageFlow({
+      agents: value.agents, teams: value.teams, nodes: value.nodes, copy, expanded: true,
+      focusedTeam: '', onFocusTeam: vi.fn(), onSelectAgent: vi.fn(), onSelect: vi.fn(),
+    });
+    expect(flowNodes.map(node => node.id)).toContain('agent:lead');
+    expect(flowNodes.map(node => node.id)).toContain('team:team-a');
+    expect(flowNodes.map(node => node.id)).toContain('resource:worker-skill');
+    expect(flowEdges.every(edge => edge.sourceHandle === 'out' && edge.targetHandle === 'in' && edge.type === 'resourceEdge')).toBe(true);
+    const workerEdge = flowEdges.find(edge => edge.target === 'resource:worker-skill')!;
+    expect(workerEdge.source).toBe('agent:reviewer');
+    expect(workerEdge.data?.active).toBe(true);
+    const leadNode = flowNodes.find(node => node.id === 'agent:lead')!;
+    expect(leadNode.handles?.some(handle => handle.id === 'out' && handle.type === 'source')).toBe(true);
+  });
+
   it('fits narrow rails without scaling text or inventing a main agent from a standalone owner', () => {
     const value = graph();
     for (const width of [218, 240, 280, 320]) {
@@ -186,6 +274,7 @@ describe('live resource usage diagram', () => {
       expect(layout.width).toBe(width);
       for (const box of [...layout.agentBoxes.values(), ...layout.teamBoxes.values(), ...layout.resourceBoxes.values()]) {
         expect(box.x).toBeGreaterThanOrEqual(0); expect(box.x + box.width).toBeLessThanOrEqual(width);
+        expect(box.width).toBe(width - 40);
       }
       expect(layout.edges.some(edge => edge.kind === 'parent' && edge.from === 'lead' && edge.to === 'reviewer')).toBe(false);
       expect(layout.edges.filter(edge => edge.kind === 'parent' && edge.to === 'team-a')).toHaveLength(1);
@@ -208,9 +297,9 @@ describe('live resource usage diagram', () => {
       expect(edge.path.endsWith(`${edge.toPort.x} ${child.y}`)).toBe(true);
     }
     const value = graph(); value.agents[0]!.status = 'completed';
-    const h = harness(value), branch = h.branches().find(node => (node.props.agent as { id: string }).id === 'lead')!;
-    expect(text(invoke(branch))).toContain('Done');
-    expect(nodes(h.canvas()).filter(node => node.props.className === 'resource-usage-port').length).toBeGreaterThan(0);
+    const h = harness(value), lead = h.agentNodes().find(node => node.data.agent.id === 'lead')!;
+    expect(text(renderAgentNode(lead))).toContain('Done');
+    expect(lead.handles?.length).toBeGreaterThan(0);
   });
 
   it('fans out actual ownership edges through top ports and routes stacked siblings around cards', () => {
@@ -238,10 +327,10 @@ describe('live resource usage diagram', () => {
   it('bounds mounted resource nodes and trace history while allowing explicit incremental expansion', () => {
     const value = graph(); value.nodes = Array.from({ length: 100 }, (_, index) => resource(`skill-${index}`)); value.truncated = true;
     const h = harness(value);
-    expect((h.branches()[0]!.props.nodes as ResourceUsageNode[])).toHaveLength(32);
+    expect(h.resourceNodes()).toHaveLength(32);
     const more = nodes(h.body()).find(node => node.props.className === 'button small resource-usage-more')!;
     (more.props.onClick as () => void)();
-    expect((h.branches()[0]!.props.nodes as ResourceUsageNode[])).toHaveLength(64);
+    expect(h.resourceNodes()).toHaveLength(64);
     expect(text(h.body())).toContain(copy.limited);
     const trace = nodes(h.body()).find(node => node.props.className === 'resource-usage-trace')!;
     expect(nodes(trace).filter(node => node.type === 'li')).toHaveLength(12);

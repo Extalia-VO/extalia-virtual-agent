@@ -9,9 +9,9 @@ const STAMP = '2026-10-01T00:00:00.000Z';
 
 describe('profile decoding and patches', () => {
   it('keeps valid fields and drops invalid ones from a stored file', () => {
-    expect(decodeProfile({ schema: 'extalia.profile.v1', displayName: '  Ada   L. ', preferences: { language: 'id', theme: 'dark', material: 'liquid-glass-pro', font: 'Bad Font', sidebar: 7, extra: 'x' }, updatedAt: STAMP }))
-      .toEqual({ schema: 'extalia.profile.v1', displayName: 'Ada L.', preferences: { language: 'id', theme: 'dark', material: 'liquid-glass-pro' }, updatedAt: STAMP });
-    expect(decodeProfile({ preferences: { language: 'fr' }, displayName: 'x'.repeat(81), updatedAt: 'yesterday' })).toEqual(emptyProfile());
+    expect(decodeProfile({ schema: 'extalia.profile.v1', displayName: '  Ada   L. ', preferences: { language: 'id', theme: 'dark', material: 'liquid-glass-pro', landingPage: 'chat', font: 'Bad Font', sidebar: 7, extra: 'x' }, updatedAt: STAMP }))
+      .toEqual({ schema: 'extalia.profile.v1', displayName: 'Ada L.', preferences: { language: 'id', theme: 'dark', material: 'liquid-glass-pro', landingPage: 'chat' }, updatedAt: STAMP });
+    expect(decodeProfile({ preferences: { language: 'fr', landingPage: 'settings' }, displayName: 'x'.repeat(81), updatedAt: 'yesterday' })).toEqual(emptyProfile());
     expect(decodeProfile(null)).toEqual(emptyProfile());
     expect(decodeProfile([1])).toEqual(emptyProfile());
   });
@@ -19,9 +19,9 @@ describe('profile decoding and patches', () => {
   it('merges a patch, clears fields with null or an empty name, and refuses malformed input as a whole', () => {
     const base = applyProfilePatch(emptyProfile(), { displayName: 'Ada', preferences: { language: 'en', theme: 'solar' } }, STAMP);
     expect(base).toEqual({ schema: 'extalia.profile.v1', displayName: 'Ada', preferences: { language: 'en', theme: 'solar' }, updatedAt: STAMP });
-    expect(applyProfilePatch(base, { preferences: { theme: 'dark', font: 'inter' } }, STAMP).preferences).toEqual({ language: 'en', theme: 'dark', font: 'inter' });
+    expect(applyProfilePatch(base, { preferences: { theme: 'dark', font: 'inter', landingPage: 'office' } }, STAMP).preferences).toEqual({ language: 'en', theme: 'dark', font: 'inter', landingPage: 'office' });
     expect(applyProfilePatch(base, { displayName: '', preferences: { theme: null } }, STAMP)).toEqual({ schema: 'extalia.profile.v1', preferences: { language: 'en' }, updatedAt: STAMP });
-    for (const bad of [null, 'x', [], { preferences: { language: 'fr' } }, { preferences: { theme: '../../etc' } }, { preferences: { colour: 'red' } }, { preferences: 'dark' }, { displayName: 'a\u0007b' }, { displayName: 7 }, { avatar: 'x' }]) {
+    for (const bad of [null, 'x', [], { preferences: { language: 'fr' } }, { preferences: { landingPage: 'settings' } }, { preferences: { landingPage: 1 } }, { preferences: { theme: '../../etc' } }, { preferences: { colour: 'red' } }, { preferences: 'dark' }, { displayName: 'a\u0007b' }, { displayName: 7 }, { avatar: 'x' }]) {
       expect(() => applyProfilePatch(base, bad, STAMP)).toThrow();
     }
   });

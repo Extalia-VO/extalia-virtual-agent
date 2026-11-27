@@ -19,9 +19,9 @@ import {
   workspaceTeamSupported, type AgentTeam, type DraftMember, type EditedField, type MemberAccess, type MemberGender, type TeamDialogScope, type TeamPlan, type TeamSpec, type TeamConnection,
 } from './team';
 
-interface DialogRequestScope { agents: AgentHostApi; workspaceId: string; sessionId: string | undefined }
+interface DialogRequestScope { agents: AgentHostApi; workspaceId: string | null; sessionId: string | undefined }
 interface ScopedResult<T> extends DialogRequestScope { value?: T; failed?: boolean }
-function inScope(result: DialogRequestScope | undefined, agents: AgentHostApi, workspaceId: string, sessionId: string | undefined): boolean {
+function inScope(result: DialogRequestScope | undefined, agents: AgentHostApi, workspaceId: string | null, sessionId: string | undefined): boolean {
   return result?.agents === agents && result.workspaceId === workspaceId && result.sessionId === sessionId;
 }
 type ConnectionCatalog = { choices?: ModelChoices; failed?: boolean };
@@ -89,7 +89,7 @@ function PathChips({ t, id, label, help, paths, disabled, onChange }: {
 export function TeamSetupDialog({ t, agents, workspaceId, workspaceName, scope: requestedScope, sessionId, leadName, initialGoal, pending, spec, discord = false, officeNames, savedLooks, profileDraft = false, catalogConnectionId, onSaved, onState, onClose }: {
   t: Messages;
   agents: AgentHostApi;
-  workspaceId: string;
+  workspaceId: string | null;
   /** v0.0.47: shown in the workspace-default title. */
   workspaceName?: string | undefined;
   /** v0.0.47: what is edited; defaults to the session's team with `sessionId`, else a draft. */
@@ -118,7 +118,7 @@ export function TeamSetupDialog({ t, agents, workspaceId, workspaceName, scope: 
   onClose(): void;
 }) {
   const m = t.team;
-  const scope: TeamDialogScope = sessionId ? 'session' : requestedScope === 'workspace' ? 'workspace' : 'draft';
+  const scope: TeamDialogScope = sessionId ? 'session' : requestedScope === 'workspace' && workspaceId ? 'workspace' : 'draft';
   const defaults = workspaceTeamSupported(agents);
   const id = useId();
   const api = teamApi(agents);
@@ -132,7 +132,7 @@ export function TeamSetupDialog({ t, agents, workspaceId, workspaceName, scope: 
   const [outside, setOutside] = useState(() => othersThan(pending));
   const withSpec = (team: AgentTeam | undefined): AgentTeam | undefined => {
     if (!spec) return team;
-    const result = teamFromSpec(spec, team, othersThan(team), sessionId ?? workspaceId);
+    const result = teamFromSpec(spec, team, othersThan(team), sessionId ?? workspaceId ?? 'unassigned');
     return 'team' in result ? result.team : team;
   };
   const [initial] = useState(() => sessionId ? undefined : withSpec(pending));
@@ -154,7 +154,7 @@ export function TeamSetupDialog({ t, agents, workspaceId, workspaceName, scope: 
   const stateFailed = inScope(hostResult, agents, workspaceId, sessionId) && hostResult?.failed;
   const [catalogResult, setCatalogResult] = useState<ScopedResult<Record<string, ConnectionCatalog>>>();
   const catalogs = inScope(catalogResult, agents, workspaceId, sessionId) ? catalogResult?.value ?? {} : {};
-  const catalogCache = useRef<{ agents: AgentHostApi; workspaceId: string; sessionId: string | undefined; requests: Map<string, Promise<ModelChoices>> } | undefined>(undefined);
+  const catalogCache = useRef<{ agents: AgentHostApi; workspaceId: string | null; sessionId: string | undefined; requests: Map<string, Promise<ModelChoices>> } | undefined>(undefined);
   const [limitsRefresh, setLimitsRefresh] = useState(0);
   const [choicesResult, setChoicesResult] = useState<ScopedResult<ModelChoices> & { revision: number; catalogConnectionId: string | undefined }>();
   const choices = inScope(choicesResult, agents, workspaceId, sessionId) && choicesResult?.catalogConnectionId === catalogConnectionId && choicesResult?.revision === limitsRefresh ? choicesResult?.value : undefined;
@@ -282,8 +282,8 @@ export function TeamSetupDialog({ t, agents, workspaceId, workspaceName, scope: 
   }, []);
 
   const contextSession = sessionId ? hostState?.sessions.find(session => session.id === sessionId) : undefined;
-  const contextWorkspace = hostState?.workspaces.find(workspace => workspace.id === workspaceId);
-  const runtime = choices?.runtime ?? (sessionId ? contextSession ? contextSession.runtime?.id ?? 'extalia-native' : undefined : contextWorkspace ? contextWorkspace.runtimeId ?? 'extalia-native' : undefined);
+  const contextWorkspace = workspaceId ? hostState?.workspaces.find(workspace => workspace.id === workspaceId) : undefined;
+  const runtime = choices?.runtime ?? (sessionId ? contextSession ? contextSession.runtime?.id ?? 'extalia-native' : undefined : contextWorkspace ? contextWorkspace.runtimeId ?? 'extalia-native' : workspaceId === null ? 'extalia-native' : undefined);
   const hermes = runtime === 'hermes';
   const native = runtime === 'extalia-native';
   const delegationLimits = hermes ? choices?.hermesDelegation : undefined;
@@ -295,7 +295,7 @@ export function TeamSetupDialog({ t, agents, workspaceId, workspaceName, scope: 
   const limitNotice = delegationLimits ? m.hermesProfileLimits(delegationLimits.profile, delegationLimits.oneshotMaxChildren, delegationLimits.maxConcurrentChildren, maxMembers) : m.hermesTeamLimit;
   const sharedModelNotice = customRouting ? m.hermesCustomRouting : delegationLimits?.workerModel ? m.hermesWorkerModel(delegationLimits.workerModel) : m.hermesSharedModel;
   const oversizedHermesTeam = hermes && members.length > maxMembers;
-  const leadConnectionId = catalogConnectionId ?? (sessionId ? hostState?.sessions.find(session => session.id === sessionId)?.connectionId : hostState?.workspaces.find(workspace => workspace.id === workspaceId)?.providerProfileId);
+  const leadConnectionId = catalogConnectionId ?? (sessionId ? hostState?.sessions.find(session => session.id === sessionId)?.connectionId : contextWorkspace?.providerProfileId);
   const savedConnections = hostState?.connections ?? [];
   const connectionLabel = (connectionId: string) => savedConnections.find(connection => connection.id === connectionId)?.name ?? m.missingConnection(connectionId);
   const editorAllowed = editingConnection ? connections.find(connection => connection.connectionId === editingConnection)?.allowedModels ?? [] : allowed;
@@ -361,7 +361,7 @@ export function TeamSetupDialog({ t, agents, workspaceId, workspaceName, scope: 
     if (scope === 'draft') { onSaved(team); close.current(); return; }
     setBusy('save'); setError(undefined);
     try {
-      if (scope === 'workspace') {
+      if (scope === 'workspace' && workspaceId) {
         const state = await api.saveDefault(workspaceId, team);
         onState?.(state);
         onSaved(state.workspaces.find(item => item.id === workspaceId)?.team ?? team);
@@ -376,7 +376,7 @@ export function TeamSetupDialog({ t, agents, workspaceId, workspaceName, scope: 
   /** v0.0.47: a session's team (as edited here) becomes the default for new sessions; the session itself is saved with Save. */
   async function saveAsDefault() {
     setAttempted(true);
-    if (working || !runtime || problem || (enabled && (oversizedHermesTeam || profileBlocked))) return;
+    if (working || !runtime || !workspaceId || problem || (enabled && (oversizedHermesTeam || profileBlocked))) return;
     setBusy('default'); setError(undefined); setSavedDefault(false);
     try {
       onState?.(await api.saveDefault(workspaceId, teamForSave({ enabled, allowedModels: allowed, members, goal: goal.trim() || (goalDocument ? goalReference(goalDocument.name) : ''), goalDocument, rules, connections }, hermes)));
@@ -390,7 +390,7 @@ export function TeamSetupDialog({ t, agents, workspaceId, workspaceName, scope: 
     if (scope === 'draft') { onSaved(null); close.current(); return; }
     setBusy('remove'); setError(undefined);
     try {
-      if (scope === 'workspace') onState?.(await api.saveDefault(workspaceId, null));
+      if (scope === 'workspace' && workspaceId) onState?.(await api.saveDefault(workspaceId, null));
       else await api.save(sessionId!, null);
       onSaved(null); close.current();
     } catch (failure) { setError(errorMessage(failure)); setBusy(undefined); }
@@ -659,7 +659,7 @@ export function TeamSetupDialog({ t, agents, workspaceId, workspaceName, scope: 
           {savedDefault && !error && <p className="team-help team-saved-default" role="status"><Icon name="check" />{m.savedAsDefault}</p>}
         </div>
         {existing && <button type="button" className="button small team-remove" disabled={working} onClick={() => void remove()}><Icon name="trash" />{scope === 'workspace' ? m.removeDefault : m.remove}</button>}
-        {scope === 'session' && defaults && <button type="button" className="button small team-save-default" disabled={working || !runtime || (enabled && (oversizedHermesTeam || profileBlocked))} onClick={() => void saveAsDefault()}>
+        {scope === 'session' && defaults && workspaceId && <button type="button" className="button small team-save-default" disabled={working || !runtime || (enabled && (oversizedHermesTeam || profileBlocked))} onClick={() => void saveAsDefault()}>
           {busy === 'default' ? <Icon name="refresh" className="spin" /> : <Icon name="folder" />}{m.saveAsDefault}</button>}
         <button type="button" className="button" disabled={busy === 'save' || busy === 'remove'} onClick={() => close.current()}>{m.cancel}</button>
         <button type="button" className="button primary" disabled={working || !runtime || (enabled && (oversizedHermesTeam || profileBlocked))} onClick={() => void save()}>

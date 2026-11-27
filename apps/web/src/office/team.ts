@@ -48,7 +48,7 @@ export function teamApi(agents: AgentHostApi) {
     get: (sessionId: string) => typeof host.getSessionTeam === 'function' ? host.getSessionTeam.call(agents, sessionId) : Promise.resolve(undefined),
     save: (sessionId: string, team: AgentTeam | null) => typeof host.saveSessionTeam === 'function'
       ? host.saveSessionTeam.call(agents, sessionId, team) : Promise.reject(new Error('This host cannot save subagent teams.')),
-    plan: (workspaceId: string, request: TeamPlanRequest, sessionId?: string) => typeof host.planTeam === 'function'
+    plan: (workspaceId: string | null, request: TeamPlanRequest, sessionId?: string) => typeof host.planTeam === 'function'
       ? (sessionId ? host.planTeam.call(agents, workspaceId, request, sessionId) : host.planTeam.call(agents, workspaceId, request)) : Promise.reject(new Error('This host cannot plan subagent teams.')),
   };
 }

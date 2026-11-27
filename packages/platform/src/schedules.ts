@@ -1,9 +1,11 @@
 import { EFFORTS, SESSION_PERMISSION_MODES, type Effort, type SessionPermissionMode } from '@extalia/core';
 
+export type ScheduleDstPolicy = 'each-valid-instant';
+
 export type ScheduleTrigger =
   | { kind: 'once'; runAt: string }
   | { kind: 'interval'; intervalMinutes: number }
-  | { kind: 'cron'; cron: string };
+  | { kind: 'cron'; cron: string; timeZone?: string; dstPolicy?: ScheduleDstPolicy };
 
 export type ScheduleSessionTarget =
   | { mode: 'create-and-reuse' }
@@ -59,6 +61,10 @@ export interface GeneralSchedule {
   lastError?: string;
   lastSessionId?: string;
   runCount: number;
+  /** Historical dispatch count preserved from legacy v0.4.353 migration without relabeling as completed turns. */
+  legacyDispatchCount?: number;
+  /** Observed completed managed-turn count recorded in the durable schedule ledger. */
+  completedRunCount?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -85,12 +91,134 @@ export interface SaveGeneralScheduleInput {
   missedPolicy?: ScheduleMissedPolicy;
 }
 
+export const SCHEDULE_RUN_STATES = [
+  'pending',
+  'admitting',
+  'deferred',
+  'dispatched',
+  'running',
+  'completed',
+  'failed',
+  'cancelled',
+  'blocked',
+  'unknown',
+] as const;
+
+export type ScheduleRunState = (typeof SCHEDULE_RUN_STATES)[number];
+
+export const SCHEDULE_OCCURRENCE_KINDS = ['automatic', 'manual', 'catch-up'] as const;
+export type ScheduleOccurrenceKind = (typeof SCHEDULE_OCCURRENCE_KINDS)[number];
+
+export const SCHEDULE_VERIFICATION_STATES = ['not-checked', 'passed', 'failed'] as const;
+export type ScheduleVerificationState = (typeof SCHEDULE_VERIFICATION_STATES)[number];
+
+export const SCHEDULE_DELIVERY_STATES = ['pending', 'sending', 'sent', 'failed', 'unknown', 'cancelled'] as const;
+export type ScheduleDeliveryState = (typeof SCHEDULE_DELIVERY_STATES)[number];
+
+export const SCHEDULE_REVIEW_ACTIONS = ['acknowledge', 'mark-resolved', 'dismiss-for-new-run'] as const;
+export type ScheduleReviewAction = (typeof SCHEDULE_REVIEW_ACTIONS)[number];
+
+export interface ScheduleReviewDecision {
+  action: ScheduleReviewAction;
+  note?: string;
+}
+
+export interface ScheduleRunV1 {
+  id: string;
+  revision: number;
+  scheduleId: string;
+  scheduleRevision: number;
+  occurrenceKey: string;
+  occurrenceKind: ScheduleOccurrenceKind;
+  scheduledFor: string;
+  requestedAt?: string;
+  workspaceId: string;
+  runtimeId?: string;
+  sessionId?: string;
+  turnId?: string;
+  correlationId?: string;
+  executionGeneration?: string;
+  state: ScheduleRunState;
+  admittedAt?: string;
+  settledAt?: string;
+  verification: ScheduleVerificationState;
+  verificationEvidenceRef?: string;
+  terminalEvidenceRef?: string;
+  statusReason?: string;
+  attemptCount: number;
+  reviewDecision?: ScheduleReviewAction;
+  reviewedAt?: string;
+  reviewNote?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ScheduleDeliveryV1 {
+  id: string;
+  runId: string;
+  destinationBindingId: string;
+  destinationRevision: number;
+  notificationKind: string;
+  targetGuildId: string;
+  targetChannelId: string;
+  targetThreadId?: string;
+  payloadDigest: string;
+  state: ScheduleDeliveryState;
+  attemptCount: number;
+  discordMessageId?: string;
+  lastErrorCode?: string;
+  acknowledgedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ScheduleRunFilter {
+  workspaceId: string;
+  scheduleId?: string;
+  state?: ScheduleRunState;
+  limit?: number;
+  cursor?: string;
+}
+
+export interface ScheduleRunPage {
+  runs: ScheduleRunV1[];
+  nextCursor?: string;
+  total: number;
+}
+
+export interface ScheduleRunDetail {
+  run: ScheduleRunV1;
+  deliveries: ScheduleDeliveryV1[];
+  scheduleName?: string;
+}
+
+export type ScheduleDstTransitionNote = 'repeated-first' | 'repeated-second' | 'after-skipped-gap';
+
+export interface NextRunPreviewEntry {
+  utc: string;
+  localTime: string;
+  timeZone: string;
+  dstNote?: ScheduleDstTransitionNote;
+}
+
+export interface NextRunPreview {
+  timeZone: string;
+  usedFallbackTimeZone: boolean;
+  dstPolicy?: ScheduleDstPolicy;
+  runs: NextRunPreviewEntry[];
+  notes: string[];
+}
+
 export const GENERAL_SCHEDULE_LIMITS = {
   schedules: 64,
   storeBytes: 512 * 1024,
   nameLength: 120,
   promptLength: 32_000,
   cronLength: 120,
+  timeZoneLength: 100,
+  reviewNoteLength: 500,
+  maxPreviewRuns: 50,
+  maxRunPageLimit: 200,
   minIntervalMinutes: 1,
   maxIntervalMinutes: 10_080,
   maxWorkers: 12,
@@ -102,6 +230,10 @@ export const GENERAL_SCHEDULE_HOST_METHODS = [
   'setScheduleEnabled',
   'runScheduleNow',
   'deleteSchedule',
+  'listScheduleRuns',
+  'scheduleRunDetail',
+  'previewScheduleNextRuns',
+  'reviewUnknownScheduleRun',
 ] as const;
 
 export interface ParsedCron {
@@ -116,6 +248,114 @@ export interface ParsedCron {
 
 const EFFORT_VALUES: readonly Effort[] = EFFORTS;
 const PERMISSION_VALUES: readonly SessionPermissionMode[] = SESSION_PERMISSION_MODES;
+const IANA_TIMEZONE_PATTERN = /^[A-Za-z0-9_+-]+(?:\/[A-Za-z0-9_+-]+)*$/;
+
+const zoneFormatters = new Map<string, Intl.DateTimeFormat>();
+
+function getZoneFormatter(timeZone: string): Intl.DateTimeFormat {
+  let formatter = zoneFormatters.get(timeZone);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      hourCycle: 'h23',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+    if (zoneFormatters.size >= 64) {
+      const oldest = zoneFormatters.keys().next().value;
+      if (oldest !== undefined) zoneFormatters.delete(oldest);
+    }
+    zoneFormatters.set(timeZone, formatter);
+  }
+  return formatter;
+}
+
+/** Validate an IANA timezone identifier via `Intl.DateTimeFormat`. */
+export function isValidIanaTimeZone(timeZone: unknown): timeZone is string {
+  if (typeof timeZone !== 'string') return false;
+  if (!timeZone || timeZone.length > GENERAL_SCHEDULE_LIMITS.timeZoneLength || timeZone.trim() !== timeZone) return false;
+  if (/\p{Cc}/u.test(timeZone) || !IANA_TIMEZONE_PATTERN.test(timeZone)) return false;
+  try {
+    getZoneFormatter(timeZone);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function normalizeIanaTimeZone(raw: unknown): string {
+  if (typeof raw !== 'string') throw new Error('Enter a valid IANA time zone (for example "UTC" or "America/New_York").');
+  const trimmed = raw.trim();
+  if (!isValidIanaTimeZone(trimmed)) {
+    throw new Error(`Invalid IANA time zone "${trimmed}".`);
+  }
+  return trimmed;
+}
+
+interface ZoneWallParts {
+  year: number;
+  month: number;
+  day: number;
+  hour: number;
+  minute: number;
+  second: number;
+  dow: number;
+  wallMs: number;
+  /** Offset in ms such that `wholeUtcMs = wallMs + offsetMs` (matches `Date.getTimezoneOffset()` sign). */
+  offsetMs: number;
+}
+
+function zoneWallParts(utcMs: number, timeZone: string): ZoneWallParts {
+  const formatter = getZoneFormatter(timeZone);
+  const wholeUtcMs = Math.floor(utcMs / 1000) * 1000;
+  const parts = formatter.formatToParts(new Date(wholeUtcMs));
+  let year = 0;
+  let month = 0;
+  let day = 0;
+  let hour = 0;
+  let minute = 0;
+  let second = 0;
+  for (const part of parts) {
+    if (part.type === 'year') year = Number(part.value);
+    else if (part.type === 'month') month = Number(part.value);
+    else if (part.type === 'day') day = Number(part.value);
+    else if (part.type === 'hour') hour = Number(part.value);
+    else if (part.type === 'minute') minute = Number(part.value);
+    else if (part.type === 'second') second = Number(part.value);
+  }
+  if (hour === 24) hour = 0;
+  const wallMs = Date.UTC(year, month - 1, day, hour, minute, second);
+  const dow = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+  return { year, month, day, hour, minute, second, dow, wallMs, offsetMs: wholeUtcMs - wallMs };
+}
+
+function sampleZoneOffsetMs(atMs: number, timeZone: string): Set<number> {
+  const result = new Set<number>();
+  for (let hours = -48; hours <= 48; hours += 6) {
+    result.add(zoneWallParts(atMs + hours * 3_600_000, timeZone).offsetMs);
+  }
+  return result;
+}
+
+function formatUtcOffset(offsetMs: number): string {
+  // offsetMs = utcMs - wallMs, so local = UTC - offsetMs
+  const localAheadMinutes = Math.round(-offsetMs / 60_000);
+  const sign = localAheadMinutes >= 0 ? '+' : '-';
+  const absMinutes = Math.abs(localAheadMinutes);
+  const hours = String(Math.floor(absMinutes / 60)).padStart(2, '0');
+  const minutes = String(absMinutes % 60).padStart(2, '0');
+  return `UTC${sign}${hours}:${minutes}`;
+}
+
+function formatZoneLocalTime(utcMs: number, timeZone: string): string {
+  const parts = zoneWallParts(utcMs, timeZone);
+  const pad = (value: number, width = 2) => String(value).padStart(width, '0');
+  return `${pad(parts.year, 4)}-${pad(parts.month)}-${pad(parts.day)} ${pad(parts.hour)}:${pad(parts.minute)} (${formatUtcOffset(parts.offsetMs)})`;
+}
 
 function parseCronField(raw: string, min: number, max: number, label: string, sundaySeven = false): { values: Set<number>; wildcard: boolean } {
   const trimmed = raw.trim();
@@ -195,7 +435,7 @@ function cronDayMatches(parsed: ParsedCron, dom: number, dow: number): boolean {
   return domMatch || dowMatch;
 }
 
-/** Compute the next local occurrence strictly after `afterMs` for a 5-field cron expression. */
+/** Compute the next wall-clock occurrence at or after `afterWallMs` for a 5-field cron expression. */
 function nextCronWallTime(parsed: ParsedCron, afterWallMs: number): number | undefined {
   const cursor = new Date(Math.floor(afterWallMs / 60_000) * 60_000);
   const maxYear = cursor.getUTCFullYear() + 4;
@@ -239,12 +479,56 @@ function localMatchesCron(parsed: ParsedCron, date: Date, wall: Date): boolean {
     && date.getMilliseconds() === 0;
 }
 
-/** Compute the next local occurrence strictly after `afterMs` for a 5-field cron expression.
- * Wall-clock field search avoids local Date setters that can move backwards at an offset fold.
+function zoneMatchesCron(parsed: ParsedCron, utcMs: number, wall: Date, timeZone: string): boolean {
+  if (utcMs % 60_000 !== 0) return false;
+  const parts = zoneWallParts(utcMs, timeZone);
+  return parts.year === wall.getUTCFullYear()
+    && parts.month === wall.getUTCMonth() + 1
+    && parts.day === wall.getUTCDate()
+    && parsed.months.has(parts.month)
+    && cronDayMatches(parsed, parts.day, parts.dow)
+    && parts.hour === wall.getUTCHours()
+    && parts.minute === wall.getUTCMinutes()
+    && parts.second === 0;
+}
+
+function nextCronRunAtInZone(parsed: ParsedCron, afterMs: number, timeZone: string): string | undefined {
+  const minuteMs = 60_000;
+  const nearbyOffsets = sampleZoneOffsetMs(afterMs, timeZone);
+  const offsetValues = [...nearbyOffsets];
+  const foldSpanMs = Math.max(...offsetValues) - Math.min(...offsetValues);
+  const afterParts = zoneWallParts(afterMs, timeZone);
+  let wallAfter = afterParts.wallMs - foldSpanMs;
+  let earliest: number | undefined;
+
+  for (let rejected = 0; rejected < 3_000; rejected++) {
+    const wallMs = nextCronWallTime(parsed, wallAfter);
+    if (wallMs === undefined) break;
+    const wall = new Date(wallMs);
+    const candidates = sampleZoneOffsetMs(wallMs, timeZone);
+    const minimumOffset = Math.min(...candidates);
+    if (earliest !== undefined && wallMs + minimumOffset > earliest) break;
+    for (const offsetMs of candidates) {
+      const candidateMs = wallMs + offsetMs;
+      if (candidateMs <= afterMs) continue;
+      if (!zoneMatchesCron(parsed, candidateMs, wall, timeZone)) continue;
+      if (earliest === undefined || candidateMs < earliest) earliest = candidateMs;
+    }
+    wallAfter = wallMs + minuteMs;
+  }
+  return earliest !== undefined ? new Date(earliest).toISOString() : undefined;
+}
+
+/** Compute the next occurrence strictly after `afterMs` for a 5-field cron expression.
+ * When `timeZone` is provided, computes deterministically in that IANA timezone using
+ * the `each-valid-instant` DST policy; when omitted, preserves legacy host-local behavior.
  */
-export function nextCronRunAt(expression: string, afterMs: number): string | undefined {
+export function nextCronRunAt(expression: string, afterMs: number, timeZone?: string): string | undefined {
   if (!Number.isFinite(afterMs)) return undefined;
   const parsed = parseCronExpression(expression);
+  if (timeZone !== undefined) {
+    return nextCronRunAtInZone(parsed, afterMs, normalizeIanaTimeZone(timeZone));
+  }
   const minuteMs = 60_000;
   const sampleOffsets = (atMs: number) => {
     const result = new Set<number>();
@@ -299,13 +583,205 @@ export function nextScheduleRunAt(trigger: ScheduleTrigger, afterMs: number, las
     const steps = Math.floor(elapsed / intervalMs) + 1;
     return new Date(base + steps * intervalMs).toISOString();
   }
-  return nextCronRunAt(trigger.cron, afterMs);
+  return nextCronRunAt(trigger.cron, afterMs, trigger.timeZone);
+}
+
+function matchingUtcInstantsForWallTime(wallMs: number, timeZone: string): number[] {
+  const wall = new Date(wallMs);
+  const offsets = sampleZoneOffsetMs(wallMs, timeZone);
+  const matches: number[] = [];
+  for (const offsetMs of offsets) {
+    const candidateMs = wallMs + offsetMs;
+    const parts = zoneWallParts(candidateMs, timeZone);
+    if (parts.year === wall.getUTCFullYear()
+      && parts.month === wall.getUTCMonth() + 1
+      && parts.day === wall.getUTCDate()
+      && parts.hour === wall.getUTCHours()
+      && parts.minute === wall.getUTCMinutes()
+      && parts.second === 0) {
+      matches.push(candidateMs);
+    }
+  }
+  return [...new Set(matches)].sort((a, b) => a - b);
+}
+
+function hasSkippedGapBetween(parsed: ParsedCron, cursorMs: number, nextUtcMs: number, timeZone: string): boolean {
+  const nextWallMs = zoneWallParts(nextUtcMs, timeZone).wallMs;
+  const cursorWallMs = zoneWallParts(cursorMs, timeZone).wallMs;
+  let searchWallMs = Math.floor(cursorWallMs / 60_000) * 60_000 + 60_000;
+  for (let steps = 0; steps < 64 && searchWallMs < nextWallMs; steps++) {
+    const candidateWallMs = nextCronWallTime(parsed, searchWallMs);
+    if (candidateWallMs === undefined || candidateWallMs >= nextWallMs) return false;
+    if (matchingUtcInstantsForWallTime(candidateWallMs, timeZone).length === 0) return true;
+    searchWallMs = candidateWallMs + 60_000;
+  }
+  return false;
+}
+
+/** Produce an authoritative Host preview of the next N occurrences, formatted in the effective IANA zone with DST transition notes. */
+export function previewScheduleNextRuns(
+  rawTrigger: ScheduleTrigger,
+  count: number,
+  fromMs = Date.now(),
+  fallbackTimeZone?: string,
+): NextRunPreview {
+  if (!Number.isFinite(fromMs)) throw new Error('Provide a valid reference timestamp for schedule preview.');
+  if (!Number.isSafeInteger(count) || count < 1 || count > GENERAL_SCHEDULE_LIMITS.maxPreviewRuns) {
+    throw new Error(`Preview count must be an integer between 1 and ${GENERAL_SCHEDULE_LIMITS.maxPreviewRuns}.`);
+  }
+  const trigger = normalizeScheduleTrigger(rawTrigger);
+  const resolvedHostTz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  const normalizedFallback = fallbackTimeZone !== undefined ? normalizeIanaTimeZone(fallbackTimeZone) : resolvedHostTz;
+  const explicitCronTz = trigger.kind === 'cron' ? trigger.timeZone : undefined;
+  const effectiveTimeZone = explicitCronTz ?? normalizedFallback;
+  const usedFallbackTimeZone = trigger.kind === 'cron' ? explicitCronTz === undefined : true;
+  const notes: string[] = [];
+  const runs: NextRunPreviewEntry[] = [];
+
+  if (trigger.kind === 'cron' && explicitCronTz === undefined) {
+    notes.push(`No per-job timezone set; previewing with fallback host timezone (${effectiveTimeZone}).`);
+  }
+
+  if (trigger.kind === 'once') {
+    const runAtMs = Date.parse(trigger.runAt);
+    if (runAtMs <= fromMs) {
+      notes.push('One-off trigger timestamp is in the past.');
+    } else {
+      runs.push({
+        utc: new Date(runAtMs).toISOString(),
+        localTime: formatZoneLocalTime(runAtMs, effectiveTimeZone),
+        timeZone: effectiveTimeZone,
+      });
+    }
+    return { timeZone: effectiveTimeZone, usedFallbackTimeZone, runs, notes };
+  }
+
+  if (trigger.kind === 'interval') {
+    let cursorMs = fromMs;
+    let lastRunMs: number | undefined = fromMs;
+    for (let index = 0; index < count; index++) {
+      const nextIso = nextScheduleRunAt(trigger, cursorMs, lastRunMs);
+      if (!nextIso) break;
+      const utcMs = Date.parse(nextIso);
+      runs.push({
+        utc: nextIso,
+        localTime: formatZoneLocalTime(utcMs, effectiveTimeZone),
+        timeZone: effectiveTimeZone,
+      });
+      cursorMs = utcMs;
+      lastRunMs = utcMs;
+    }
+    return { timeZone: effectiveTimeZone, usedFallbackTimeZone, runs, notes };
+  }
+
+  const parsed = parseCronExpression(trigger.cron);
+  const computeZone = explicitCronTz ?? (fallbackTimeZone !== undefined ? normalizedFallback : undefined);
+  let cursorMs = fromMs;
+  const notedFold = new Set<string>();
+  let notedGap = false;
+
+  for (let index = 0; index < count; index++) {
+    const nextIso = nextCronRunAt(trigger.cron, cursorMs, computeZone);
+    if (!nextIso) break;
+    const utcMs = Date.parse(nextIso);
+    const parts = zoneWallParts(utcMs, effectiveTimeZone);
+    const matchingInstants = matchingUtcInstantsForWallTime(parts.wallMs, effectiveTimeZone);
+    let dstNote: ScheduleDstTransitionNote | undefined;
+    if (matchingInstants.length > 1) {
+      if (utcMs === matchingInstants[0]) {
+        dstNote = 'repeated-first';
+      } else if (utcMs === matchingInstants[1]) {
+        dstNote = 'repeated-second';
+      }
+      const foldKey = `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
+      if (!notedFold.has(foldKey)) {
+        notedFold.add(foldKey);
+        notes.push(`DST fall-back repeated wall time in ${effectiveTimeZone}; each valid UTC instant is scheduled (each-valid-instant).`);
+      }
+    } else if (hasSkippedGapBetween(parsed, cursorMs, utcMs, effectiveTimeZone)) {
+      dstNote = 'after-skipped-gap';
+      if (!notedGap) {
+        notedGap = true;
+        notes.push(`DST spring-forward skipped a nonexistent local wall time in ${effectiveTimeZone}; advanced to next valid occurrence.`);
+      }
+    }
+    runs.push({
+      utc: nextIso,
+      localTime: formatZoneLocalTime(utcMs, effectiveTimeZone),
+      timeZone: effectiveTimeZone,
+      ...(dstNote ? { dstNote } : {}),
+    });
+    cursorMs = utcMs;
+  }
+
+  return {
+    timeZone: effectiveTimeZone,
+    usedFallbackTimeZone,
+    dstPolicy: trigger.dstPolicy ?? 'each-valid-instant',
+    runs,
+    notes,
+  };
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> => Boolean(value && typeof value === 'object' && !Array.isArray(value));
 const hasOnlyKeys = (value: Record<string, unknown>, allowed: readonly string[]) => Object.keys(value).every(key => allowed.includes(key));
 const isCleanId = (value: unknown, max = 160): value is string => typeof value === 'string' && value.trim().length > 0 && value.length <= max && !/\p{Cc}/u.test(value) && value.trim() === value;
 const isCleanText = (value: unknown, max: number): value is string => typeof value === 'string' && value.trim().length > 0 && value.length <= max && !/\p{Cc}/u.test(value);
+
+export function isScheduleRunState(value: unknown): value is ScheduleRunState {
+  return typeof value === 'string' && (SCHEDULE_RUN_STATES as readonly string[]).includes(value);
+}
+
+export function isScheduleVerificationState(value: unknown): value is ScheduleVerificationState {
+  return typeof value === 'string' && (SCHEDULE_VERIFICATION_STATES as readonly string[]).includes(value);
+}
+
+export function isScheduleDeliveryState(value: unknown): value is ScheduleDeliveryState {
+  return typeof value === 'string' && (SCHEDULE_DELIVERY_STATES as readonly string[]).includes(value);
+}
+
+export function normalizeScheduleReviewDecision(raw: unknown): ScheduleReviewDecision {
+  if (!isRecord(raw) || !hasOnlyKeys(raw, ['action', 'note'])) {
+    throw new Error('Provide a valid schedule run review decision.');
+  }
+  if (typeof raw.action !== 'string' || !(SCHEDULE_REVIEW_ACTIONS as readonly string[]).includes(raw.action)) {
+    throw new Error('Choose a valid review action (acknowledge, mark-resolved, or dismiss-for-new-run).');
+  }
+  let note: string | undefined;
+  if (raw.note !== undefined && raw.note !== '') {
+    if (!isCleanText(raw.note, GENERAL_SCHEDULE_LIMITS.reviewNoteLength)) {
+      throw new Error(`Review note must be 1 to ${GENERAL_SCHEDULE_LIMITS.reviewNoteLength} characters.`);
+    }
+    note = raw.note.trim();
+  }
+  return { action: raw.action as ScheduleReviewAction, ...(note ? { note } : {}) };
+}
+
+export function normalizeScheduleRunFilter(raw: unknown): ScheduleRunFilter {
+  if (!isRecord(raw) || !hasOnlyKeys(raw, ['workspaceId', 'scheduleId', 'state', 'limit', 'cursor'])) {
+    throw new Error('Invalid schedule run filter.');
+  }
+  if (!isCleanId(raw.workspaceId)) throw new Error('Choose a workspace to list schedule runs.');
+  if (raw.scheduleId !== undefined && !isCleanId(raw.scheduleId)) throw new Error('Invalid schedule id filter.');
+  if (raw.state !== undefined && !isScheduleRunState(raw.state)) throw new Error('Invalid schedule run state filter.');
+  let limit: number | undefined;
+  if (raw.limit !== undefined) {
+    if (!Number.isSafeInteger(raw.limit) || Number(raw.limit) < 1 || Number(raw.limit) > GENERAL_SCHEDULE_LIMITS.maxRunPageLimit) {
+      throw new Error(`Run page limit must be between 1 and ${GENERAL_SCHEDULE_LIMITS.maxRunPageLimit}.`);
+    }
+    limit = Number(raw.limit);
+  }
+  if (raw.cursor !== undefined && (typeof raw.cursor !== 'string' || !raw.cursor.trim() || raw.cursor.length > 512 || /\p{Cc}/u.test(raw.cursor))) {
+    throw new Error('Invalid schedule run pagination cursor.');
+  }
+  return {
+    workspaceId: raw.workspaceId,
+    ...(raw.scheduleId !== undefined ? { scheduleId: raw.scheduleId } : {}),
+    ...(raw.state !== undefined ? { state: raw.state } : {}),
+    ...(limit !== undefined ? { limit } : {}),
+    ...(raw.cursor !== undefined ? { cursor: raw.cursor } : {}),
+  };
+}
 
 export function normalizeScheduleTrigger(raw: unknown): ScheduleTrigger {
   if (!isRecord(raw)) throw new Error('Choose a schedule trigger.');
@@ -326,10 +802,20 @@ export function normalizeScheduleTrigger(raw: unknown): ScheduleTrigger {
     return { kind: 'interval', intervalMinutes: minutes };
   }
   if (raw.kind === 'cron') {
-    if (!hasOnlyKeys(raw, ['kind', 'cron']) || typeof raw.cron !== 'string') throw new Error('Enter a 5-field cron expression.');
+    if (!hasOnlyKeys(raw, ['kind', 'cron', 'timeZone', 'dstPolicy']) || typeof raw.cron !== 'string') throw new Error('Enter a 5-field cron expression.');
     const cron = raw.cron.trim().replace(/\s+/g, ' ');
     parseCronExpression(cron);
-    return { kind: 'cron', cron };
+    const timeZone = raw.timeZone !== undefined ? normalizeIanaTimeZone(raw.timeZone) : undefined;
+    if (raw.dstPolicy !== undefined && raw.dstPolicy !== 'each-valid-instant') {
+      throw new Error('Unsupported cron DST policy. Only "each-valid-instant" is supported.');
+    }
+    const dstPolicy: ScheduleDstPolicy | undefined = raw.dstPolicy;
+    return {
+      kind: 'cron',
+      cron,
+      ...(timeZone !== undefined ? { timeZone } : {}),
+      ...(dstPolicy !== undefined ? { dstPolicy } : {}),
+    };
   }
   throw new Error('Unknown schedule trigger kind.');
 }

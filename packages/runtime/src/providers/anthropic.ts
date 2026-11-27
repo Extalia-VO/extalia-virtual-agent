@@ -125,7 +125,13 @@ export function createAnthropicProvider(options: AnthropicOptions): ModelProvide
     baseURL: options.baseUrl.replace(/\/+$/, '').replace(/\/v1$/, ''),
     maxRetries: 2,
     timeout: 10 * 60_000,
-    ...(options.headers ? { defaultHeaders: options.headers } : {}),
+    defaultHeaders: {
+      // @anthropic-ai/sdk v1 defaults `apiKey` auth to `Authorization: Bearer`; keep
+      // `x-api-key` for Anthropic Messages and compatible routers unless caller overrides it.
+      authorization: null,
+      'x-api-key': options.apiKey ?? 'not-required',
+      ...(options.headers ?? {}),
+    },
     ...(options.fetch ? { fetch: options.fetch as unknown as typeof fetch } : {}),
   });
 

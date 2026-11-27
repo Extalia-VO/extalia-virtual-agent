@@ -15,13 +15,13 @@ export function workspaceTargetChanged(workspace: Workspace, session?: SessionSu
 }
 
 /** Invalidates suggestions after an in-place settings change without discarding the typed prompt. */
-export function modelChoicesKey(state: Pick<HostState, 'profile' | 'connections'>, workspace?: Workspace, session?: SessionSummary): string {
+export function modelChoicesKey(state: Pick<HostState, 'profile' | 'connections'>, workspace?: Workspace, session?: SessionSummary, fallbackConnectionId?: string): string {
   const runtime = sessionRuntime(workspace, session);
-  const connectionId = session ? session.connectionId : workspace?.providerProfileId;
+  const connectionId = session ? session.connectionId : workspace ? workspace.providerProfileId : fallbackConnectionId;
   const connection = runtime === 'extalia-native' ? state.connections.find(item => item.id === connectionId) : undefined;
   const profile = runtime === 'hermes' ? session?.runtime?.profile ?? workspace?.runtimeProfileId ?? 'default' : undefined;
   const workspaceModel = runtime === 'hermes' && workspace?.runtimeId === 'hermes' && (workspace.runtimeProfileId ?? 'default') === profile ? workspace.runtimeModel : undefined;
-  return JSON.stringify([state.profile.id, workspace?.id, session?.id, runtime,
+  return JSON.stringify([state.profile.id, workspace?.id ?? null, session?.id, runtime,
     profile, workspaceModel, session?.options?.model,
     connectionId, connection?.updatedAt, connection?.api, connection?.model]);
 }

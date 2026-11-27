@@ -1,10 +1,24 @@
-import { modelPlanningBasis, applyTeamSpec, defaultOrchestration, generateFullName, initialSessionTeam, parseTeamSpec, withDistinctMemberNames, pickTeamModels, planModelOrder, planTeamHeuristic, presetById, type AgentTeam, type Workspace } from '@extalia/core';
+import { DEFAULT_PERMISSIONS, modelPlanningBasis, applyTeamSpec, defaultOrchestration, generateFullName, initialSessionTeam, parseTeamSpec, withDistinctMemberNames, pickTeamModels, planModelOrder, planTeamHeuristic, presetById, workspaceCrossAccess, type AgentTeam, type Workspace } from '@extalia/core';
 import type {
   AgentAppConnection, AgentAppConnectOptions, AgentAppConnectPlan, AgentAppConnectResult, AgentAppDisconnectResult,
-  AgentAppId, AgentAppRecoveryReport, AgentAppTestResult, AgentHostApi, ApprovalDecisionInput, ConnectionInput, ConnectionView,
-  HookIngestStatus, HostState, ModelChoices, ModelSelectionGuide, Platform, ProfilePreferences, SessionSummary, UpdateCapability, UpdateStatus, UserProfile,
+  AgentAppId, AgentAppRecoveryReport, AgentAppTestResult, AgentHostApi, ApprovalDecisionInput, ChatSystemReportsView, CommandSandboxStatus, ConnectionInput, ConnectionView,
+  ConnectorHealth, GatewayAuditEntryView, GatewayConfirmLinkInput, GatewayConnectorSaveInput, GatewayConnectorState, GatewayConnectorView,
+  GatewayIssueChallengeInput, GatewayLinkChallengeView, GatewayOverview, GatewayPrincipalLinkView, GatewayRouteSaveInput, GatewayRouteView,
+  GeneralSchedule, GeneralScheduleCatalog, HealthDimensionStatus, HookIngestStatus, HostState, ModelChoices, ModelSelectionGuide, NextRunPreview,
+  Platform, ProfilePreferences, ProjectGitInspection, ProjectPlannedAction, ProjectProvisionApplyInput,
+  ProjectProvisionPreview, ProjectProvisionPreviewInput, ProjectProvisionReceipt, ProjectProvisionStepReceipt,
+  ProjectProvisionWarning, SaveGeneralScheduleInput, ScheduleDeliveryV1, ScheduleReviewDecision,
+  ScheduleRunDetail, ScheduleRunFilter, ScheduleRunPage, ScheduleRunV1, ScheduleTrigger,
+  SessionMovePreview, SessionSummary, UpdateCapability, UpdateStatus, UserProfile,
+  WorkspaceReportsInboxView, WorkspaceSystemReport,
 } from '@extalia/platform';
-import { normalizeModelSelectionGuideInput, attachmentLimit, classifyAttachment, normalizeAgentTeam, normalizeIntegrationGate, normalizePromptLearnSkill, normalizeSessionOptions, normalizeTeamPlanRequest, sanitizeAttachmentName, type PromptAttachment } from '@extalia/platform';
+import {
+  isProtectedBranchName, nextScheduleRunAt, normalizeModelSelectionGuideInput, normalizeSaveGeneralSchedule,
+  normalizeScheduleReviewDecision, normalizeScheduleRunFilter, previewScheduleNextRuns as computeSchedulePreview,
+  PROJECT_SCAFFOLD_TEMPLATES, sanitizeGatewayText, validateProjectFolderName,
+  attachmentLimit, classifyAttachment, normalizeAgentTeam, normalizeIntegrationGate, normalizePromptLearnSkill,
+  normalizeSessionOptions, normalizeTeamPlanRequest, sanitizeAttachmentName, type PromptAttachment,
+} from '@extalia/platform';
 import { createEvent, type EventBody, type ExtaliaEvent, type RiskLevel, type Usage } from '@extalia/protocol';
 import { createMockAppearances } from './mockAppearances';
 import { createMockLibrary } from './mockLibrary';
@@ -253,7 +267,10 @@ function createMockAgents(options: MockOptions): AgentHostApi {
   const snapshot = (): HostState => structuredClone(state);
   // The shared profile (`config/profile.json` on a real host), kept in memory and validated like the host does.
   let profile: UserProfile = { schema: 'extalia.profile.v1', preferences: {}, updatedAt: new Date(0).toISOString() };
-  const PREFERENCE_KEYS = ['language', 'theme', 'material', 'font', 'sidebar'] as const;
+  const PREFERENCE_KEYS = ['language', 'theme', 'material', 'font', 'sidebar', 'landingPage'] as const;
+  const createdRequests = new Map<string, { fingerprint: string; summary: SessionSummary }>();
+  const moveReviews = new Map<string, { sessionId: string; destinationId: string; sourceId: string | null; expiresAt: number }>();
+  const projectProvisionReviews = new Map<string, { preview: ProjectProvisionPreview; expiresAt: number }>();
   const imports = createMockLibrary(async library => { state.library = library; return snapshot(); }, options.seed === 'ready');
   state.library = imports.summaries();
   const session = (id: string) => {
@@ -326,7 +343,7 @@ function createMockAgents(options: MockOptions): AgentHostApi {
       send({ type: 'agent.state', state: 'thinking' });
       await step(700);
       if (/fail|error/i.test(text)) throw new Error('The model endpoint answered 429 Too Many Requests. Try again in a minute.');
-      if (/^explain/i.test(text)) {
+      if (/^explain/i.test(text) || summary.workspaceId === null) {
         await say(EXPLAIN, { inputTokens: 2310, outputTokens: 214 });
         send({ type: 'turn.completed', usage: { inputTokens: 2310, outputTokens: 214 }, model });
         return;
@@ -454,6 +471,17 @@ function createMockAgents(options: MockOptions): AgentHostApi {
     };
   }
 
+  function modelChoicesForConnection(connectionId: string): ModelChoices {
+    const efforts = ['low', 'medium', 'high'] as ModelChoices['efforts'];
+    const connection = state.connections.find(item => item.id === connectionId);
+    const defaultModel = connection?.model || 'mock-agent';
+    return {
+      runtime: 'extalia-native', defaultModel, efforts, ...(connection?.effort ? { defaultEffort: connection.effort } : {}),
+      models: [...new Set([defaultModel, 'anthropic/claude-opus-5-5', 'anthropic/claude-sonnet-5-5', 'openai/gpt-5', 'qwen/qwen3-coder'])],
+      permissionModes: ['workspace', 'ask', 'accept-edits', 'plan'],
+    };
+  }
+
   /** Sample model lists (nothing is contacted); the effort control is offered for every mock workspace. */
   function modelChoicesFor(workspace: Workspace): ModelChoices {
     const efforts = ['low', 'medium', 'high'] as ModelChoices['efforts'];
@@ -464,13 +492,7 @@ function createMockAgents(options: MockOptions): AgentHostApi {
           oneshotMaxChildren, maxConcurrentChildren: options.hermesConcurrent ?? 10, workerModel: MOCK_HERMES_DEFAULT_MODEL, workerModelSource: 'delegation', modelRouting: 'shared', source: options.hermesChildren === undefined ? 'defaults' : 'profile' } };
 
     }
-    const connection = state.connections.find(item => item.id === workspace.providerProfileId);
-    const defaultModel = connection?.model || 'mock-agent';
-    return {
-      runtime: 'extalia-native', defaultModel, efforts, ...(connection?.effort ? { defaultEffort: connection.effort } : {}),
-      models: [...new Set([defaultModel, 'anthropic/claude-opus-5-5', 'anthropic/claude-sonnet-5-5', 'openai/gpt-5', 'qwen/qwen3-coder'])],
-      permissionModes: ['workspace', 'ask', 'accept-edits', 'plan'],
-    };
+    return modelChoicesForConnection(workspace.providerProfileId ?? '');
   }
 
   function addWorkspace(name: string, folder: string, connectionId: string, permissions: Workspace['permissions']): Workspace {
@@ -495,12 +517,12 @@ function createMockAgents(options: MockOptions): AgentHostApi {
     try { sessionStorage.setItem(MOCK_WORKSPACE_TEAMS_KEY, JSON.stringify(teamsByFolder)); } catch { /* storage blocked */ }
   }
 
-  function addSession(workspace: Workspace, title = ''): SessionSummary {
+  function addSession(workspace: Workspace | null, title = '', connectionId = ''): SessionSummary {
     const id = nextId('session');
     // The lead's full name and gender, unique in the Office, as the real host assigns at creation.
     const lead = generateFullName(id, new Set(officeNames().map(name => name.toLowerCase())));
     const summary: SessionSummary = {
-      id, workspaceId: workspace.id, connectionId: workspace.providerProfileId ?? '', title, control: 'managed',
+      id, workspaceId: workspace?.id ?? null, connectionId: workspace ? (workspace.providerProfileId ?? '') : connectionId, title, control: 'managed',
       createdAt: iso(), lastActiveAt: iso(), running: false, agentName: lead.name, agentGender: lead.gender,
     };
     state.sessions.unshift(summary);
@@ -895,6 +917,401 @@ function createMockAgents(options: MockOptions): AgentHostApi {
   const operatingProfiles = createMockOperatingProfiles({ state, snapshot, latency });
   const mockQueues = createMockPromptQueues(session, (id, text) => { startTurn(session(id), text); },
     (id, text) => { emit(id, { type: 'user.intervention', action: 'steer', text }); });
+
+  const scheduleTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  let scheduleCatalogSeq = 1;
+  const mockSchedules: GeneralSchedule[] = [];
+  const mockScheduleRuns: ScheduleRunV1[] = [];
+  const mockScheduleDeliveries = new Map<string, ScheduleDeliveryV1[]>();
+
+  if (options.seed === 'ready' && state.workspaces[0]) {
+    const primaryWorkspace = state.workspaces[0];
+    const primarySessionId = state.sessions.find(item => item.workspaceId === primaryWorkspace.id && item.control === 'managed')?.id;
+    const nowMs = Date.now();
+    const tAgo = (minutes: number) => new Date(nowMs - minutes * 60_000).toISOString();
+    const dailyTrigger: ScheduleTrigger = { kind: 'cron', cron: '0 9 * * 1-5', timeZone: 'America/New_York', dstPolicy: 'each-valid-instant' };
+    const auditTrigger: ScheduleTrigger = { kind: 'cron', cron: '30 1 * * *', timeZone: 'Asia/Jakarta', dstPolicy: 'each-valid-instant' };
+    mockSchedules.push(
+      {
+        id: 'sch_mock_daily_review',
+        revision: 3,
+        workspaceId: primaryWorkspace.id,
+        name: 'Weekday Morning Check',
+        prompt: 'Inspect git status and summarize open test failures.',
+        enabled: true,
+        trigger: dailyTrigger,
+        sessionTarget: primarySessionId ? { mode: 'existing', sessionId: primarySessionId } : { mode: 'create-and-reuse' },
+        assignment: { teamMode: 'workspace' },
+        missedPolicy: 'run-once',
+        state: 'scheduled',
+        nextRunAt: nextScheduleRunAt(dailyTrigger, nowMs),
+        lastRunAt: tAgo(120),
+        lastOutcome: 'succeeded',
+        ...(primarySessionId ? { lastSessionId: primarySessionId } : {}),
+        runCount: 3,
+        completedRunCount: 2,
+        createdAt: tAgo(7200),
+        updatedAt: tAgo(120),
+      },
+      {
+        id: 'sch_mock_dst_audit',
+        revision: 1,
+        workspaceId: primaryWorkspace.id,
+        name: 'Overnight Dependency Audit',
+        prompt: 'Check dependency advisories without modifying files.',
+        enabled: true,
+        trigger: auditTrigger,
+        sessionTarget: { mode: 'new-each-run' },
+        assignment: { teamMode: 'solo' },
+        missedPolicy: 'skip',
+        state: 'scheduled',
+        nextRunAt: nextScheduleRunAt(auditTrigger, nowMs),
+        lastRunAt: tAgo(480),
+        lastOutcome: 'deferred-connection',
+        runCount: 0,
+        createdAt: tAgo(4320),
+        updatedAt: tAgo(480),
+      },
+    );
+    mockScheduleRuns.push(
+      {
+        id: 'run_mock_unknown',
+        revision: 1,
+        scheduleId: 'sch_mock_daily_review',
+        scheduleRevision: 3,
+        occurrenceKey: 'auto:sch_mock_daily_review:2026-11-24T14:00:00.000Z:g1',
+        occurrenceKind: 'automatic',
+        scheduledFor: tAgo(120),
+        workspaceId: primaryWorkspace.id,
+        runtimeId: 'extalia-native',
+        ...(primarySessionId ? { sessionId: primarySessionId } : {}),
+        correlationId: 'corr-mock-102',
+        executionGeneration: 'gen-mock-3',
+        state: 'unknown',
+        admittedAt: tAgo(120),
+        verification: 'not-checked',
+        statusReason: 'Host restarted while scheduled run was in progress; turn outcome is unknown and was not replayed.',
+        attemptCount: 1,
+        createdAt: tAgo(120),
+        updatedAt: tAgo(119),
+      },
+      {
+        id: 'run_mock_completed_unverified',
+        revision: 2,
+        scheduleId: 'sch_mock_daily_review',
+        scheduleRevision: 3,
+        occurrenceKey: 'auto:sch_mock_daily_review:2026-11-23T14:00:00.000Z:g1',
+        occurrenceKind: 'automatic',
+        scheduledFor: tAgo(1560),
+        workspaceId: primaryWorkspace.id,
+        runtimeId: 'extalia-native',
+        ...(primarySessionId ? { sessionId: primarySessionId } : {}),
+        turnId: 'turn-mock-101',
+        correlationId: 'corr-mock-101',
+        executionGeneration: 'gen-mock-2',
+        state: 'completed',
+        admittedAt: tAgo(1560),
+        settledAt: tAgo(1558),
+        verification: 'not-checked',
+        terminalEvidenceRef: 'event:ev_mock_101',
+        attemptCount: 1,
+        createdAt: tAgo(1560),
+        updatedAt: tAgo(1558),
+      },
+      {
+        id: 'run_mock_completed_verified',
+        revision: 3,
+        scheduleId: 'sch_mock_daily_review',
+        scheduleRevision: 2,
+        occurrenceKey: 'auto:sch_mock_daily_review:2026-11-22T14:00:00.000Z:g1',
+        occurrenceKind: 'automatic',
+        scheduledFor: tAgo(3000),
+        workspaceId: primaryWorkspace.id,
+        runtimeId: 'extalia-native',
+        ...(primarySessionId ? { sessionId: primarySessionId } : {}),
+        turnId: 'turn-mock-100',
+        correlationId: 'corr-mock-100',
+        executionGeneration: 'gen-mock-1',
+        state: 'completed',
+        admittedAt: tAgo(3000),
+        settledAt: tAgo(2997),
+        verification: 'passed',
+        verificationEvidenceRef: 'receipt:vitest-suite-sha256-mock',
+        terminalEvidenceRef: 'event:ev_mock_100',
+        attemptCount: 1,
+        createdAt: tAgo(3000),
+        updatedAt: tAgo(2997),
+      },
+      {
+        id: 'run_mock_deferred',
+        revision: 1,
+        scheduleId: 'sch_mock_dst_audit',
+        scheduleRevision: 1,
+        occurrenceKey: 'auto:sch_mock_dst_audit:2026-11-24T06:30:00.000Z:g1',
+        occurrenceKind: 'automatic',
+        scheduledFor: tAgo(480),
+        workspaceId: primaryWorkspace.id,
+        state: 'deferred',
+        admittedAt: tAgo(480),
+        verification: 'not-checked',
+        statusReason: 'deferred-connection',
+        attemptCount: 1,
+        createdAt: tAgo(480),
+        updatedAt: tAgo(480),
+      },
+    );
+    mockScheduleDeliveries.set('run_mock_unknown', [
+      {
+        id: 'del_mock_unknown',
+        runId: 'run_mock_unknown',
+        destinationBindingId: 'bind_mock_1',
+        destinationRevision: 1,
+        notificationKind: 'terminal-summary',
+        targetGuildId: 'guild_mock_1',
+        targetChannelId: 'chan_mock_ops',
+        payloadDigest: 'a'.repeat(64),
+        state: 'unknown',
+        attemptCount: 1,
+        lastErrorCode: 'GATEWAY_TIMEOUT',
+        createdAt: tAgo(119),
+        updatedAt: tAgo(119),
+      },
+    ]);
+    mockScheduleDeliveries.set('run_mock_completed_unverified', [
+      {
+        id: 'del_mock_sent',
+        runId: 'run_mock_completed_unverified',
+        destinationBindingId: 'bind_mock_1',
+        destinationRevision: 1,
+        notificationKind: 'terminal-summary',
+        targetGuildId: 'guild_mock_1',
+        targetChannelId: 'chan_mock_ops',
+        payloadDigest: 'b'.repeat(64),
+        state: 'sent',
+        attemptCount: 1,
+        discordMessageId: 'msg_mock_901',
+        acknowledgedAt: tAgo(1558),
+        createdAt: tAgo(1558),
+        updatedAt: tAgo(1558),
+      },
+    ]);
+  }
+
+  const scheduleCatalog = (): GeneralScheduleCatalog => ({
+    revision: `mock-sch-${scheduleCatalogSeq}`,
+    schedules: structuredClone(mockSchedules),
+    timeZone: scheduleTimeZone,
+  });
+
+  const scheduleDetailFor = (run: ScheduleRunV1): ScheduleRunDetail => {
+    const matchingSchedule = mockSchedules.find(item => item.id === run.scheduleId);
+    return {
+      run: structuredClone(run),
+      deliveries: structuredClone(mockScheduleDeliveries.get(run.id) ?? []),
+      ...(matchingSchedule ? { scheduleName: matchingSchedule.name } : {}),
+    };
+  };
+
+  // Universal Gateway v2 mock store (connectors, challenges, links, routes, audit, system reports)
+  const gatewayConnectors: GatewayConnectorView[] = [];
+  const gatewayLinks: GatewayPrincipalLinkView[] = [];
+  const gatewayRoutes: GatewayRouteView[] = [];
+  const gatewayAudit: GatewayAuditEntryView[] = [];
+  const gatewayChallenges = new Map<string, { view: GatewayLinkChallengeView; used: boolean }>();
+  const gatewayReports: WorkspaceSystemReport[] = [];
+  let gatewayAuditSeq = 0;
+
+  const pushGatewayAudit = (actor: string, action: string, resource: string, outcome: string, reason?: string) => {
+    gatewayAuditSeq += 1;
+    gatewayAudit.unshift({
+      sequence: gatewayAuditSeq,
+      actor,
+      action,
+      resource,
+      outcome,
+      ...(reason ? { reason } : {}),
+      at: iso(),
+    });
+    if (gatewayAudit.length > 50) gatewayAudit.length = 50;
+  };
+
+  const makeConnectorHealth = (connectorId: string, provider: string, status: GatewayConnectorState, at: string, detail?: string): ConnectorHealth => {
+    const transportStatus: HealthDimensionStatus = status === 'connected' ? 'healthy' : status === 'degraded' ? 'degraded' : status === 'blocked' ? 'blocked' : status === 'disabled' ? 'disconnected' : 'unknown';
+    const progressStatus: HealthDimensionStatus = status === 'degraded' ? 'degraded' : status === 'connected' ? 'healthy' : 'unknown';
+    return {
+      connectorId,
+      provider,
+      connectorState: status,
+      transport: { status: transportStatus, observedAt: at, ...(detail ? { detail } : {}) },
+      host: { status: 'healthy', observedAt: at },
+      runtime: { status: status === 'disabled' ? 'disconnected' : 'healthy', observedAt: at },
+      progress: { status: progressStatus, observedAt: at, ...(status === 'degraded' ? { detail: 'Provider rate limit backoff' } : {}) },
+      notification: { status: status === 'disabled' ? 'disconnected' : 'healthy', observedAt: at },
+      checkedAt: at,
+    };
+  };
+
+  if (options.seed === 'ready') {
+    const seededAt = iso();
+    const primaryWorkspace = state.workspaces.find(item => item.mode !== 'observe') ?? state.workspaces[0];
+    const primarySession = state.sessions.find(item => item.workspaceId === primaryWorkspace?.id && item.control === 'managed') ?? state.sessions[0];
+    gatewayConnectors.push(
+      {
+        id: 'gw-discord-1',
+        provider: 'discord',
+        providerAccountId: 'guild-demo-001',
+        secretRef: 'keychain:extalia-gateway-discord-1',
+        status: 'connected',
+        policyVersion: 1,
+        capabilityRevision: 1,
+        capabilities: {
+          provider: 'discord',
+          revision: 1,
+          receiveCommands: true,
+          createOrResumeSession: true,
+          perAgentWebhookPortraits: true,
+          editMessages: true,
+          replyReceipts: true,
+          threadsOrTopics: true,
+          attachments: true,
+          deliveryCallbacks: true,
+          supportsCancel: true,
+          requiresComplianceGate: false,
+          maxMessageLength: 2000,
+        },
+        createdAt: seededAt,
+        updatedAt: seededAt,
+        health: makeConnectorHealth('gw-discord-1', 'discord', 'connected', seededAt, 'Gateway socket active'),
+      },
+      {
+        id: 'gw-telegram-1',
+        provider: 'telegram',
+        providerAccountId: 'bot-extalia-demo',
+        secretRef: 'keychain:extalia-gateway-telegram-1',
+        status: 'degraded',
+        policyVersion: 1,
+        capabilityRevision: 1,
+        capabilities: {
+          provider: 'telegram',
+          revision: 1,
+          receiveCommands: true,
+          createOrResumeSession: true,
+          perAgentWebhookPortraits: false,
+          editMessages: true,
+          replyReceipts: true,
+          threadsOrTopics: true,
+          attachments: true,
+          deliveryCallbacks: true,
+          supportsCancel: true,
+          requiresComplianceGate: false,
+          maxMessageLength: 4096,
+        },
+        createdAt: seededAt,
+        updatedAt: seededAt,
+        health: makeConnectorHealth('gw-telegram-1', 'telegram', 'degraded', seededAt, 'Polling backoff active'),
+      },
+    );
+    gatewayLinks.push({
+      id: 'gw-link-1',
+      connectorId: 'gw-discord-1',
+      providerAccountId: 'guild-demo-001',
+      externalActorId: 'actor-demo-001',
+      extaliaPrincipalId: 'principal-local',
+      permissionBands: ['read_status', 'view_reports', 'submit_prompt'],
+      state: 'active',
+      confirmedAt: seededAt,
+    });
+    if (primaryWorkspace) {
+      gatewayRoutes.push({
+        id: 'gw-route-1',
+        connectorId: 'gw-discord-1',
+        providerAccountId: 'guild-demo-001',
+        channelId: 'channel-demo-ops',
+        workspaceId: primaryWorkspace.id,
+        mode: 'explicit-only',
+        audience: 'team',
+        policyRevision: 1,
+        inboundEnabled: true,
+        outboundEnabled: true,
+        isDmDefault: false,
+        state: 'active',
+        createdAt: seededAt,
+        updatedAt: seededAt,
+      });
+      gatewayReports.push(
+        {
+          id: 'rep-knowledge-1',
+          revision: 1,
+          source: 'knowledge-build',
+          sourceJobId: 'job-knowledge-demo-1',
+          workspaceId: primaryWorkspace.id,
+          ...(primarySession ? { sourceSessionId: primarySession.id, targetChatId: primarySession.id, targetSelection: 'last-eligible' as const } : { targetSelection: 'inbox' as const }),
+          outcome: 'completed',
+          knowledge: { state: 'saved', indexed: true, artifactReceiptIds: ['kn-receipt-1'] },
+          committedAt: seededAt,
+          lastUpdatedAt: seededAt,
+          audienceScopeId: `workspace:${primaryWorkspace.id}:team`,
+        },
+        {
+          id: 'rep-skill-1',
+          revision: 1,
+          source: 'skills',
+          sourceJobId: 'job-skills-demo-1',
+          workspaceId: primaryWorkspace.id,
+          ...(primarySession ? { sourceSessionId: primarySession.id, targetChatId: primarySession.id, targetSelection: 'last-eligible' as const } : { targetSelection: 'inbox' as const }),
+          outcome: 'partial',
+          skills: [{
+            packageId: 'skill-audit-helper',
+            revisionId: 'rev-2',
+            state: 'review-required',
+            activationPerformed: false,
+          }],
+          problems: ['Candidate skill requires manual security review in Grimoire before activation.'],
+          committedAt: seededAt,
+          lastUpdatedAt: seededAt,
+          audienceScopeId: `workspace:${primaryWorkspace.id}:private`,
+        },
+        {
+          id: 'rep-schedule-1',
+          revision: 1,
+          source: 'schedule-run',
+          sourceJobId: 'sch_mock_daily_review',
+          sourceRunId: 'run_mock_completed_verified',
+          workspaceId: primaryWorkspace.id,
+          targetSelection: 'inbox',
+          outcome: 'completed',
+          meeting: {
+            outcome: 'completed',
+            meetingId: 'mtg-demo-1',
+            knowledge: 'saved',
+            indexed: true,
+            artifactReceiptId: 'mtg-receipt-1',
+          },
+          committedAt: seededAt,
+          lastUpdatedAt: seededAt,
+          audienceScopeId: `workspace:${primaryWorkspace.id}:team`,
+        },
+      );
+    }
+    pushGatewayAudit('system', 'gateway.seeded', 'gateway', 'ok', 'Seeded Discord and Telegram connectors');
+  }
+
+  const gatewaySnapshot = (): GatewayOverview => structuredClone({
+    connectors: gatewayConnectors,
+    routes: gatewayRoutes,
+    links: gatewayLinks,
+    recentAudit: gatewayAudit,
+  });
+
+  const looksLikeRawGatewaySecret = (secretRef: string): boolean => {
+    const trimmed = secretRef.trim();
+    if (!trimmed) return true;
+    if (sanitizeGatewayText(trimmed, { stripMentions: false, redactPaths: false }).redactedCount > 0) return true;
+    if (/^https?:\/\//i.test(trimmed)) return true;
+    if (/^[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{20,}$/.test(trimmed)) return true;
+    if (/^(?:bot|bearer)\s+/i.test(trimmed)) return true;
+    return false;
+  };
   return {
     ...operatingProfiles.api,
     ...mockQueues,
@@ -932,7 +1349,9 @@ function createMockAgents(options: MockOptions): AgentHostApi {
         if (!(PREFERENCE_KEYS as readonly string[]).includes(key)) throw new Error(`Unknown interface preference: ${key}.`);
         const field = key as keyof ProfilePreferences;
         if (value === null || value === undefined) { delete next.preferences[field]; continue; }
-        if (field === 'language' ? value !== 'en' && value !== 'id' : !/^[a-z0-9][a-z0-9-]{0,39}$/.test(String(value))) throw new Error(`The ${key} preference is not valid.`);
+        if (field === 'language' ? value !== 'en' && value !== 'id'
+          : field === 'landingPage' ? value !== 'chat' && value !== 'office'
+            : !/^[a-z0-9][a-z0-9-]{0,39}$/.test(String(value))) throw new Error(`The ${key} preference is not valid.`);
         (next.preferences as Record<string, string>)[field] = String(value);
       }
       if (patch.clientState !== undefined) {
@@ -1015,6 +1434,236 @@ function createMockAgents(options: MockOptions): AgentHostApi {
       operatingProfiles.afterWorkspaceSave(workspace);
       return snapshot();
     },
+    async previewProjectProvision(input: ProjectProvisionPreviewInput): Promise<ProjectProvisionPreview> {
+      await latency();
+      if (input.mode !== 'create' && input.mode !== 'open') throw new Error('Choose whether to create or open a project.');
+      const normalizeMockPath = (raw: string | undefined): string => {
+        const trimmed = (raw ?? '').trim().replace(/^~(?=$|\/)/, '/Users/you');
+        if (trimmed === '/' || /^[A-Za-z]:[\\/]$/.test(trimmed)) return trimmed.replace(/\\$/, '/');
+        return trimmed.replace(/[\\/]+$/, '');
+      };
+      const isProtectedMockPath = (candidate: string): boolean => {
+        const normalized = candidate.replace(/\\/g, '/');
+        if (normalized === '/' || /^[A-Za-z]:\/?$/.test(normalized)) return true;
+        if (/^\/Users\/[^/]+$/.test(normalized) || /^\/home\/[^/]+$/.test(normalized)) return true;
+        const fixedProtected = new Set([
+          '/Users', '/home', '/root', '/System', '/Library', '/Applications',
+          '/etc', '/usr', '/bin', '/sbin', '/var', '/tmp', '/private',
+        ]);
+        if (fixedProtected.has(normalized)) return true;
+        const dataDir = state.dataDirectory.replace(/\\/g, '/').replace(/\/+$/, '');
+        return normalized === dataDir || normalized.startsWith(`${dataDir}/`);
+      };
+      let parentPath: string;
+      let targetPath: string;
+      if (input.mode === 'create') {
+        parentPath = normalizeMockPath(input.parentPath);
+        if (!parentPath || !/^(\/|[A-Za-z]:[\\/])/.test(parentPath)) {
+          throw new Error('Choose an absolute parent folder, such as /Users/<name>/Projects.');
+        }
+        if (/missing|nope/i.test(parentPath)) throw new Error('The chosen parent folder does not exist.');
+        const folderName = input.folderName ?? '';
+        const folderError = validateProjectFolderName(folderName);
+        if (folderError) throw new Error(folderError);
+        targetPath = `${parentPath === '/' ? '' : parentPath}/${folderName}`;
+        if (isProtectedMockPath(targetPath)) {
+          throw new Error('Choose a project folder inside a user directory rather than a protected system path.');
+        }
+      } else {
+        targetPath = normalizeMockPath(input.targetPath);
+        if (!targetPath || !/^(\/|[A-Za-z]:[\\/])/.test(targetPath)) {
+          throw new Error('Choose an absolute project folder, such as /Users/<name>/Projects/app.');
+        }
+        if (isProtectedMockPath(targetPath)) {
+          throw new Error('Choose a specific project folder instead of a root, home, or system directory.');
+        }
+        if (/missing|nope/i.test(targetPath)) throw new Error('No folder exists at this path.');
+        const sep = targetPath.lastIndexOf('/');
+        parentPath = sep > 0 ? targetPath.slice(0, sep) : '/';
+      }
+      const runtimeId = input.runtimeId ?? 'extalia-native';
+      let connectionId: string | undefined;
+      if (runtimeId !== 'hermes') {
+        connectionId = input.connectionId || state.connections[0]?.id;
+        if (!connectionId) throw new Error('Add a model connection first.');
+        if (!state.connections.some(item => item.id === connectionId)) throw new Error('Choose a saved model connection.');
+      }
+      const permissions = {
+        fileWrite: input.permissions?.fileWrite ?? 'ask',
+        commands: input.permissions?.commands ?? 'ask',
+      } as const;
+      const crossWorkspaceAccess = input.crossWorkspaceAccess ?? 'read-only';
+      const templateId = input.mode === 'create' ? (input.templateId ?? 'none') : 'none';
+      const template = PROJECT_SCAFFOLD_TEMPLATES.find(item => item.id === templateId);
+      if (!template) throw new Error('Choose a supported starter template.');
+      const gitInit = input.mode === 'create' ? Boolean(input.gitInit) : false;
+      const folderBase = targetPath.split(/[\\/]/).pop() || targetPath;
+      const workspaceName = input.workspaceName?.trim() || folderBase;
+      let attachSession: ProjectProvisionPreview['attachSession'];
+      if (input.attachSessionId) {
+        const targetSession = session(input.attachSessionId);
+        if (targetSession.control !== 'managed' || targetSession.runtime || targetSession.transient) {
+          throw new Error('Choose a saved Extalia Native session.');
+        }
+        if (targetSession.workspaceId !== null) {
+          throw new Error('This session is already attached to a workspace.');
+        }
+        if (targetSession.running || targetSession.pendingApprovalId) {
+          throw new Error('Wait for this session to finish before attaching it to a project.');
+        }
+        attachSession = {
+          sessionId: targetSession.id,
+          title: targetSession.title || 'New session',
+          transfersHistory: (events.get(targetSession.id)?.length ?? 0) > 0,
+          permissionMode: targetSession.options?.permissionMode ?? 'workspace',
+        };
+      }
+      const existingWorkspace = state.workspaces.find(item => item.projectLocation === targetPath);
+      const lowerPath = targetPath.toLowerCase();
+      const hasDirty = lowerPath.includes('dirty');
+      const hasProtected = lowerPath.includes('protected');
+      const isGitRepo = input.mode === 'open' ? !lowerPath.includes('nogit') : gitInit;
+      const branch = isGitRepo ? (hasProtected ? 'main' : input.mode === 'create' ? 'main' : 'feature/work') : undefined;
+      const dirty = input.mode === 'open' ? (isGitRepo && hasDirty) : false;
+      const dirtyChangeCount = dirty ? 3 : 0;
+      const protectedBranch = input.mode === 'open'
+        ? Boolean(isGitRepo && (hasProtected || isProtectedBranchName(branch)))
+        : hasProtected;
+      const gitInspection: ProjectGitInspection = {
+        isGitRepo,
+        ...(branch ? { branch } : {}),
+        dirty,
+        dirtyChangeCount,
+        protectedBranch,
+      };
+      const warnings: ProjectProvisionWarning[] = [];
+      if (dirty) warnings.push({ code: 'dirty-repository', detail: `${dirtyChangeCount} uncommitted changes in ${targetPath}` });
+      if (protectedBranch) warnings.push({ code: 'protected-branch', detail: `Branch ${branch ?? 'main'} is protected` });
+      if (existingWorkspace) warnings.push({ code: 'already-registered-workspace', detail: existingWorkspace.name });
+      const requiresWarningAcknowledgement = warnings.some(warning => warning.code === 'dirty-repository' || warning.code === 'protected-branch');
+      const plannedActions: ProjectPlannedAction[] = [];
+      if (input.mode === 'create') {
+        plannedActions.push({ kind: 'create-folder', target: targetPath });
+        for (const file of template.files) {
+          plannedActions.push({ kind: 'write-file', target: `${targetPath}/${file}`, detail: `Template: ${template.id}` });
+        }
+        if (gitInit) plannedActions.push({ kind: 'git-init', target: targetPath });
+      }
+      if (!existingWorkspace) {
+        plannedActions.push({ kind: 'register-workspace', target: targetPath, detail: workspaceName });
+      }
+      if (attachSession) {
+        plannedActions.push({ kind: 'attach-session', target: attachSession.sessionId, detail: attachSession.title });
+      }
+      const reviewId = nextId('provision');
+      const expiresAt = Date.now() + 10 * 60_000;
+      const preview: ProjectProvisionPreview = {
+        reviewId,
+        expiresAt: new Date(expiresAt).toISOString(),
+        mode: input.mode,
+        targetPath,
+        parentPath,
+        workspaceName,
+        runtimeId,
+        ...(connectionId ? { connectionId } : {}),
+        permissions,
+        crossWorkspaceAccess,
+        templateId,
+        gitInit,
+        ...(existingWorkspace ? { existingWorkspaceId: existingWorkspace.id } : {}),
+        gitInspection,
+        plannedActions,
+        warnings,
+        requiresWarningAcknowledgement,
+        ...(attachSession ? { attachSession } : {}),
+      };
+      projectProvisionReviews.set(reviewId, { preview, expiresAt });
+      return structuredClone(preview);
+    },
+    async applyProjectProvision(input: ProjectProvisionApplyInput): Promise<ProjectProvisionReceipt> {
+      await latency();
+      const review = projectProvisionReviews.get(input.reviewId);
+      if (!review || review.expiresAt <= Date.now()) {
+        if (review) projectProvisionReviews.delete(input.reviewId);
+        return {
+          ok: false,
+          partial: false,
+          mode: review?.preview.mode ?? 'create',
+          targetPath: review?.preview.targetPath ?? '',
+          steps: [],
+          error: 'This project setup review has expired or was not found. Review the project again.',
+        };
+      }
+      const { preview } = review;
+      if (preview.requiresWarningAcknowledgement && !input.acknowledgeWarnings) {
+        return {
+          ok: false,
+          partial: false,
+          mode: preview.mode,
+          targetPath: preview.targetPath,
+          steps: [],
+          error: 'Acknowledge the repository warnings before applying this project setup.',
+        };
+      }
+      const steps: ProjectProvisionStepReceipt[] = [];
+      let createdWorkspace: Workspace | undefined = preview.existingWorkspaceId
+        ? state.workspaces.find(item => item.id === preview.existingWorkspaceId)
+        : undefined;
+      for (const action of preview.plannedActions) {
+        if (action.kind === 'register-workspace') {
+          if (!createdWorkspace) {
+            createdWorkspace = addWorkspace(preview.workspaceName, preview.targetPath, preview.connectionId ?? '', preview.permissions);
+            createdWorkspace.crossWorkspaceAccess = preview.crossWorkspaceAccess;
+            if (preview.runtimeId === 'hermes') {
+              createdWorkspace.runtimeId = 'hermes';
+              createdWorkspace.runtimeProfileId = 'default';
+            }
+          }
+          steps.push({ step: action.kind, status: 'completed', target: action.target, ...(action.detail ? { detail: action.detail } : {}) });
+        } else if (action.kind === 'attach-session') {
+          const targetSession = state.sessions.find(item => item.id === action.target);
+          if (!targetSession || targetSession.workspaceId !== null || targetSession.running || targetSession.pendingApprovalId || !createdWorkspace) {
+            steps.push({ step: action.kind, status: 'failed', target: action.target, detail: 'Session state changed before attach.' });
+            projectProvisionReviews.delete(input.reviewId);
+            return {
+              ok: false,
+              partial: steps.some(step => step.status === 'completed'),
+              mode: preview.mode,
+              targetPath: preview.targetPath,
+              ...(createdWorkspace ? { workspace: structuredClone(createdWorkspace) } : {}),
+              steps,
+              error: 'Could not attach the conversation because its state changed. Review again.',
+              state: snapshot(),
+            };
+          }
+          const last = events.get(targetSession.id)?.at(-1);
+          if (last) {
+            targetSession.workspaceFileScopes = [...(targetSession.workspaceFileScopes ?? []), {
+              throughEventId: last.id,
+              workspaceId: '',
+              projectLocation: '',
+            }];
+          }
+          targetSession.workspaceId = createdWorkspace.id;
+          delete targetSession.projectLocation;
+          grants.delete(targetSession.id);
+          steps.push({ step: action.kind, status: 'completed', target: action.target, ...(action.detail ? { detail: action.detail } : {}) });
+        } else {
+          steps.push({ step: action.kind, status: 'completed', target: action.target, ...(action.detail ? { detail: action.detail } : {}) });
+        }
+      }
+      projectProvisionReviews.delete(input.reviewId);
+      return {
+        ok: true,
+        partial: false,
+        mode: preview.mode,
+        targetPath: preview.targetPath,
+        ...(createdWorkspace ? { workspace: structuredClone(createdWorkspace) } : {}),
+        ...(preview.attachSession ? { attachedSessionId: preview.attachSession.sessionId } : {}),
+        steps,
+        state: snapshot(),
+      };
+    },
     async deleteWorkspace(id) {
       await latency();
       state.workspaces = state.workspaces.filter(item => item.id !== id);
@@ -1047,11 +1696,29 @@ function createMockAgents(options: MockOptions): AgentHostApi {
     async setAutoWatch() { throw new Error('Watching new sessions automatically needs the Desktop host or local Bridge.'); },
     async createSession(workspaceId, sessionOptions) {
       await latency();
+      const { team, connectionId, clientRequestId, operatingProfileId: _operatingProfileId, ...checked } = normalizeSessionOptions(sessionOptions);
+      if (workspaceId === null) {
+        const fingerprint = JSON.stringify({ workspaceId: null, connectionId, team: team ?? null, checked });
+        if (clientRequestId) {
+          const prior = createdRequests.get(clientRequestId);
+          if (prior) {
+            if (prior.fingerprint !== fingerprint) throw new Error('That request id was already used with different session parameters.');
+            return structuredClone(prior.summary);
+          }
+        }
+        const resolvedConnectionId = connectionId ?? (state.connections.length === 1 ? state.connections[0]!.id : undefined);
+        if (!resolvedConnectionId) throw new Error(state.connections.length ? 'Choose a model connection for this session.' : 'Add a model connection first.');
+        if (!state.connections.some(connection => connection.id === resolvedConnectionId)) throw new Error('Choose a saved model connection.');
+        const summary = addSession(null, '', resolvedConnectionId);
+        if (Object.keys(checked).length) summary.options = checked;
+        if (team) setTeam(summary, withDistinctMemberNames(team, new Set(officeNames().map(name => name.toLowerCase())), summary.id));
+        if (clientRequestId) createdRequests.set(clientRequestId, { fingerprint, summary });
+        return structuredClone(summary);
+      }
       const workspace = state.workspaces.find(item => item.id === workspaceId);
       if (!workspace) throw new Error('This workspace no longer exists.');
       if (workspace.mode === 'observe') throw new Error('Enable the full Extalia workspace before starting a managed session.');
       if (workspace.runtimeId !== 'hermes' && !state.connections.some(connection => connection.id === workspace.providerProfileId)) throw new Error('Choose a model connection for this workspace.');
-      const { team, ...checked } = normalizeSessionOptions(sessionOptions);
       const summary = addSession(workspace);
       if (workspace.runtimeId === 'hermes') summary.runtime = { id: 'hermes', profile: workspace.runtimeProfileId || 'default' };
       const savedOptions = { ...(workspace.runtimeId === 'hermes' && workspace.runtimeModel ? { model: workspace.runtimeModel } : {}), ...checked };
@@ -1066,13 +1733,29 @@ function createMockAgents(options: MockOptions): AgentHostApi {
       await latency();
       const summary = session(sessionId);
       if (summary.control !== 'managed') throw new Error('Observed sessions run in their own app; choose the model there.');
-      const { team: _team, ...checked } = normalizeSessionOptions(sessionOptions);
+      const { team: _team, connectionId: _connectionId, operatingProfileId: _operatingProfileId, clientRequestId: _clientRequestId, ...checked } = normalizeSessionOptions(sessionOptions);
       if (Object.keys(checked).length) summary.options = checked; else delete summary.options;
       return structuredClone(summary);
     },
     // Sample model lists (nothing is contacted); the effort control is offered for every mock workspace.
-    async modelChoices(workspaceId, sessionId): Promise<ModelChoices> {
+    async modelChoices(workspaceId, sessionId, connectionId): Promise<ModelChoices> {
       await latency();
+      if (workspaceId === null) {
+        let resolvedConnectionId: string;
+        if (sessionId !== undefined) {
+          const selected = state.sessions.find(item => item.id === sessionId && item.workspaceId === null && item.control === 'managed');
+          if (!selected || selected.runtime) throw new Error('Choose a managed unassigned Extalia Native session.');
+          resolvedConnectionId = selected.connectionId;
+        } else if (connectionId) {
+          resolvedConnectionId = connectionId;
+        } else if (state.connections.length === 1) {
+          resolvedConnectionId = state.connections[0]!.id;
+        } else {
+          throw new Error(state.connections.length ? 'Choose a model connection first.' : 'Add a model connection first.');
+        }
+        if (!state.connections.some(item => item.id === resolvedConnectionId)) throw new Error('That model connection no longer exists.');
+        return modelChoicesForConnection(resolvedConnectionId);
+      }
       const workspace = state.workspaces.find(item => item.id === workspaceId);
       if (!workspace) throw new Error('This workspace no longer exists.');
       if (sessionId === undefined) return modelChoicesFor(workspace);
@@ -1085,6 +1768,14 @@ function createMockAgents(options: MockOptions): AgentHostApi {
     },
     async teamModelChoices(workspaceId, connectionId, sessionId): Promise<ModelChoices> {
       await latency();
+      if (workspaceId === null) {
+        if (sessionId !== undefined) {
+          const selected = state.sessions.find(item => item.id === sessionId && item.workspaceId === null && item.control === 'managed');
+          if (!selected || selected.runtime) throw new Error('Choose a managed unassigned Extalia Native session.');
+        }
+        if (!state.connections.some(item => item.id === connectionId)) throw new Error('That model connection no longer exists.');
+        return modelChoicesForConnection(connectionId);
+      }
       const workspace = state.workspaces.find(item => item.id === workspaceId);
       if (!workspace) throw new Error('This workspace no longer exists.');
       const selected = sessionId === undefined ? undefined : state.sessions.find(item => item.id === sessionId && item.workspaceId === workspaceId && item.control === 'managed');
@@ -1128,9 +1819,24 @@ function createMockAgents(options: MockOptions): AgentHostApi {
     async planTeam(workspaceId, request, sessionId) {
       await latency();
       await sleep(400);
+      const checked = normalizeTeamPlanRequest(request);
+      if (workspaceId === null) {
+        const selected = sessionId === undefined ? undefined : state.sessions.find(item => item.id === sessionId && item.workspaceId === null && item.control === 'managed');
+        if (sessionId !== undefined && (!selected || selected.runtime)) throw new Error('Choose a managed unassigned session.');
+        const connectionId = selected?.connectionId ?? (state.connections.length === 1 ? state.connections[0]!.id : undefined);
+        if (!connectionId) throw new Error(state.connections.length ? 'Choose a model connection before planning a team.' : 'Add a model connection first.');
+        const choices = modelChoicesForConnection(connectionId);
+        const recentTitles = state.sessions.filter(item => item.workspaceId === null && item.title).map(item => item.title).slice(0, 5);
+        const planned = {
+          ...checked, context: { workspace: 'Unassigned', recentTitles },
+          ...(checked.allowedModels.length ? {} : { candidateModels: pickTeamModels(choices.models, choices.defaultModel ? [choices.defaultModel] : []) }),
+        };
+        const members = planTeamHeuristic(planned, () => nextId('member'), officeNames());
+        const choosing = !checked.allowedModels.length && Boolean(planned.candidateModels?.length);
+        return { members, source: 'heuristic', planningBasis: modelPlanningBasis(selectionGuide, 'heuristic'), note: 'A standard split was used: the mock host does not ask a model.', ...(choosing ? { allowedModels: planModelOrder(members) } : {}) };
+      }
       const workspace = state.workspaces.find(item => item.id === workspaceId);
       if (!workspace) throw new Error('This workspace no longer exists.');
-      const checked = normalizeTeamPlanRequest(request);
       const selected = sessionId === undefined ? undefined : state.sessions.find(item => item.id === sessionId && item.workspaceId === workspaceId && item.control === 'managed');
       if (sessionId !== undefined && !selected) throw new Error('Choose a managed session in this workspace.');
       const target = selected ? { ...workspace, runtimeId: selected.runtime ? 'hermes' as const : 'extalia-native' as const, runtimeProfileId: selected.runtime?.profile } : workspace;
@@ -1168,6 +1874,64 @@ function createMockAgents(options: MockOptions): AgentHostApi {
       return structuredClone(summary);
     },
     async renameSession(sessionId, title) { await latency(); session(sessionId).title = title.trim(); return snapshot(); },
+    async previewSessionMove(sessionId, workspaceId): Promise<SessionMovePreview> {
+      await latency();
+      const selected = session(sessionId);
+      if (selected.control !== 'managed' || selected.runtime || selected.transient) throw new Error('Choose a saved Extalia Native session.');
+      if (selected.running || selected.pendingApprovalId) throw new Error('Wait for this session to finish before moving it.');
+      const destination = state.workspaces.find(item => item.id === workspaceId);
+      if (!destination || destination.mode === 'observe' || destination.runtimeId === 'hermes' || !destination.projectLocation) {
+        throw new Error('Choose a managed Extalia Native workspace.');
+      }
+      const source = selected.workspaceId ? state.workspaces.find(item => item.id === selected.workspaceId) ?? null : null;
+      const toViewWorkspace = (workspace: Workspace) => ({
+        id: workspace.id,
+        name: workspace.name,
+        folders: [workspace.projectLocation, ...(workspace.additionalProjectLocations ?? [])].filter((folder): folder is string => Boolean(folder)),
+        crossWorkspaceAccess: workspaceCrossAccess(workspace),
+        permissions: { ...(workspace.permissions ?? DEFAULT_PERMISSIONS) },
+      });
+      const reviewId = nextId('review');
+      const expiresAt = Date.now() + 10 * 60_000;
+      moveReviews.set(reviewId, { sessionId, destinationId: destination.id, sourceId: source?.id ?? null, expiresAt });
+      return {
+        sessionId,
+        reviewId,
+        expiresAt: new Date(expiresAt).toISOString(),
+        kind: source ? 'move' : 'attach',
+        source: source ? toViewWorkspace(source) : null,
+        destination: toViewWorkspace(destination),
+        accessibleFolders: toViewWorkspace(destination).folders.map(path => ({ workspaceId: destination.id, path, access: 'read-write' as const })),
+        transfersHistory: (events.get(sessionId)?.length ?? 0) > 0,
+        permissionMode: selected.options?.permissionMode ?? 'workspace',
+      };
+    },
+    async moveSession(sessionId, request) {
+      await latency();
+      const selected = session(sessionId);
+      const review = moveReviews.get(request.reviewId);
+      if (!review || review.expiresAt <= Date.now() || review.sessionId !== sessionId || review.destinationId !== request.workspaceId || review.sourceId !== (selected.workspaceId ?? null)) {
+        throw new Error('Session or workspace settings changed, or the review expired. Review the destination again.');
+      }
+      if (selected.running || selected.pendingApprovalId) throw new Error('Wait for this session to finish before moving it.');
+      const destination = state.workspaces.find(item => item.id === request.workspaceId);
+      if (!destination || destination.mode === 'observe' || destination.runtimeId === 'hermes' || !destination.projectLocation) {
+        throw new Error('Choose a managed Extalia Native workspace.');
+      }
+      const last = events.get(sessionId)?.at(-1);
+      if (last) {
+        selected.workspaceFileScopes = [...(selected.workspaceFileScopes ?? []), {
+          throughEventId: last.id,
+          workspaceId: selected.workspaceId ?? '',
+          projectLocation: selected.workspaceId ? (selected.projectLocation ?? '') : '',
+        }];
+      }
+      selected.workspaceId = destination.id;
+      delete selected.projectLocation;
+      moveReviews.delete(request.reviewId);
+      grants.delete(sessionId);
+      return snapshot();
+    },
     async setSessionProjectRoot(sessionId, input) {
       await latency();
       const selected = session(sessionId), workspace = state.workspaces.find(item => item.id === selected.workspaceId);
@@ -1256,6 +2020,24 @@ function createMockAgents(options: MockOptions): AgentHostApi {
       const request = pending.get(approvalId);
       if (!request || request.sessionId !== sessionId) throw new Error('This approval is no longer pending.');
       request.resolve(decision);
+    },
+    async revokeApproval(sessionId, approvalId) {
+      await latency();
+      const request = pending.get(approvalId);
+      if (request && request.sessionId === sessionId) {
+        pending.delete(approvalId);
+        request.resolve(CANCELLED);
+      }
+    },
+    async commandSandboxStatus(): Promise<CommandSandboxStatus> {
+      await latency();
+      return {
+        supported: true,
+        kind: 'macos-seatbelt',
+        platform: 'darwin',
+        networkAccess: 'denied',
+        verifiedAt: new Date().toISOString(),
+      };
     },
     async cancel(sessionId) {
       await latency();
@@ -1472,6 +2254,373 @@ function createMockAgents(options: MockOptions): AgentHostApi {
     ...createMockSkillRegistry(options.skills ?? 'registry', latency),
     ...createMockBuiltinSkills(latency),
     ...(mockKnowledge ? { ...mockKnowledge, ...mockKnowledgeSettings, ...mockVaultProfiles, ...mockWorkspaceKnowledge } : {}),
+    async listSchedules() {
+      await latency();
+      return scheduleCatalog();
+    },
+    async saveSchedule(raw: SaveGeneralScheduleInput) {
+      await latency();
+      const input = normalizeSaveGeneralSchedule(raw);
+      const workspace = state.workspaces.find(item => item.id === input.workspaceId);
+      if (!workspace || workspace.mode === 'observe') throw new Error('Choose a managed workspace for this schedule.');
+      const nowMs = Date.now();
+      const nowIso = new Date(nowMs).toISOString();
+      const index = input.id ? mockSchedules.findIndex(item => item.id === input.id) : -1;
+      const previous = index >= 0 ? mockSchedules[index] : undefined;
+      if (input.id && (!previous || previous.revision !== input.expectedRevision)) {
+        throw new Error('This schedule changed. Refresh before saving.');
+      }
+      const enabled = input.enabled ?? previous?.enabled ?? true;
+      if (enabled && input.trigger.kind === 'once' && Date.parse(input.trigger.runAt) <= nowMs) {
+        throw new Error('Choose a future date and time for a one-off schedule.');
+      }
+      const nextRunAt = enabled ? nextScheduleRunAt(input.trigger, nowMs) : undefined;
+      const saved: GeneralSchedule = {
+        id: previous?.id ?? nextId('sch'),
+        revision: (previous?.revision ?? 0) + 1,
+        workspaceId: input.workspaceId,
+        name: input.name,
+        prompt: input.prompt,
+        enabled,
+        trigger: input.trigger,
+        sessionTarget: input.sessionTarget,
+        ...(previous?.boundSessionId ? { boundSessionId: previous.boundSessionId } : {}),
+        assignment: input.assignment ?? { teamMode: 'workspace' },
+        missedPolicy: input.missedPolicy ?? 'run-once',
+        state: enabled && nextRunAt ? 'scheduled' : 'paused',
+        ...(nextRunAt ? { nextRunAt } : {}),
+        ...(previous?.lastRunAt ? { lastRunAt: previous.lastRunAt } : {}),
+        ...(previous?.lastOutcome ? { lastOutcome: previous.lastOutcome } : {}),
+        ...(previous?.lastSessionId ? { lastSessionId: previous.lastSessionId } : {}),
+        runCount: previous?.runCount ?? 0,
+        ...(previous?.completedRunCount !== undefined ? { completedRunCount: previous.completedRunCount } : {}),
+        createdAt: previous?.createdAt ?? nowIso,
+        updatedAt: nowIso,
+      };
+      if (previous) mockSchedules[index] = saved;
+      else mockSchedules.push(saved);
+      scheduleCatalogSeq++;
+      return scheduleCatalog();
+    },
+    async setScheduleEnabled(id: string, enabled: boolean, expectedRevision?: number) {
+      await latency();
+      const index = mockSchedules.findIndex(item => item.id === id);
+      const previous = index >= 0 ? mockSchedules[index] : undefined;
+      if (!previous || (expectedRevision !== undefined && previous.revision !== expectedRevision)) {
+        throw new Error('This schedule changed. Refresh before updating.');
+      }
+      const nowMs = Date.now();
+      const nextRunAt = enabled ? nextScheduleRunAt(previous.trigger, nowMs) : undefined;
+      mockSchedules[index] = {
+        ...previous,
+        revision: previous.revision + 1,
+        enabled,
+        state: enabled && nextRunAt ? 'scheduled' : 'paused',
+        ...(nextRunAt ? { nextRunAt } : {}),
+        updatedAt: new Date(nowMs).toISOString(),
+      };
+      if (!nextRunAt) delete mockSchedules[index]!.nextRunAt;
+      scheduleCatalogSeq++;
+      return scheduleCatalog();
+    },
+    async runScheduleNow(id: string, expectedRevision?: number) {
+      await latency();
+      const index = mockSchedules.findIndex(item => item.id === id);
+      const previous = index >= 0 ? mockSchedules[index] : undefined;
+      if (!previous || (expectedRevision !== undefined && previous.revision !== expectedRevision)) {
+        throw new Error('This schedule changed. Refresh before running it.');
+      }
+      const nowMs = Date.now();
+      const nowIso = new Date(nowMs).toISOString();
+      const targetSessionId =
+        previous.sessionTarget.mode === 'existing'
+          ? previous.sessionTarget.sessionId
+          : previous.boundSessionId ?? state.sessions.find(item => item.workspaceId === previous.workspaceId && item.control === 'managed')?.id;
+      const runId = nextId('run');
+      const run: ScheduleRunV1 = {
+        id: runId,
+        revision: 1,
+        scheduleId: previous.id,
+        scheduleRevision: previous.revision,
+        occurrenceKey: `manual:${previous.id}:${runId}`,
+        occurrenceKind: 'manual',
+        scheduledFor: nowIso,
+        requestedAt: nowIso,
+        workspaceId: previous.workspaceId,
+        runtimeId: 'extalia-native',
+        ...(targetSessionId ? { sessionId: targetSessionId } : {}),
+        correlationId: nextId('corr'),
+        turnId: nextId('turn'),
+        state: 'completed',
+        admittedAt: nowIso,
+        settledAt: nowIso,
+        verification: 'not-checked',
+        terminalEvidenceRef: `event:${nextId('ev')}`,
+        attemptCount: 1,
+        createdAt: nowIso,
+        updatedAt: nowIso,
+      };
+      mockScheduleRuns.unshift(run);
+      const oneOff = previous.trigger.kind === 'once';
+      const nextRunAt = !oneOff && previous.enabled ? nextScheduleRunAt(previous.trigger, nowMs) : undefined;
+      mockSchedules[index] = {
+        ...previous,
+        revision: previous.revision + 1,
+        enabled: oneOff ? false : previous.enabled,
+        state: oneOff ? 'completed' : nextRunAt ? 'scheduled' : 'paused',
+        ...(nextRunAt ? { nextRunAt } : {}),
+        lastRunAt: nowIso,
+        lastOutcome: 'succeeded',
+        ...(targetSessionId ? { lastSessionId: targetSessionId } : {}),
+        runCount: previous.runCount + 1,
+        completedRunCount: (previous.completedRunCount ?? 0) + 1,
+        updatedAt: nowIso,
+      };
+      if (!nextRunAt) delete mockSchedules[index]!.nextRunAt;
+      scheduleCatalogSeq++;
+      return scheduleCatalog();
+    },
+    async deleteSchedule(id: string, expectedRevision?: number) {
+      await latency();
+      const index = mockSchedules.findIndex(item => item.id === id);
+      const previous = index >= 0 ? mockSchedules[index] : undefined;
+      if (!previous || (expectedRevision !== undefined && previous.revision !== expectedRevision)) {
+        throw new Error('This schedule changed. Refresh before deleting.');
+      }
+      mockSchedules.splice(index, 1);
+      scheduleCatalogSeq++;
+      return scheduleCatalog();
+    },
+    async listScheduleRuns(rawFilter: ScheduleRunFilter): Promise<ScheduleRunPage> {
+      await latency();
+      const filter = normalizeScheduleRunFilter(rawFilter);
+      const filtered = mockScheduleRuns
+        .filter(run => run.workspaceId === filter.workspaceId)
+        .filter(run => (filter.scheduleId ? run.scheduleId === filter.scheduleId : true))
+        .filter(run => (filter.state ? run.state === filter.state : true))
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id));
+      const limit = filter.limit ?? 50;
+      const startIndex = filter.cursor ? Math.max(0, filtered.findIndex(item => item.id === filter.cursor) + 1) : 0;
+      const slice = filtered.slice(startIndex, startIndex + limit);
+      const hasMore = startIndex + limit < filtered.length;
+      const last = slice.at(-1);
+      return {
+        runs: structuredClone(slice),
+        total: filtered.length,
+        ...(hasMore && last ? { nextCursor: last.id } : {}),
+      };
+    },
+    async scheduleRunDetail(runId: string): Promise<ScheduleRunDetail> {
+      await latency();
+      const found = mockScheduleRuns.find(item => item.id === runId);
+      if (!found) throw new Error('Schedule run not found.');
+      return scheduleDetailFor(found);
+    },
+    async previewScheduleNextRuns(trigger: ScheduleTrigger, count = 5): Promise<NextRunPreview> {
+      await latency();
+      return computeSchedulePreview(trigger, count, Date.now(), scheduleTimeZone);
+    },
+    async reviewUnknownScheduleRun(runId: string, expectedRevision: number, rawDecision: ScheduleReviewDecision): Promise<ScheduleRunDetail> {
+      await latency();
+      const decision = normalizeScheduleReviewDecision(rawDecision);
+      const index = mockScheduleRuns.findIndex(item => item.id === runId);
+      const existing = index >= 0 ? mockScheduleRuns[index] : undefined;
+      if (!existing) throw new Error('Schedule run not found.');
+      if (existing.revision !== expectedRevision) throw new Error('This schedule run changed. Refresh before reviewing.');
+      if (existing.state !== 'unknown') throw new Error(`Only runs in unknown state can be reviewed (current state: "${existing.state}").`);
+      const nowIso = iso();
+      const updated: ScheduleRunV1 = {
+        ...existing,
+        revision: existing.revision + 1,
+        reviewDecision: decision.action,
+        reviewedAt: nowIso,
+        ...(decision.note ? { reviewNote: decision.note } : {}),
+        updatedAt: nowIso,
+      };
+      if (!decision.note) delete updated.reviewNote;
+      mockScheduleRuns[index] = updated;
+      scheduleCatalogSeq++;
+      return scheduleDetailFor(updated);
+    },
+    async gatewayOverview(): Promise<GatewayOverview> {
+      await latency();
+      return gatewaySnapshot();
+    },
+    async saveGatewayConnector(input: GatewayConnectorSaveInput): Promise<GatewayOverview> {
+      await latency();
+      const provider = input.provider.trim();
+      const providerAccountId = input.providerAccountId.trim();
+      const secretRef = input.secretRef.trim();
+      if (!/^[a-z][a-z0-9-]{1,31}$/.test(provider)) throw new Error('Invalid gateway provider.');
+      if (!providerAccountId) throw new Error('Provider account ID is required.');
+      if (!secretRef) throw new Error('Opaque secretRef is required.');
+      if (looksLikeRawGatewaySecret(secretRef)) {
+        throw new Error('Provide an opaque secretRef (such as keychain:...), never a raw bot token, API key, or webhook URL.');
+      }
+      const nowIso = iso();
+      const existingIndex = input.id ? gatewayConnectors.findIndex(item => item.id === input.id) : -1;
+      const existing = existingIndex >= 0 ? gatewayConnectors[existingIndex] : undefined;
+      const id = existing?.id ?? nextId(`gw-${provider}`);
+      const status = input.status ?? existing?.status ?? 'connected';
+      const saved: GatewayConnectorView = {
+        id,
+        provider,
+        providerAccountId,
+        secretRef,
+        status,
+        policyVersion: (existing?.policyVersion ?? 0) + 1,
+        capabilityRevision: existing?.capabilityRevision ?? 1,
+        ...(existing?.capabilities ? { capabilities: existing.capabilities } : {}),
+        createdAt: existing?.createdAt ?? nowIso,
+        updatedAt: nowIso,
+        health: makeConnectorHealth(id, provider, status, nowIso),
+      };
+      if (existing) gatewayConnectors[existingIndex] = saved;
+      else gatewayConnectors.push(saved);
+      pushGatewayAudit('operator', 'connector.saved', id, 'ok', `${provider}:${providerAccountId}`);
+      return gatewaySnapshot();
+    },
+    async setGatewayConnectorStatus(connectorId: string, status: GatewayConnectorState): Promise<GatewayOverview> {
+      await latency();
+      const index = gatewayConnectors.findIndex(item => item.id === connectorId);
+      const existing = index >= 0 ? gatewayConnectors[index] : undefined;
+      if (!existing) throw new Error('Gateway connector not found.');
+      const nowIso = iso();
+      gatewayConnectors[index] = {
+        ...existing,
+        status,
+        policyVersion: existing.policyVersion + 1,
+        updatedAt: nowIso,
+        health: makeConnectorHealth(existing.id, existing.provider, status, nowIso),
+      };
+      pushGatewayAudit('operator', 'connector.status', connectorId, 'ok', `status=${status}`);
+      return gatewaySnapshot();
+    },
+    async issueGatewayLinkChallenge(input: GatewayIssueChallengeInput): Promise<GatewayLinkChallengeView> {
+      await latency();
+      const connector = gatewayConnectors.find(item => item.id === input.connectorId);
+      if (!connector) throw new Error('Gateway connector not found.');
+      const challengeId = nextId('gw-chal');
+      const ttlSeconds = Math.max(30, Math.min(900, input.ttlSeconds ?? 300));
+      const view: GatewayLinkChallengeView = {
+        challengeId,
+        code: `EXT-${(++counter).toString(36).toUpperCase().padStart(4, '0')}`,
+        connectorId: connector.id,
+        extaliaPrincipalId: input.extaliaPrincipalId?.trim() || 'principal-local',
+        expiresAt: new Date(Date.now() + ttlSeconds * 1000).toISOString(),
+      };
+      gatewayChallenges.set(challengeId, { view, used: false });
+      pushGatewayAudit('operator', 'link.challenge.issued', challengeId, 'ok', `connector=${connector.id}`);
+      return structuredClone(view);
+    },
+    async confirmGatewayPrincipalLink(input: GatewayConfirmLinkInput): Promise<GatewayOverview> {
+      await latency();
+      const entry = gatewayChallenges.get(input.challengeId);
+      if (!entry) throw new Error('Link challenge not found.');
+      if (entry.used) throw new Error('Link challenge has already been used.');
+      if (Date.parse(entry.view.expiresAt) <= Date.now()) throw new Error('Link challenge expired.');
+      const providerAccountId = input.providerAccountId.trim();
+      const externalActorId = input.externalActorId.trim();
+      if (!providerAccountId || !externalActorId) throw new Error('Provider account ID and external actor ID are required.');
+      const bands = [...new Set(input.permissionBands)];
+      if (bands.length === 0) throw new Error('Select at least one permission band.');
+      entry.used = true;
+      const nowIso = iso();
+      const link: GatewayPrincipalLinkView = {
+        id: nextId('gw-link'),
+        connectorId: entry.view.connectorId,
+        providerAccountId,
+        externalActorId,
+        extaliaPrincipalId: entry.view.extaliaPrincipalId,
+        permissionBands: bands,
+        state: 'active',
+        ...(input.ttlSeconds ? { expiresAt: new Date(Date.now() + input.ttlSeconds * 1000).toISOString() } : {}),
+        confirmedAt: nowIso,
+      };
+      gatewayLinks.unshift(link);
+      pushGatewayAudit('operator', 'link.confirmed', link.id, 'ok', `${externalActorId} (${bands.join(',')})`);
+      return gatewaySnapshot();
+    },
+    async revokeGatewayPrincipalLink(linkId: string, reason?: string): Promise<GatewayOverview> {
+      await latency();
+      const index = gatewayLinks.findIndex(item => item.id === linkId);
+      const existing = index >= 0 ? gatewayLinks[index] : undefined;
+      if (!existing) throw new Error('Linked principal not found.');
+      gatewayLinks[index] = {
+        ...existing,
+        state: 'revoked',
+        revokedAt: iso(),
+        revocationReason: reason?.trim() || 'Revoked by operator',
+      };
+      pushGatewayAudit('operator', 'link.revoked', linkId, 'ok', gatewayLinks[index]!.revocationReason);
+      return gatewaySnapshot();
+    },
+    async saveGatewayRoute(input: GatewayRouteSaveInput): Promise<GatewayOverview> {
+      await latency();
+      const connector = gatewayConnectors.find(item => item.id === input.connectorId);
+      if (!connector) throw new Error('Gateway connector not found.');
+      const providerAccountId = input.providerAccountId.trim();
+      const channelId = input.channelId.trim();
+      const workspaceId = input.workspaceId.trim();
+      if (!providerAccountId || !channelId || !workspaceId) {
+        throw new Error('Connector, provider account, channel ID, and workspace are required.');
+      }
+      const nowIso = iso();
+      const index = input.id ? gatewayRoutes.findIndex(item => item.id === input.id) : -1;
+      const existing = index >= 0 ? gatewayRoutes[index] : undefined;
+      const saved: GatewayRouteView = {
+        id: existing?.id ?? nextId('gw-route'),
+        connectorId: connector.id,
+        providerAccountId,
+        channelId,
+        ...(input.threadId?.trim() ? { threadId: input.threadId.trim() } : {}),
+        workspaceId,
+        mode: input.mode ?? existing?.mode ?? 'explicit-only',
+        audience: input.audience ?? existing?.audience ?? 'private',
+        policyRevision: (existing?.policyRevision ?? 0) + 1,
+        inboundEnabled: input.inboundEnabled ?? existing?.inboundEnabled ?? true,
+        outboundEnabled: input.outboundEnabled ?? existing?.outboundEnabled ?? true,
+        isDmDefault: input.isDmDefault ?? existing?.isDmDefault ?? false,
+        state: input.state ?? existing?.state ?? 'active',
+        createdAt: existing?.createdAt ?? nowIso,
+        updatedAt: nowIso,
+      };
+      if (existing) gatewayRoutes[index] = saved;
+      else gatewayRoutes.unshift(saved);
+      pushGatewayAudit('operator', 'route.saved', saved.id, 'ok', `${channelId} -> ${workspaceId}`);
+      return gatewaySnapshot();
+    },
+    async deleteGatewayRoute(routeId: string): Promise<GatewayOverview> {
+      await latency();
+      const index = gatewayRoutes.findIndex(item => item.id === routeId);
+      if (index < 0) throw new Error('Gateway route not found.');
+      const [removed] = gatewayRoutes.splice(index, 1);
+      pushGatewayAudit('operator', 'route.deleted', routeId, 'ok', removed?.channelId);
+      return gatewaySnapshot();
+    },
+    async listWorkspaceReports(workspaceId: string): Promise<WorkspaceReportsInboxView> {
+      await latency();
+      const reports = gatewayReports.filter(item => item.workspaceId === workspaceId);
+      const projections = reports
+        .filter(item => item.targetSelection !== 'inbox')
+        .map(item => ({
+          id: `proj-${item.id}`,
+          reportId: item.id,
+          ...(item.targetChatId ? { chatId: item.targetChatId } : {}),
+          targetSelection: item.targetSelection,
+          committedAt: item.committedAt,
+        }));
+      return structuredClone({ workspaceId, reports, projections });
+    },
+    async listSessionSystemReports(workspaceId: string, sessionId: string): Promise<ChatSystemReportsView> {
+      await latency();
+      const reports = gatewayReports.filter(
+        item => item.workspaceId === workspaceId
+          && item.targetSelection !== 'inbox'
+          && (item.targetChatId === sessionId || item.sourceSessionId === sessionId),
+      );
+      return structuredClone({ workspaceId, sessionId, reports });
+    },
     subscribe(listener) {
       listeners.add(listener);
       return () => { listeners.delete(listener); };

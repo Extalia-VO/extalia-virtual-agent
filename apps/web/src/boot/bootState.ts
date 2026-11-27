@@ -4,7 +4,7 @@
  *
  * - `loading`: preferences are applied, the host state is not known yet (Splash).
  * - `setup-required`: the host reports setup incomplete; only the SetupWizard mounts.
- * - `ready`: the shell mounts and lands on the 3D Office (`resolveLandingPage`).
+ * - `ready`: the shell mounts and lands on the resolved landing page (`resolveLandingPage`, session-first Chat by default for managed hosts).
  * - `recoverable-error`: the host could not be reached or took too long; Retry.
  *
  * The Splash is a transition, not evidence of sessions: `restoredSessionCount`
@@ -23,7 +23,7 @@ export interface BootState {
   error?: { category: BootErrorCategory; recoverable: boolean; message?: string };
 }
 
-export const BOOT_CONFIG_VERSION = 2;
+export const BOOT_CONFIG_VERSION = 3;
 /** Shortest Splash when boot is fast, so it reads as a transition rather than a flicker. */
 export const SPLASH_MIN_MS = 700;
 /** After this long without a host answer the Splash offers Retry and diagnostics. */

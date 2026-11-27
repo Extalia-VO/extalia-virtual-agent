@@ -1,0 +1,152 @@
+.project-provision-dialog {
+  width: min(680px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  color: var(--text);
+  background: var(--surface-solid);
+}
+.project-provision-dialog::backdrop {
+  background: rgb(8 10 14 / 50%);
+}
+.project-provision-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+.project-provision-header h2 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+.project-provision-tabs {
+  display: flex;
+  gap: 6px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 16px;
+}
+.project-provision-tabs button {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--muted);
+  background: transparent;
+  font: inherit;
+  font-size: .84rem;
+  cursor: pointer;
+}
+.project-provision-tabs button[aria-selected='true'] {
+  border-color: var(--line);
+  color: var(--text);
+  background: var(--sunken);
+  font-weight: 600;
+}
+.project-provision-body {
+  display: grid;
+  gap: 14px;
+}
+.project-provision-folder-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.project-provision-folder-row input {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+.project-provision-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: .9rem;
+  cursor: pointer;
+}
+.project-provision-check input {
+  flex: none;
+  margin-top: 4px;
+}
+.project-provision-review {
+  margin-top: 4px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--sunken);
+  display: grid;
+  gap: 12px;
+}
+.project-provision-review h3 {
+  margin: 0;
+  font-size: .96rem;
+}
+.project-provision-review ul {
+  display: grid;
+  gap: 8px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+.project-provision-review li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.project-provision-review code {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.project-provision-git,
+.project-provision-warnings,
+.project-provision-steps {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-solid);
+}
+.project-provision-steps {
+  margin-top: 12px;
+}
+.project-provision-steps ul {
+  display: grid;
+  gap: 8px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+.project-provision-steps li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.project-provision-dialog footer {
+  margin-top: 20px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+.chat-unassigned-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+@media (max-width: 480px) {
+  .project-provision-dialog {
+    padding: 16px;
+  }
+  .project-provision-review {
+    padding: 12px;
+  }
+  .project-provision-folder-row input {
+    flex-basis: 100%;
+  }
+}

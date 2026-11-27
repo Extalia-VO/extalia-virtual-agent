@@ -5,17 +5,19 @@ import { sessionRuntime } from './sessionRuntime';
 import type { ChangedFile } from './changedFiles';
 
 /** Presentation of known session facts; no extra host requests or inferred activity. */
-export function ChatSessionInfo({ t, state, workspace, session, status, files }: {
-  t: Messages; state: HostState; workspace: Workspace; session?: SessionSummary;
-  status: string; files: readonly ChangedFile[];
+export function ChatSessionInfo({ t, state, workspace, session, status, files, connectionId }: {
+  t: Messages; state: HostState; workspace?: Workspace; session?: SessionSummary;
+  status: string; files: readonly ChangedFile[]; connectionId?: string;
 }) {
   const m = t.chat.sessionInfo;
   const observed = session?.control === 'observed';
   const runtime = sessionRuntime(workspace, session);
+  const resolvedConnectionId = session ? session.connectionId : workspace ? workspace.providerProfileId : connectionId;
   const connection = !observed && runtime === 'extalia-native'
-    ? state.connections.find(item => item.id === (session ? session.connectionId : workspace.providerProfileId)) : undefined;
+    ? state.connections.find(item => item.id === resolvedConnectionId) : undefined;
   const model = observed ? session.model : session?.options?.model ?? connection?.model;
   const effort = observed ? session.effort : session?.options?.effort ?? connection?.effort;
+  const folder = session?.observation?.projectPath ?? session?.projectLocation ?? workspace?.projectLocation;
   return <section className="chat-session-facts" aria-labelledby="chat-session-info-title">
     <h2 id="chat-session-info-title">{m.title}</h2>
     <dl>
@@ -23,8 +25,8 @@ export function ChatSessionInfo({ t, state, workspace, session, status, files }:
       <div><dt>{m.runtime}</dt><dd>{observed ? (session.observation?.sourceId ? sourceLabel(session.observation.sourceId) : t.characterPopover.roles.observed) : runtime === 'hermes' ? 'Hermes Agent' : 'Extalia Native'}</dd></div>
       {model && <div><dt>{m.model}</dt><dd>{model}</dd></div>}
       {effort && <div><dt>{m.effort}</dt><dd>{effort}</dd></div>}
-      <div><dt>{t.chat.workspace}</dt><dd>{workspace.name}</dd></div>
-      <div className="chat-session-folder"><dt>{m.folder}</dt><dd>{session?.observation?.projectPath ?? session?.projectLocation ?? workspace.projectLocation}</dd></div>
+      <div><dt>{t.chat.workspace}</dt><dd>{workspace?.name ?? t.chat.unassigned.label}</dd></div>
+      <div className="chat-session-folder"><dt>{m.folder}</dt><dd>{folder ?? t.chat.unassigned.noFolderAccess}</dd></div>
     </dl>
     <div className="chat-session-recent-files">
       <h3>{m.recentFiles}{files.length > 0 && <span className="badge">{files.length}</span>}</h3>

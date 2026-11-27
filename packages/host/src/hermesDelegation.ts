@@ -1,7 +1,7 @@
 import { MAX_HERMES_ONESHOT_TEAM_MEMBERS, MAX_HERMES_TEAM_MEMBERS } from '@extalia/core';
 import { isModelId, type HermesDelegationLimits } from '@extalia/platform';
 import { HERMES_PROFILE_PATTERN } from '@extalia/runtime';
-import * as yaml from 'js-yaml';
+import { defineScalarTag, floatYaml11Tag, intYaml11Tag, load, NOT_RESOLVED, YAML11_SCHEMA } from 'js-yaml';
 import { constants as fsConstants } from 'node:fs';
 import { open, stat } from 'node:fs/promises';
 import path from 'node:path';
@@ -9,22 +9,26 @@ import { hermesEnvironment, hermesProfile, hermesRoot } from './hermes.js';
 
 type Env = Readonly<Record<string, string | undefined>>;
 type Mapping = Record<string, unknown>;
-const { load, DEFAULT_SCHEMA, Type } = yaml;
-// js-yaml exposes its built-in scalar types, but @types/js-yaml omits this export.
-// Keep the missing public surface scoped here; consumer projects need no ambient declaration.
-const numericTypes = (yaml as typeof yaml & { types: Record<'int' | 'float', { resolve(value: string | null): boolean }> }).types;
 const MAX_CONFIG_BYTES = 1024 * 1024;
 const BATCH_ENV = 'DELEGATION_MAX_CONCURRENT_CHILDREN';
 const error = (profile: string, reason: string) => new Error(`Cannot read delegation limits for Hermes profile "${profile}": ${reason}. Review its config.yaml and delegation settings.`);
 const mapping = (value: unknown): value is Mapping => Boolean(value) && typeof value === 'object'
   && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
 
-// Hermes uses PyYAML's YAML 1.1 scalar rules. Retain numeric spellings so YAML 1.2
+// Hermes uses PyYAML's YAML 1.1 scalar rules. Retain numeric spellings so YAML 1.1
 // octal/exponent/leading-zero coercions cannot silently produce a larger budget.
 class YamlNumber { constructor(readonly raw: string) {} }
-const LIMIT_SCHEMA = DEFAULT_SCHEMA.extend({ implicit: (['int', 'float'] as const).map(kind => new Type(`tag:yaml.org,2002:${kind}`, {
-  kind: 'scalar', resolve: (value: string | null) => numericTypes[kind].resolve(value), construct: (value: string) => new YamlNumber(value),
-})) });
+const LIMIT_SCHEMA = YAML11_SCHEMA.withTags(
+  ([intYaml11Tag, floatYaml11Tag] as const).map(baseTag =>
+    defineScalarTag(baseTag.tagName, {
+      implicit: baseTag.implicit,
+      implicitFirstChars: baseTag.implicitFirstChars,
+      resolve: (source, isExplicit, tagName) =>
+        baseTag.resolve(source, isExplicit, tagName) === NOT_RESOLVED ? NOT_RESOLVED : new YamlNumber(source),
+      identify: (value: unknown) => value instanceof YamlNumber,
+    }),
+  ),
+);
 
 /** Bounded read through one handle; no external tool, config migration, backups or writes. */
 async function readBounded(file: string, profile: string): Promise<string | undefined> {

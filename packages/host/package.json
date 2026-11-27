@@ -1,7 +1,7 @@
 {
   "name": "@extalia/host",
   "description": "Node host for the Extalia Native runtime: workspace tools, credential storage, sessions, memory and skills.",
-  "version": "0.4.354",
+  "version": "0.4.363",
   "private": true,
   "license": "MIT",
   "type": "module",
@@ -18,10 +18,7 @@
     "@extalia/platform": "workspace:*",
     "@extalia/protocol": "workspace:*",
     "@extalia/runtime": "workspace:*",
-    "js-yaml": "4.3.2",
+    "js-yaml": "5.5.0",
     "smol-toml": "1.9.1"
-  },
-  "devDependencies": {
-    "@types/js-yaml": "4.0.9"
   }
 }

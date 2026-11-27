@@ -39,7 +39,7 @@ const currentNativeSessions = (sessions: readonly SessionSummary[]): SessionSumm
     || timestamp(b.lastActiveAt) - timestamp(a.lastActiveAt)
     || timestamp(b.createdAt) - timestamp(a.createdAt) || a.id.localeCompare(b.id));
   for (const session of ranked) {
-    if (session.control !== 'managed' || current.has(session.workspaceId)) continue;
+    if (session.control !== 'managed' || !session.workspaceId || current.has(session.workspaceId)) continue;
     current.set(session.workspaceId, session);
   }
   // Select the current managed conversation first: switching a workspace to an

@@ -1,16 +1,24 @@
 import { randomBytes } from 'node:crypto';
-import { readFile, rm } from 'node:fs/promises';
+import { lstat, readFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import type { AgentTeam, MemberGender, SessionOperatingProfile } from '@extalia/core';
 import type { SessionContextUsage, SessionOptions, SessionWorkspaceFileScope } from '@extalia/platform';
 import { parseEventLines, type ExtaliaEvent } from '@extalia/protocol';
 import { appendLine, CorruptFileError, isNotFound, readJson, writeJsonAtomic } from './jsonStore.js';
+import { PRIVATE_FILE_MODE } from './paths.js';
 
 export interface SessionRecord {
   operatingProfile?: SessionOperatingProfile;
   id: string;
-  workspaceId: string;
+  /** Owning workspace id, or `null` for an unassigned Extalia Native session. */
+  workspaceId: string | null;
+  /** Client UUID and normalized digest recorded at creation for idempotent retries. */
+  createRequestId?: string;
+  createFingerprint?: string;
+  /** Latest accepted prompt UUID and digest for idempotent retry deduplication. */
+  lastAcceptedRequestId?: string;
+  lastAcceptedRequestFingerprint?: string;
   /** Active registered working folder override; history roots are recorded separately. */
   projectLocation?: string;
   connectionId: string;
@@ -49,7 +57,7 @@ export interface SessionUpdateOptions {
   /** Move admission compares the complete reviewed record atomically. */
   expectedRecord?: SessionRecord;
   /** Reject configuration saves validated before a concurrent workspace move. */
-  expectedWorkspaceId?: string;
+  expectedWorkspaceId?: string | null;
 }
 
 export class SessionTeamConflictError extends Error {
@@ -85,15 +93,23 @@ function isRecord(value: unknown): value is SessionRecord {
   const record = value as Record<string, unknown>;
   const origin = record.continuedFrom as Record<string, unknown> | undefined;
   const runtime = record.runtime as Record<string, unknown> | undefined;
+  const validWorkspace = record.workspaceId === null
+    ? record.projectLocation === undefined && runtime === undefined
+    : typeof record.workspaceId === 'string' && record.workspaceId.length > 0;
   return typeof record.id === 'string' && SESSION_ID_PATTERN.test(record.id)
-    && ['workspaceId', 'connectionId', 'title', 'createdAt', 'lastActiveAt'].every(key => typeof record[key] === 'string')
+    && validWorkspace
+    && ['connectionId', 'title', 'createdAt', 'lastActiveAt'].every(key => typeof record[key] === 'string')
     && (origin === undefined || (Boolean(origin) && typeof origin === 'object' && typeof origin.sourceId === 'string' && typeof origin.title === 'string'))
     && (runtime === undefined || (Boolean(runtime) && typeof runtime === 'object' && runtime.id === 'hermes' && typeof runtime.profile === 'string'
       && (runtime.sessionId === undefined || typeof runtime.sessionId === 'string')))
     && (record.options === undefined || (Boolean(record.options) && typeof record.options === 'object' && !Array.isArray(record.options)))
     && (record.team === undefined || (Boolean(record.team) && typeof record.team === 'object' && !Array.isArray(record.team)))
     && (record.agentName === undefined || typeof record.agentName === 'string')
-    && (record.agentGender === undefined || typeof record.agentGender === 'string');
+    && (record.agentGender === undefined || typeof record.agentGender === 'string')
+    && (record.createRequestId === undefined || typeof record.createRequestId === 'string')
+    && (record.createFingerprint === undefined || typeof record.createFingerprint === 'string')
+    && (record.lastAcceptedRequestId === undefined || typeof record.lastAcceptedRequestId === 'string')
+    && (record.lastAcceptedRequestFingerprint === undefined || typeof record.lastAcceptedRequestFingerprint === 'string');
 }
 
 /** What the host needs from a session store; saved and unsaved sessions share it. */
@@ -116,10 +132,12 @@ export interface SessionStorage {
  */
 export class SessionStore implements SessionStorage {
   private readonly indexFile: string;
+  private readonly preUnassignedBackupFile: string;
   private readonly queues = new Map<string, Promise<unknown>>();
 
   constructor(readonly directory: string) {
     this.indexFile = path.join(directory, 'index.json');
+    this.preUnassignedBackupFile = path.join(directory, 'index.pre-unassigned.json');
   }
 
   /** Run one task at a time per key, so read-modify-write cycles and appends never interleave. */
@@ -159,6 +177,13 @@ export class SessionStore implements SessionStorage {
     return this.serialize('index', async () => {
       const records = await this.readIndex();
       if (records.some(item => item.id === record.id)) throw new Error(`Session ${record.id} already exists.`);
+      if (record.workspaceId === null && records.length > 0) {
+        const hasBackup = await lstat(this.preUnassignedBackupFile).then(() => true, error => {
+          if (isNotFound(error)) return false;
+          throw error;
+        });
+        if (!hasBackup) await writeJsonAtomic(this.preUnassignedBackupFile, records, { mode: PRIVATE_FILE_MODE });
+      }
       const created = { ...record };
       await writeJsonAtomic(this.indexFile, [...records, created]);
       return created;

@@ -1,6 +1,6 @@
 import {
   normalizeDiscardConfirmation, normalizeIntegrationApproval, normalizeIntegrationRequest, normalizeProposalId, normalizeWorktreeId,
-  type HostMissionRun, type IntegrationGateInput, type IntegrationProposalView, type WorktreeDiffFile, type WorktreeDiffView, type WorktreeOrphanView, type WorktreeStatusView, type WorktreeView,
+  type HostMissionRun, type IntegrationGateExecutorInfo, type IntegrationGateInput, type IntegrationGateOutcome, type IntegrationProposalView, type WorktreeDiffFile, type WorktreeDiffView, type WorktreeOrphanView, type WorktreeStatusView, type WorktreeView,
 } from '@extalia/platform';
 
 /**
@@ -23,7 +23,7 @@ export function fakeHex(seed: string, length: number): string {
 const commit = (seed: string) => fakeHex(seed, 40);
 const digest = (seed: string) => `sha256:${fakeHex(seed, 64)}`;
 
-interface RegisterOption { at?: string; outcome?: 'ready' | 'conflict' | 'gate_failed'; conflicts?: string[]; targetMoves?: boolean; dirty?: number }
+interface RegisterOption { at?: string; outcome?: 'ready' | 'conflict' | 'gate_failed'; gateOutcome?: IntegrationGateOutcome; gateExecutor?: IntegrationGateExecutorInfo; conflicts?: string[]; targetMoves?: boolean; dirty?: number }
 
 interface Entry {
   record: WorktreeView;
@@ -33,6 +33,8 @@ interface Entry {
   dirty: number;
   /** Demo outcome of the next proposal. */
   outcome: 'ready' | 'conflict' | 'gate_failed';
+  gateOutcome?: IntegrationGateOutcome;
+  gateExecutor?: IntegrationGateExecutorInfo;
   conflicts?: string[];
   /** The target moves before the next apply (demo of `stale`). */
   targetMoves?: boolean;
@@ -93,7 +95,11 @@ export function createMockWorktrees(dataDirectory: string, projectFor: (workspac
         id, repository, prefix: '', path: `${dataDirectory}/worktrees/${id}`, branch: `extalia/worker/${id}`, baseCommit, baseBranch: 'main',
         owner: { missionId: run.id, taskId: task.taskId, agentId: task.agentId }, state: 'released', head: commit(`head:${id}`), createdAt: run.createdAt, updatedAt: at,
       };
-      entries.set(id, { record, workspaceId: run.workspaceId, files: FILE_SETS[(created++) % FILE_SETS.length]!, dirty: option.dirty ?? 0, outcome: option.outcome ?? 'ready', ...(option.conflicts ? { conflicts: option.conflicts } : {}), ...(option.targetMoves ? { targetMoves: true } : {}) });
+      entries.set(id, {
+        record, workspaceId: run.workspaceId, files: FILE_SETS[(created++) % FILE_SETS.length]!, dirty: option.dirty ?? 0, outcome: option.outcome ?? 'ready',
+        ...(option.gateOutcome ? { gateOutcome: option.gateOutcome } : {}), ...(option.gateExecutor ? { gateExecutor: option.gateExecutor } : {}),
+        ...(option.conflicts ? { conflicts: option.conflicts } : {}), ...(option.targetMoves ? { targetMoves: true } : {}),
+      });
       records.push(record);
     });
     plan?.then?.(records);
@@ -121,9 +127,14 @@ export function createMockWorktrees(dataDirectory: string, projectFor: (workspac
       if (!gate) proposal = { ...merged, status: 'gate_missing' };
       else {
         const failed = item.outcome === 'gate_failed';
-        proposal = { ...merged, status: failed ? 'gate_failed' : 'ready', gateSource: workspaceGate ? 'workspace' : 'request', gate: {
-          command: gate.command, exitCode: failed ? 1 : 0, ok: !failed, durationMs: failed ? 8_420 : 6_310,
-          log: failed ? GATE_LOG : GATE_LOG.split('\n').slice(0, 4).join('\n'), logDigest: digest(`log:${proposalId}`), observedAt: at, basis: 'verified_by_extalia',
+        const gateOutcome: IntegrationGateOutcome = item.gateOutcome ?? (failed ? 'failed' : 'passed');
+        const passed = gateOutcome === 'passed';
+        const executor: IntegrationGateExecutorInfo = item.gateExecutor ?? { kind: 'macos-seatbelt', isolated: true, networkAccess: 'denied' };
+        const basis = gateOutcome === 'not_run' ? 'not_run' as const : 'verified_by_extalia' as const;
+        proposal = { ...merged, status: passed ? 'ready' : 'gate_failed', gateSource: workspaceGate ? 'workspace' : 'request', gate: {
+          command: gate.command, exitCode: passed ? 0 : 1, ok: passed, durationMs: passed ? 6_310 : 8_420,
+          log: passed ? GATE_LOG.split('\n').slice(0, 4).join('\n') : GATE_LOG, logDigest: digest(`log:${proposalId}`), observedAt: at, basis,
+          outcome: gateOutcome, executor,
         } };
       }
     }

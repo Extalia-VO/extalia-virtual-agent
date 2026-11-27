@@ -90,7 +90,7 @@ export class HandoverDialogController {
     // Once admitted, an apply receipt still belongs to this same source identity even if activity advances.
     if (sameOwner && this.applying) { this.key = key; this.scope = scope; return; }
     this.generation++; this.editing++; this.reading++; this.loading++;
-    this.agents = agents; this.sessionId = session.id; this.workspaceId = session.workspaceId; this.sourceIdentity = sourceIdentity; this.scope = scope; this.authorityScope = authorityScope; this.key = key; this.applying = false;
+    this.agents = agents; this.sessionId = session.id; this.workspaceId = session.workspaceId ?? ''; this.sourceIdentity = sourceIdentity; this.scope = scope; this.authorityScope = authorityScope; this.key = key; this.applying = false;
     this.value = { notes: sameDraft ? previous.notes : emptyNotes(), notesEdited: sameDraft && previous.notesEdited, copied: false, sourceChanged: sameDraft && Boolean(previous.preview) };
     this.notify();
   }

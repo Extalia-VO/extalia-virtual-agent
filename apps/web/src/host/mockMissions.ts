@@ -112,6 +112,7 @@ export function createMockMissions(deps: MockMissionDeps) {
     if (summary.running || live.has(sessionId)) throw new Error('This session is still working. Wait for it or stop it first.');
     if (request.tasks.some(task => !allowed.includes(task.connectionId))) throw new Error('A selected connection is not authorized for this workspace.');
     const at = (options.at ?? new Date()).toISOString();
+    if (!summary.workspaceId) throw new Error('Native missions require a workspace with a project folder. Attach this session to a workspace first.');
     const run: HostMissionRun = {
       id: uuid(), sessionId, workspaceId: summary.workspaceId, title: request.title, state: 'running', createdAt: at, updatedAt: at, transient: false,
       tasks: request.tasks.map(task => ({ id: task.id, taskId: uuid(), agentId: uuid(), title: task.title, connectionId: task.connectionId, model: task.model, dependsOn: [...task.dependsOn], state: 'queued' as TaskState, evidenceIds: [], ...(task.access === 'write' ? { access: 'write' as const } : {}) })),

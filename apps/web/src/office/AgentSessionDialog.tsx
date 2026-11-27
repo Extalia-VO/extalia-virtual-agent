@@ -199,7 +199,7 @@ export function AgentSessionDialog({ t, language, agents, state, onState, sessio
           onState={onState} appearance={ended ? undefined : appearance} tab={tab} onTab={onTab} readOnlyReason={ended}
           onLocate={ended ? undefined : onLocate} onSelectCharacter={onSelectCharacter} onToolsStateChange={onToolsStateChange} onHandoverReady={onOpenInChat} onOpenSettings={onOpenSettings} />}
       </div>
-      {teamOpen && teamLead && <TeamSetupDialog t={t} agents={agents} workspaceId={teamLead.workspaceId} sessionId={teamLead.id} leadName={shownAgent.displayName} officeNames={officeNames} savedLooks={savedLooks}
+      {teamOpen && teamLead?.workspaceId && <TeamSetupDialog t={t} agents={agents} workspaceId={teamLead.workspaceId} sessionId={teamLead.id} leadName={shownAgent.displayName} officeNames={officeNames} savedLooks={savedLooks}
         onClose={() => setTeamOpen(false)} onState={onState} onSaved={() => { void agents.getState().then(onState, () => undefined); }} />}
     </div>
   </div>, host);

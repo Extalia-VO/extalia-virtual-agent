@@ -1,7 +1,7 @@
 import { AppImageUpdater, DebUpdater, MacUpdater, NsisUpdater, PacmanUpdater, RpmUpdater } from 'electron-updater';
 import { EventEmitter } from 'node:events';
 import { mkdtemp, mkdir, readdir, rm, writeFile } from 'node:fs/promises';
-import { createRequire } from 'node:module';
+import { createRequire, Module } from 'node:module';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { Readable } from 'node:stream';
@@ -12,8 +12,12 @@ import { createProfileUpdater, profileUpdaterAdapter, type UpdaterApplication } 
 // runtime boundary; updater constructors, providers and HTTP executor are real.
 const runtimeRequire = createRequire(import.meta.url);
 const electronEntry = runtimeRequire.resolve('electron');
-runtimeRequire('electron');
-const electronModule = runtimeRequire.cache[electronEntry]!;
+const electronModule = runtimeRequire.cache[electronEntry] ?? Object.assign(new Module(electronEntry), {
+  filename: electronEntry,
+  loaded: true,
+  exports: {},
+});
+runtimeRequire.cache[electronEntry] = electronModule;
 const originalElectron = electronModule.exports;
 const requests: { options: { path?: string }; request: EventEmitter }[] = [];
 const networkSession = {};

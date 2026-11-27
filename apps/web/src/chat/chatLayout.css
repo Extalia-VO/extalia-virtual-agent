@@ -22,6 +22,7 @@
 .chat-conversation .chat-head { gap: 6px 8px; padding: 2px 0; max-width: none; }
 .chat-conversation .chat-title { margin: 0; font-size: .94rem; }
 .chat-conversation .chat-workspace { font-size: .72rem; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-conversation .chat-workspace-unassigned { max-width: 240px; }
 .chat-conversation .chat-head > .button { padding: 5px 8px; font-size: .7rem; }
 .chat-conversation .conversation-tabs { margin: 6px auto 0; }
 .chat-conversation .conversation-tabs button { padding: 5px 12px; min-height: 30px; min-width: 80px; font-size: .76rem; }

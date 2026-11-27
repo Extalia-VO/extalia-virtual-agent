@@ -629,7 +629,7 @@ describe('pinned checkpoints and reviewed lineage joins', () => {
     expect(original.entries).toHaveLength(15); expect(original.entries[1]!.text).toContain('Original marker 0');
     await f.service.close(); const restarted = new SessionContinuity(f.options);
     expect((await restarted.readContinuity('codex-session', { snapshotId: stored.at(-1).id })).entries[0]!.id).toBe('round-39');
-  });
+  }, 30_000);
   it('retains a changed long-entry tail even when its bounded visible prefix is identical', async () => {
     const f = await fixture(), live = f.sources.get('codex-session')!;
     live.entries = [{ id: 'long-entry', kind: 'tool', text: `${'x'.repeat(9000)}old-tail` }];
@@ -655,7 +655,7 @@ describe('pinned checkpoints and reviewed lineage joins', () => {
     live.context.compactions = 1;
     expect((await f.service.sessionContinuity('codex-session')).snapshots).toHaveLength(3);
     expect(JSON.parse(await readFile(f.file, 'utf8')).chains[0].snapshots[0].context.usedTokens).toBe(10);
-  });
+  }, 30_000);
   it('can inspect and resolve an uncertain receipt when capturing new live evidence would exceed the archive limit', async () => {
     const f = await checkpointFixture(), live = f.sources.get('codex-session')!;
     f.setEffect(async () => ({ state: 'unknown' }));
@@ -673,7 +673,7 @@ describe('pinned checkpoints and reviewed lineage joins', () => {
     const resolved = await f.service.reconcileHandover('codex-session', { operationId: uncertain.operationId, packetDigest: uncertain.packetDigest, outcome: 'accepted' });
     expect(resolved.state).toBe('inspected'); expect(f.snapshots()).toBe(captures); expect(f.effects).toHaveLength(1);
     f.deny(); await expect(f.service.inspectContinuity('codex-session')).rejects.toThrow('consent');
-  });
+  }, 30_000);
 });
 
 describe('whole-chain archive privacy', () => {

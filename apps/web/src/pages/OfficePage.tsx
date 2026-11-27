@@ -528,7 +528,7 @@ export function OfficePage({ t, language, agents, hostDisconnected = false, stat
           <div><dt>{o.model}</dt><dd><code>{model}</code></dd></div>
           {agent.context && <div><dt>{t.context.label}</dt><dd><ContextUsageLine t={t} context={agent.context} /></dd></div>}
           {ago && <div><dt>{composer.lastActivity}</dt><dd><time dateTime={ago.iso} title={ago.title}>{ago.text}</time></dd></div>}
-          {session && <div><dt>{composer.workspace}</dt><dd>{state?.workspaces.find(item => item.id === session.workspaceId)?.name ?? session.workspaceId}</dd></div>}
+          {session && <div><dt>{composer.workspace}</dt><dd>{state?.workspaces.find(item => item.id === session.workspaceId)?.name ?? session.workspaceId ?? t.chat.unassigned.label}</dd></div>}
           {(agent.summary || agent.activity) && <div><dt>{composer.task}</dt><dd>{agent.summary ?? (agent.activity ? t.chat.activity[agent.activity] : '')}</dd></div>}
           <div><dt>{composer.sessionId}</dt><dd><code>{agent.sessionId}</code></dd></div>
           {agent.agentId !== 'primary' && <div><dt>{composer.agentId}</dt><dd><code>{agent.agentId}</code></dd></div>}

@@ -41,7 +41,15 @@ export default defineConfig(({ command, mode }) => {
     resolve: { alias: command === 'serve' && mode === 'local-assets' ? [] : [{ find: /^\.\/sourceAvatarFiles$/, replacement: publicAvatarFiles }] },
     server: { host: '127.0.0.1', port: 5180 },
     // GLBs and fonts stay separate files for model verification and the app's Content Security Policy.
-    build: { assetsInlineLimit: (file: string) => (/\.(glb|woff2?|ttf|otf)$/i.test(file) ? false : undefined) },
+    build: {
+      assetsInlineLimit: (file: string) => (/\.(glb|woff2?|ttf|otf)$/i.test(file) ? false : undefined),
+      rolldownOptions: {
+        onwarn(warning, warn) {
+          if (warning.code === 'MODULE_LEVEL_DIRECTIVE' && warning.message.includes('react-compiler-runtime')) return;
+          warn(warning);
+        },
+      },
+    },
     define: {
       __APP_VERSION__: JSON.stringify(manifest.version),
       // Licence switch: leave non-commercial and unverified campus cars out of parking and traffic.
