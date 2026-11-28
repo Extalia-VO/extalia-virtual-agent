@@ -1,8 +1,9 @@
 # Schedules
 
 Open **Schedules**, choose a project, then use a Suggested card or **New schedule**.
-The first page also lists saved schedules with their next occurrence, last
-dispatch, pause/resume, edit, delete, Run now and a link to the conversation.
+The first page also lists saved schedules with their timezone, next occurrence,
+last outcome, pause/resume, edit, delete, Run now, Run history, and a link to
+the conversation.
 
 Suggested cards are editable templates. Project review uses the selected project;
 session follow-up uses a recent conversation in that project. A Knowledge review
@@ -40,29 +41,43 @@ creates a conversation at the first execution and reuses it afterwards. Choose a
 existing session to retain its exact identity and history. A missing selected
 session must be replaced explicitly; it never silently becomes another one.
 
-**Advanced** contains raw five-field cron, intervals, a fresh session on every
-occurrence, derivation from an existing Native conversation, model/effort,
-permissions, team/workers and missed-occurrence policy. Derivation requires a
-readable Native source within the current project access boundary. Requested
-settings that cannot be applied stop dispatch instead of falling back silently.
+**Advanced** contains raw five-field cron, an explicit per-job IANA `timeZone`,
+intervals, a fresh session on every occurrence, derivation from an existing Native
+conversation, model/effort, permissions, team/workers and missed-occurrence
+policy. Derivation requires a readable Native source within the current project
+access boundary. Requested settings that cannot be applied stop dispatch instead
+of falling back silently.
 
-Cron uses the executing agent host's local timezone, shown when the host reports
-it. This is not yet a persisted timezone per job. One-off date/time inputs use
-the browser's local timezone. When browser and host timezones differ, the editor
-does not present a browser-calculated cron time as an authoritative host preview;
-the saved schedule provides the host's actual next timestamp.
-Cron follows local clock occurrences: a repeated fall-back time can have two
-distinct UTC occurrences, while a missing spring-forward time advances to the
-next matching local date. Use an interval for elapsed-time scheduling.
+Cron schedules persist an explicit IANA timezone (such as `UTC` or
+`America/New_York`) using the `each-valid-instant` DST policy, defaulting new
+jobs to the Host's reported timezone. Legacy cron schedules created before
+per-job timezones retain their host-local compatibility behavior without
+silently shifting planned timestamps; when the Host's timezone changes after
+migration, diagnostics surface the drift for explicit review. The Host computes
+the authoritative next-run timestamps and multi-occurrence preview (with UTC
+instants, zone-formatted local times, and DST transition notes) rather than
+relying on browser-only cron calculation. One-off date/time inputs use an
+explicit timestamp; cron follows local clock occurrences so a repeated
+fall-back time yields two distinct UTC occurrences with distinct occurrence keys,
+while a missing spring-forward time advances to the next valid local match. Use
+an interval for elapsed-time scheduling.
 
-Schedules run while Desktop or the Bridge host is running. They are not installed
-into the operating system's cron service and do not wake a sleeping computer.
-New jobs default to **Run once after coming back online**: when the host starts
-again or wakes after missing several occurrences, one catch-up runs, then the
-usual cadence resumes. Existing jobs retain their saved policy. Choose **Skip**
-explicitly to advance to the next normal occurrence without backfilling. The
-same policy applies after restart and sleep; a delay of up to 60 seconds is
-normal timer jitter, rather than a missed occurrence.
+Schedules run while Desktop, the Bridge host, or an installed headless OS
+service is running; they never wake a sleeping computer. Optionally, you can
+manage a single-owner headless host service with:
+
+- `extalia service install --dry-run` / `extalia service install` (`launchd` on macOS, `systemd --user` on Linux, Windows Task Scheduler on Windows; requires explicit approval after dry-run preview)
+- `extalia service status`, `extalia service start`, `extalia service stop`, and `extalia service uninstall --dry-run` / `extalia service uninstall`
+
+The single-owner lock (`state/host.lock`) enforces at most one authoritative Host
+per data root (`~/.extalia-vo` or `EXTALIA_HOME`), so starting another Host or
+Desktop process refuses or surfaces the conflict instead of forking the
+scheduler. New jobs default to **Run once after coming back online**: when the
+host starts again or wakes after missing several occurrences, one coalesced
+catch-up runs, then the usual cadence resumes. Existing jobs retain their saved
+policy. Choose **Skip** explicitly to advance to the next normal occurrence
+without backfilling. The same policy applies after restart and sleep; a delay of
+up to 60 seconds is normal timer jitter, rather than a missed occurrence.
 
 A bounded 30-second clock check re-evaluates forward/backward clock changes;
 it does not promise real-time execution while the OS suspends the process.
@@ -109,8 +124,21 @@ waiting, the receipt becomes stale and this retry stops for review. A missing
 or unavailable retained destination also requires review; no substitute
 conversation is silently created.
 
-**Prompt sent** means the agent accepted the instructions, not that its work
-finished. Open the linked session to inspect progress, approvals and results.
+**Prompt sent** (`dispatched`) means the agent accepted the instructions, not
+that its work finished. Open **Run history** or the linked session to inspect
+progress, approvals and results. The durable SQLite execution ledger
+(`state/schedules.sqlite`) separates occurrence admission (`pending`, `admitting`,
+`deferred`, `dispatched`, `running`, `completed`, `failed`, `cancelled`,
+`blocked`, `unknown`), independent verification (`not-checked`, `passed`, `failed`),
+and Gateway delivery state (`pending`, `sending`, `sent`, `failed`, `unknown`,
+`cancelled`). Legacy `runCount` is preserved as `legacyDispatchCount` during
+one-time migration alongside an immutable `0o600` `schedules.pre-sqlite.json`
+backup, while `completedRunCount` increments only from observed `completed` turn
+settlements. Opening an older binary against a newer SQLite schema refuses the
+downgrade without modifying database bytes; restoring `schedules.pre-sqlite.json`
+to `schedules.json` in a clean rollback state directory recovers the original
+definitions while the Host is stopped.
+
 Normal workspace permissions still apply. Once a model reply, streamed text,
 tool/command or other agent work has started, later connectivity failures are
 not replayed automatically. Authentication, unknown failures, cancellation,
@@ -118,13 +146,25 @@ changed ownership and unverified persistence never grant retry authority.
 This is proof that no agent work was replayed; it does not certify that a remote
 provider performed no computation or incurred no usage before failing.
 
-A persisted interrupted dispatch is reported as failed and advances to the next
-normal occurrence, because the previous work may already have started. Unknown
-or rejected dispatch effects are never automatically retried. Exactly-once
-external effects across a crash or power loss are not certified.
+If the Host restarts or crashes while an occurrence is in `admitting`,
+`dispatched`, or `running`, startup recovery quarantines that run as `unknown`
+with `verification: not-checked` rather than replaying a possibly executed
+prompt or tool call. Quarantined `unknown` runs remain inspectable in Run
+history and require explicit operator review (`acknowledge`, `mark-resolved`, or
+`dismiss-for-new-run`) before you choose to trigger a fresh occurrence. Unknown
+or rejected dispatch effects are never automatically retried, and exactly-once
+external effects across a crash, power loss, or remote provider/Gateway API call
+are not certified.
+
+When a scheduled run settles (`completed`, `failed`, `cancelled`, or `blocked`),
+workspace-isolated Gateway fanout can record a canonical Workspace Report and
+dispatch opt-in notifications to explicitly bound external channels (such as
+Discord or Telegram) through the durable delivery outbox without leaking context
+across workspaces or failing the underlying run state.
 
 A one-off occurrence is consumed after its attempt, including Run now. Failure
 or a busy session never causes an immediate retry loop. Inspect and explicitly
-run or edit it again if needed. Storage errors halt automatic scheduling and
-surface a warning; inspect the saved state and existing work before restarting
-the host. Shutdown retains ownership of entered schedule work until it settles.
+run or edit it again if needed. Storage corruption, schema downgrade refusal, or
+write errors halt automatic scheduling and surface a `storage-unavailable`
+warning; inspect the saved state and existing work before restarting the host.
+Shutdown retains ownership of entered schedule work until it settles.

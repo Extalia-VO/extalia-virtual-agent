@@ -45,3 +45,4 @@ export * from './gateway.js';
 export * from './gatewayAdapter.js';
 export * from './projectProvisioning.js';
 export * from './executionSafety.js';
+export * from './bridgeGrants.js';

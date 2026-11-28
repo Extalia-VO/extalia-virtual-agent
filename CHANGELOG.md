@@ -16,6 +16,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.366] - 2026-11-27
+
+- Implement Scoped Bridge Pairing, least-privilege client grants, and immediate revocation (`#58` / `V2-20`): add browser-safe scope classification & validators (`packages/platform/src/bridgeGrants.ts`, defaulting unclassified RPCs fail-closed to `'admin'`), hashed-token atomic `BridgePairingStore` (`apps/cli/src/bridge/pairing.ts`, `state/bridge-grants.json`, `0o600`, challenge lockout, corrupt store refusal), scoped `/api/call` / `/api/events` / `/api/update*` & loopback `/api/bridge/*` routes with instant SSE termination upon revocation (`apps/cli/src/bridge/server.ts`, `apps/cli/src/start.ts`, `apps/cli/test/bridgePairing.test.ts`).
+- Complete Schedule & Automation vNext synthetic 64-job 24h DST soak, crash/restart fault-injection matrix across in-flight states without auto-replay, migration rollback & downgrade refusal verification (`SCH-AT-32`, `SCH-AT-33`), and documentation sync (`#135` / `WP-SCH-12..13`: `packages/host/test/scheduleSoakAndFaultMatrix.test.ts`, `docs/getting-started/schedules.md`, `docs/product/prd-schedule-automation-vnext.md`).
+
 ## [0.4.365] - 2026-11-27
 
 - Complete local deliverables for **Universal Gateway v2 Diagnostics (`#142` / `#143` / `GW-WP-17`)** and **PRD-SF-1.0 Release Slice E Shared Office (`WP-12`, `AC-23`, `AC-24`)**: add `GatewayDiagnosticsView` & `gatewayDiagnostics` RPC (`packages/platform/src/gateway.ts`, `GatewayHostBridge.diagnostics()` in `packages/host/src/gateway/hostBridge.ts` & `service.ts`) evaluating `HostWatchdogMonitor` lease liveness, offline 6-check `runGatewayAdapterConformance` (`webhook-relay`), and WhatsApp fail-closed posture (`GatewaySettingsSection.tsx`, `gatewaySettings.css`, `mockHost.ts`, EN/ID in `i18n.ts`); and add Shared Office source-aware filters (`all`, `native`, `hermes`, `observed`, `unassigned`), `deduplicateOfficeAgents` (`AC-23`), manual 2D/3D view toggle, and operational No-WebGL `OfficeFallback2D` view (`apps/web/src/office/{officeFilters.ts,OfficeFallback2D.tsx,officeFallback2D.css}`, `OfficePage.tsx`, retaining inline pending approval actions and observed read-only labels).

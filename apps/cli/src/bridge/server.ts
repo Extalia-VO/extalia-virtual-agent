@@ -5,7 +5,23 @@ import { createServer, type IncomingMessage, type OutgoingHttpHeaders, type Serv
 import type { AddressInfo } from 'node:net';
 import path from 'node:path';
 import { decodeAgentTeam } from '@extalia/core';
-import { ATTACHMENT_BODY_HEADER, GOAL_DOCUMENT_BODY_HEADER, isAgentHostMethod, MAX_ATTACHMENT_REQUEST_BYTES, MAX_GOAL_DOCUMENT_RPC_BODY_BYTES, normalizeMissionPlanRequest, normalizeSessionOptions, normalizeSkillRegistryPageInput, normalizeTeamPlanRequest, type AgentHostApi, type UpdateStatus } from '@extalia/platform';
+import {
+  ATTACHMENT_BODY_HEADER,
+  GOAL_DOCUMENT_BODY_HEADER,
+  hasBridgeScope,
+  isAgentHostMethod,
+  MAX_ATTACHMENT_REQUEST_BYTES,
+  MAX_GOAL_DOCUMENT_RPC_BODY_BYTES,
+  normalizeMissionPlanRequest,
+  normalizeSessionOptions,
+  normalizeSkillRegistryPageInput,
+  normalizeTeamPlanRequest,
+  requiredBridgeScopeForMethod,
+  type AgentHostApi,
+  type BridgeClientScope,
+  type UpdateStatus,
+} from '@extalia/platform';
+import { BridgePairingError, type BridgePairingStore } from './pairing';
 
 /**
  * The local Extalia Bridge: serves the web UI and exposes the agent host over
@@ -153,6 +169,7 @@ export interface BridgeServerOptions {
   updates: BridgeUpdates;
   hooks?(request: IncomingMessage, response: ServerResponse, app: string): Promise<void>;
   codexPermissions?(request: IncomingMessage, response: ServerResponse): Promise<void>;
+  pairing?: BridgePairingStore;
   pingIntervalMs?: number;
   maxBodyBytes?: number;
 }
@@ -278,7 +295,27 @@ node apps/cli/dist/extalia.mjs</pre>
 </html>
 `;
 
-type Route = { method: 'GET' | 'POST'; handle(request: IncomingMessage, response: ServerResponse): Promise<void> | void };
+type ApiCaller =
+  | { kind: 'master'; scopes: readonly BridgeClientScope[] }
+  | { kind: 'client'; clientId: string; scopes: readonly BridgeClientScope[] };
+
+type Route = {
+  method: 'GET' | 'POST';
+  requiredScope?: BridgeClientScope;
+  handle(request: IncomingMessage, response: ServerResponse, caller: ApiCaller): Promise<void> | void;
+};
+
+function pairingErrorStatus(code: BridgePairingError['code']): number {
+  switch (code) {
+    case 'invalid': return 400;
+    case 'invalid_code': return 401;
+    case 'not_found': return 404;
+    case 'expired':
+    case 'consumed': return 410;
+    case 'locked': return 429;
+    case 'corrupt': return 500;
+  }
+}
 
 export async function startBridgeServer(options: BridgeServerOptions): Promise<BridgeServer> {
   const host = options.host ?? BRIDGE_HOST;
@@ -292,6 +329,23 @@ export async function startBridgeServer(options: BridgeServerOptions): Promise<B
   const pingInterval = options.pingIntervalMs ?? PING_INTERVAL_MS;
   let port = options.port;
   let allowedHosts = new Set<string>();
+  const sseByClient = new Map<string, Set<ServerResponse>>();
+  const unsubscribeRevoked = options.pairing?.onRevoked(clientId => {
+    const sockets = sseByClient.get(clientId);
+    if (!sockets) return;
+    sseByClient.delete(clientId);
+    for (const res of sockets) res.destroy();
+  });
+
+  function authenticateCaller(given: string | string[] | undefined): ApiCaller | { errorStatus: 401; message: string } {
+    if (tokenMatches(token, given)) return { kind: 'master', scopes: ['admin'] };
+    if (typeof given === 'string' && options.pairing) {
+      const verified = options.pairing.verifyToken(given);
+      if (verified.ok) return { kind: 'client', clientId: verified.clientId, scopes: verified.scopes };
+      return { errorStatus: verified.status, message: verified.message };
+    }
+    return { errorStatus: 401, message: 'Missing or invalid Bridge token.' };
+  }
 
   async function serveIndex(response: ServerResponse, head: boolean): Promise<void> {
     let html: string;
@@ -353,7 +407,7 @@ export async function startBridgeServer(options: BridgeServerOptions): Promise<B
     catch (error) { sendError(response, 503, `Agents are not available: ${errorMessage(error)}`); return undefined; }
   }
 
-  async function handleCall(request: IncomingMessage, response: ServerResponse): Promise<void> {
+  async function handleCall(request: IncomingMessage, response: ServerResponse, caller: ApiCaller): Promise<void> {
     if (!isJsonContentType(request.headers['content-type'])) { sendError(response, 415, 'Content-Type must be application/json.'); return; }
     // Uploads may be larger than ordinary calls, but never beyond the bounded attachment size.
     const uploading = request.headers[ATTACHMENT_BODY_HEADER] === 'attachment';
@@ -375,6 +429,11 @@ export async function startBridgeServer(options: BridgeServerOptions): Promise<B
     if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) { sendError(response, 400, 'Expected { "method": string, "args": array }.'); return; }
     const { method, args } = payload as { method?: unknown; args?: unknown };
     if (!isAgentHostMethod(method)) { sendError(response, 400, 'Unknown method.'); return; }
+    const requiredScope = requiredBridgeScopeForMethod(method);
+    if (!hasBridgeScope(caller.scopes, requiredScope)) {
+      sendError(response, 403, `Insufficient Bridge client scope (requires ${requiredScope}).`);
+      return;
+    }
     if (uploading && method !== 'uploadAttachment') { sendError(response, 400, 'Only file uploads may use the attachment body size.'); return; }
     if (!Array.isArray(args)) { sendError(response, 400, 'args must be an array.'); return; }
     if (goalDocumentCall) {
@@ -408,10 +467,18 @@ export async function startBridgeServer(options: BridgeServerOptions): Promise<B
     }
   }
 
-  function handleEvents(_request: IncomingMessage, response: ServerResponse): void {
+  function handleEvents(_request: IncomingMessage, response: ServerResponse, caller: ApiCaller): void {
     response.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-store', Connection: 'keep-alive' });
     let closed = false;
     let unsubscribe: (() => void) | undefined;
+    if (caller.kind === 'client') {
+      let sockets = sseByClient.get(caller.clientId);
+      if (!sockets) {
+        sockets = new Set();
+        sseByClient.set(caller.clientId, sockets);
+      }
+      sockets.add(response);
+    }
     const write = (chunk: string) => {
       if (closed || response.destroyed) return;
       if (response.writableLength > MAX_EVENT_BACKLOG_BYTES) { response.destroy(); return; }
@@ -425,6 +492,13 @@ export async function startBridgeServer(options: BridgeServerOptions): Promise<B
       closed = true;
       clearInterval(ping);
       unsubscribe?.();
+      if (caller.kind === 'client') {
+        const sockets = sseByClient.get(caller.clientId);
+        if (sockets) {
+          sockets.delete(response);
+          if (sockets.size === 0) sseByClient.delete(caller.clientId);
+        }
+      }
     });
     // Without agents the stream stays open with pings, so the client still notices restarts.
     options.agents().then(host => {
@@ -441,12 +515,107 @@ export async function startBridgeServer(options: BridgeServerOptions): Promise<B
     }
   }
 
+  async function readJsonObject(request: IncomingMessage, response: ServerResponse): Promise<Record<string, unknown> | undefined> {
+    if (!isJsonContentType(request.headers['content-type'])) {
+      sendError(response, 415, 'Content-Type must be application/json.');
+      return undefined;
+    }
+    let body: Buffer;
+    try { body = await readBody(request, maxBody); }
+    catch (error) {
+      if (error instanceof BodyTooLargeError) {
+        await error.drained;
+        sendError(response, 413, `Request body is larger than ${maxBody} bytes.`, { Connection: 'close' });
+      } else {
+        sendError(response, 400, 'Could not read the request body.');
+      }
+      return undefined;
+    }
+    let payload: unknown;
+    try { payload = JSON.parse(body.toString('utf8')); }
+    catch { sendError(response, 400, 'Request body is not valid JSON.'); return undefined; }
+    if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+      sendError(response, 400, 'Expected a JSON object.');
+      return undefined;
+    }
+    return payload as Record<string, unknown>;
+  }
+
+  function handlePairingError(response: ServerResponse, error: unknown): void {
+    if (error instanceof BridgePairingError) {
+      sendError(response, pairingErrorStatus(error.code), error.message);
+      return;
+    }
+    sendError(response, 500, errorMessage(error));
+  }
+
   const routes: Record<string, Route> = {
     '/api/call': { method: 'POST', handle: handleCall },
-    '/api/events': { method: 'GET', handle: handleEvents },
-    '/api/update': { method: 'GET', handle: (_request, response) => handleUpdate(response, () => options.updates.status()) },
-    '/api/update/check': { method: 'POST', handle: (_request, response) => handleUpdate(response, () => options.updates.check()) },
-    '/api/update/install': { method: 'POST', handle: (_request, response) => handleUpdate(response, () => options.updates.install()) },
+    '/api/events': { method: 'GET', requiredScope: 'events', handle: handleEvents },
+    '/api/update': { method: 'GET', requiredScope: 'admin', handle: (_request, response) => handleUpdate(response, () => options.updates.status()) },
+    '/api/update/check': { method: 'POST', requiredScope: 'admin', handle: (_request, response) => handleUpdate(response, () => options.updates.check()) },
+    '/api/update/install': { method: 'POST', requiredScope: 'admin', handle: (_request, response) => handleUpdate(response, () => options.updates.install()) },
+    '/api/bridge/clients': {
+      method: 'GET',
+      requiredScope: 'admin',
+      handle: (_request, response) => {
+        if (!options.pairing) { sendError(response, 501, 'Scoped Bridge pairing is not enabled.'); return; }
+        sendJson(response, 200, { clients: options.pairing.list() });
+      },
+    },
+    '/api/bridge/pair/challenge': {
+      method: 'POST',
+      requiredScope: 'admin',
+      handle: async (request, response) => {
+        if (!options.pairing) { sendError(response, 501, 'Scoped Bridge pairing is not enabled.'); return; }
+        const payload = await readJsonObject(request, response);
+        if (!payload) return;
+        try {
+          const challenge = options.pairing.issueChallenge({
+            name: payload.name,
+            scopes: payload.scopes,
+            ...(payload.ttlMs !== undefined ? { ttlMs: payload.ttlMs } : {}),
+          });
+          sendJson(response, 201, { challenge });
+        } catch (error) {
+          handlePairingError(response, error);
+        }
+      },
+    },
+    '/api/bridge/pair/confirm': {
+      method: 'POST',
+      requiredScope: 'admin',
+      handle: async (request, response) => {
+        if (!options.pairing) { sendError(response, 501, 'Scoped Bridge pairing is not enabled.'); return; }
+        const payload = await readJsonObject(request, response);
+        if (!payload) return;
+        try {
+          const result = await options.pairing.confirmChallenge({
+            challengeId: payload.challengeId,
+            code: payload.code,
+            ...(payload.grantTtlMs !== undefined ? { grantTtlMs: payload.grantTtlMs } : {}),
+          });
+          sendJson(response, 201, result);
+        } catch (error) {
+          handlePairingError(response, error);
+        }
+      },
+    },
+    '/api/bridge/clients/revoke': {
+      method: 'POST',
+      requiredScope: 'admin',
+      handle: async (request, response) => {
+        if (!options.pairing) { sendError(response, 501, 'Scoped Bridge pairing is not enabled.'); return; }
+        const payload = await readJsonObject(request, response);
+        if (!payload) return;
+        try {
+          const client = await options.pairing.revoke(payload.clientId as string, payload.reason);
+          sendJson(response, 200, { client });
+        } catch (error) {
+          handlePairingError(response, error);
+        }
+      },
+    },
   };
 
   async function handleApi(request: IncomingMessage, response: ServerResponse, url: URL): Promise<void> {
@@ -456,9 +625,14 @@ export async function startBridgeServer(options: BridgeServerOptions): Promise<B
     const origin = request.headers.origin;
     if (origin !== undefined && origin !== `http://${request.headers.host?.toLowerCase()}`) { sendError(response, 403, 'Requests from other origins are not allowed.'); return; }
     // EventSource cannot send headers, so the event stream takes the token from the query.
-    const given = url.pathname === '/api/events' ? url.searchParams.get('token') : request.headers[TOKEN_HEADER];
-    if (!tokenMatches(token, given)) { sendError(response, 401, 'Missing or invalid Bridge token.'); return; }
-    await route.handle(request, response);
+    const given = url.pathname === '/api/events' ? (url.searchParams.get('token') ?? undefined) : request.headers[TOKEN_HEADER];
+    const auth = authenticateCaller(given);
+    if ('errorStatus' in auth) { sendError(response, auth.errorStatus, auth.message); return; }
+    if (route.requiredScope && !hasBridgeScope(auth.scopes, route.requiredScope)) {
+      sendError(response, 403, `Insufficient Bridge client scope (requires ${route.requiredScope}).`);
+      return;
+    }
+    await route.handle(request, response, auth);
   }
 
   const server = createServer((request, response) => {
@@ -507,10 +681,15 @@ export async function startBridgeServer(options: BridgeServerOptions): Promise<B
     url: `http://${BRIDGE_HOST}:${port}/`,
     port,
     token,
-    close: () => new Promise<void>(resolve => {
-      server.close(() => resolve());
-      // Event streams never end by themselves.
-      server.closeAllConnections();
-    }),
+    close: async () => {
+      unsubscribeRevoked?.();
+      sseByClient.clear();
+      await new Promise<void>(resolve => {
+        server.close(() => resolve());
+        // Event streams never end by themselves.
+        server.closeAllConnections();
+      });
+      await options.pairing?.close().catch(() => undefined);
+    },
   };
 }

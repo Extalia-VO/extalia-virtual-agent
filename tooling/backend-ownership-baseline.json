@@ -26,11 +26,23 @@
       "unresolvedRuntimeImports": 0
     },
     {
+      "path": "apps/cli/src/bridge/pairing.ts",
+      "category": "legacy-backend",
+      "sha256": "a5f8e822b1d94db58cd1710bbd2fa2014fe24b85c96e26816947b6c5252f63c6",
+      "loc": 539,
+      "bytes": 20284,
+      "effectKinds": [
+        "node-builtin",
+        "runtime-call"
+      ],
+      "unresolvedRuntimeImports": 0
+    },
+    {
       "path": "apps/cli/src/bridge/server.ts",
       "category": "legacy-backend",
-      "sha256": "7be52333162f81f996e204268fce15d62d70eb7e632bb564ff265634d12a60a5",
-      "loc": 516,
-      "bytes": 25855,
+      "sha256": "a701d866cf213db4e8ea6e144667ec2ddff8e9d03c337b3a32bb7142e28452a8",
+      "loc": 695,
+      "bytes": 32488,
       "effectKinds": [
         "node-builtin",
         "runtime-call"
@@ -109,10 +121,11 @@
     {
       "path": "apps/cli/src/start.ts",
       "category": "legacy-backend",
-      "sha256": "8385315aac5c15f9a8b2ebe8743bba9f40591e7124f3d9bc20887950b34943d9",
-      "loc": 168,
-      "bytes": 7779,
+      "sha256": "d8526da307f8d3066b948b87ef97150d1a1488b89d103780965ac9985e5a600d",
+      "loc": 177,
+      "bytes": 8146,
       "effectKinds": [
+        "node-builtin",
         "runtime-call"
       ],
       "unresolvedRuntimeImports": 0
@@ -2596,6 +2609,15 @@
       "unresolvedRuntimeImports": 0
     },
     {
+      "path": "packages/platform/src/bridgeGrants.ts",
+      "category": "shared-backend-review",
+      "sha256": "66b2b54df292b4232d734ede22f63fd46638cbec70455bb82c4676e46de79020",
+      "loc": 200,
+      "bytes": 5537,
+      "effectKinds": [],
+      "unresolvedRuntimeImports": 0
+    },
+    {
       "path": "packages/platform/src/capabilities.ts",
       "category": "shared-backend-review",
       "sha256": "b1327803f6ba547898d9b262841b301a6c2a9b0fea6a43f41296c95409d4b3f5",
@@ -2643,9 +2665,9 @@
     {
       "path": "packages/platform/src/index.ts",
       "category": "shared-backend-review",
-      "sha256": "c137893e0a8bc276205b47bbac84fdef6f48895edcba5205aaf2918071f8ed2b",
-      "loc": 47,
-      "bytes": 1603,
+      "sha256": "004e5cf30cf8066d56bdc87910b114be23e27770d06b5ad82e657bccc05c900d",
+      "loc": 48,
+      "bytes": 1638,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
