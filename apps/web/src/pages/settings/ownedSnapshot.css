@@ -1,0 +1,228 @@
+.owned-snapshot-card {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.owned-snapshot-notice,
+.owned-snapshot-dryrun-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--sunken);
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.owned-snapshot-notice .icon,
+.owned-snapshot-dryrun-notice .icon {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  margin-top: 2px;
+}
+
+.owned-snapshot-block {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--sunken);
+}
+
+.owned-snapshot-block h3,
+.owned-snapshot-result h4 {
+  margin: 0;
+  font-size: .95rem;
+}
+
+.owned-snapshot-fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.owned-snapshot-fieldset legend {
+  padding: 0;
+  font-weight: 600;
+}
+
+.owned-snapshot-pill-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.owned-snapshot-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-solid);
+  font-size: .82rem;
+  font-weight: 550;
+  cursor: pointer;
+}
+
+.owned-snapshot-pill:has(input:checked) {
+  border-color: var(--accent, currentColor);
+  background: var(--accent-soft, var(--sunken));
+}
+
+.owned-snapshot-summary-row,
+.owned-snapshot-badges,
+.owned-snapshot-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+}
+
+.owned-snapshot-result {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-solid);
+}
+
+.owned-snapshot-result.is-valid {
+  border-color: var(--ok);
+}
+
+.owned-snapshot-result.is-blocked {
+  border-color: var(--error);
+}
+
+.owned-snapshot-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.owned-snapshot-field textarea {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-solid);
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: .82rem;
+  resize: vertical;
+}
+
+.owned-snapshot-conflicts-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .84rem;
+}
+
+.owned-snapshot-conflicts-table th,
+.owned-snapshot-conflicts-table td {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.owned-snapshot-conflicts-table th {
+  color: var(--muted);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.owned-snapshot-apply-panel {
+  display: grid;
+  gap: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.owned-snapshot-confirm-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.owned-snapshot-confirm-row input {
+  margin-top: 3px;
+  flex: none;
+}
+
+.owned-snapshot-warnings {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+}
+
+.owned-snapshot-backups-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.owned-snapshot-backup-row {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-solid);
+}
+
+.owned-snapshot-backup-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+}
+
+.owned-snapshot-backup-digest {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.owned-snapshot-backup-digest code {
+  overflow-wrap: anywhere;
+  font-size: .8rem;
+}
+
+.owned-snapshot-rollback-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+[data-material='liquid-glass'] .owned-snapshot-block,
+[data-material='liquid-glass'] .owned-snapshot-result,
+[data-material='liquid-glass'] .owned-snapshot-backup-row {
+  background: var(--surface);
+}
+
+@media (max-width: 480px) {
+  .owned-snapshot-block,
+  .owned-snapshot-result {
+    padding: 12px;
+  }
+}

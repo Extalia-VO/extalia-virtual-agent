@@ -4,6 +4,7 @@
  *
  * Browser-safe: zero Node built-ins or runtime/provider imports.
  */
+import type { GatewayConformanceReport, HostWatchdogStatus } from './gatewayAdapter.js';
 
 export type GatewayProvider = 'discord' | 'telegram' | 'whatsapp' | (string & {});
 
@@ -920,8 +921,24 @@ export interface ChatSystemReportsView {
   reports: WorkspaceSystemReport[];
 }
 
+export interface GatewayWhatsAppPosture {
+  configuredConnectors: number;
+  enabledConnectors: number;
+  failClosed: true;
+  allowedSignalCount: number;
+  serviceWindowHours: number;
+}
+
+export interface GatewayDiagnosticsView {
+  observedAt: string;
+  watchdog: HostWatchdogStatus;
+  conformance: GatewayConformanceReport;
+  whatsappPosture: GatewayWhatsAppPosture;
+}
+
 export const GATEWAY_HOST_METHODS = [
   'gatewayOverview',
+  'gatewayDiagnostics',
   'saveGatewayConnector',
   'setGatewayConnectorStatus',
   'issueGatewayLinkChallenge',

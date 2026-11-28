@@ -4,12 +4,14 @@ import type {
   ConnectorHealthDimension,
   GatewayAudience,
   GatewayConnectorState,
+  GatewayDiagnosticsView,
   GatewayLinkChallengeView,
   GatewayOverview,
   GatewayPermissionBand,
   GatewayProvider,
   GatewayRouteMode,
   HostState,
+  HostWatchdogHealthState,
   WorkspaceReportsInboxView,
 } from '@extalia/platform';
 import { useEffect, useId, useRef, useState } from 'react';
@@ -49,6 +51,12 @@ function healthChipTone(dimension: ConnectorHealthDimension): string {
   return '';
 }
 
+function watchdogStateTone(state: HostWatchdogHealthState): string {
+  if (state === 'healthy') return 'ok';
+  if (state === 'host_down') return 'error';
+  return 'warn';
+}
+
 function defaultHealthDimensions(status: GatewayConnectorState): Pick<ConnectorHealth, typeof HEALTH_DIMENSIONS[number]> {
   const dimStatus = status === 'connected' ? 'healthy' : status === 'degraded' ? 'degraded' : status === 'blocked' ? 'blocked' : status === 'disabled' ? 'disconnected' : 'unknown';
   return {
@@ -66,6 +74,7 @@ type Props = {
   state: HostState;
   initialOverview?: GatewayOverview;
   initialInbox?: WorkspaceReportsInboxView;
+  initialDiagnostics?: GatewayDiagnosticsView;
 };
 
 export function GatewaySettingsSection(props: Props) {
@@ -91,10 +100,10 @@ export function GatewaySettingsSection(props: Props) {
   return <GatewaySettingsContent key={revision} {...props} />;
 }
 
-function GatewaySettingsContent({ t, agents, state, initialOverview, initialInbox }: Props) {
+function GatewaySettingsContent({ t, agents, state, initialOverview, initialInbox, initialDiagnostics }: Props) {
   const g = t.gatewaySettings;
   const headingId = useId();
-  const owner = useRef({ active: true, busy: false });
+  const owner = useRef({ active: true, busy: false, diagnosticsBusy: false });
   useEffect(() => {
     const current = owner.current;
     current.active = true;
@@ -111,6 +120,7 @@ function GatewaySettingsContent({ t, agents, state, initialOverview, initialInbo
     && typeof agents.saveGatewayRoute === 'function'
     && typeof agents.deleteGatewayRoute === 'function'
     && typeof agents.listWorkspaceReports === 'function';
+  const diagnosticsSupported = typeof agents.gatewayDiagnostics === 'function';
 
   const managedWorkspaces = state.workspaces.filter(item => item.mode !== 'observe');
   const [refreshTick, setRefreshTick] = useState(0);
@@ -119,6 +129,12 @@ function GatewaySettingsContent({ t, agents, state, initialOverview, initialInbo
     data: initialOverview ?? null,
     error: null,
   });
+  const [diagnosticsState, setDiagnosticsState] = useState<{ tick: number; data: GatewayDiagnosticsView | null; error: string | null }>({
+    tick: initialDiagnostics ? 0 : -1,
+    data: initialDiagnostics ?? null,
+    error: null,
+  });
+  const [runningDiagnostics, setRunningDiagnostics] = useState(false);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -150,6 +166,7 @@ function GatewaySettingsContent({ t, agents, state, initialOverview, initialInbo
   const [inboxWorkspaceId, setInboxWorkspaceId] = useState(initialInbox?.workspaceId ?? managedWorkspaces[0]?.id ?? '');
 
   const overview = overviewState.data;
+  const diagnostics = diagnosticsState.data;
   const loadingOverview = supported && overviewState.tick !== refreshTick && !overviewState.error;
   const error = actionError ?? overviewState.error;
   const setError = setActionError;
@@ -197,6 +214,26 @@ function GatewaySettingsContent({ t, agents, state, initialOverview, initialInbo
     );
     return () => { active = false; };
   }, [agents, supported, refreshTick]);
+
+  useEffect(() => {
+    if (!supported || !diagnosticsSupported || typeof agents.gatewayDiagnostics !== 'function') return;
+    let active = true;
+    void agents.gatewayDiagnostics().then(
+      next => {
+        if (!active) return;
+        setDiagnosticsState({ tick: refreshTick, data: next, error: null });
+      },
+      failure => {
+        if (!active) return;
+        setDiagnosticsState(current => ({
+          tick: refreshTick,
+          data: current.data,
+          error: errorMessage(failure),
+        }));
+      },
+    );
+    return () => { active = false; };
+  }, [agents, supported, diagnosticsSupported, refreshTick]);
 
   useEffect(() => {
     if (!supported || !effectiveInboxWorkspaceId || typeof agents.listWorkspaceReports !== 'function') return;
@@ -348,6 +385,28 @@ function GatewaySettingsContent({ t, agents, state, initialOverview, initialInbo
       current.includes(band) ? current.filter(item => item !== band) : [...current, band]);
   };
 
+  const runDiagnostics = async () => {
+    const current = owner.current;
+    if (!current.active || current.diagnosticsBusy || typeof agents.gatewayDiagnostics !== 'function') return;
+    current.diagnosticsBusy = true;
+    setRunningDiagnostics(true);
+    setDiagnosticsState(previous => ({ ...previous, error: null }));
+    try {
+      const next = await agents.gatewayDiagnostics();
+      if (!current.active) return;
+      setDiagnosticsState({ tick: refreshTick, data: next, error: null });
+    } catch (failure) {
+      if (!current.active) return;
+      setDiagnosticsState(previous => ({ ...previous, error: errorMessage(failure) }));
+    } finally {
+      current.diagnosticsBusy = false;
+      if (current.active) setRunningDiagnostics(false);
+    }
+  };
+
+  const passedConformanceChecks = diagnostics?.conformance.checks.filter(check => check.passed).length ?? 0;
+  const totalConformanceChecks = diagnostics?.conformance.checks.length ?? 0;
+
   return (
     <section className="card settings-section" aria-labelledby={headingId} aria-busy={busy || loadingOverview || undefined}>
       <div className="section-head">
@@ -475,6 +534,103 @@ function GatewaySettingsContent({ t, agents, state, initialOverview, initialInbo
               </button>
             </div>
           </form>
+        </article>
+
+        {/* Gateway runtime diagnostics & watchdog */}
+        <article className="gateway-subcard" aria-labelledby={`${headingId}-diagnostics`}>
+          <div className="gateway-subcard-head">
+            <div>
+              <h3 id={`${headingId}-diagnostics`}>{g.diagnostics.title}</h3>
+              <p className="muted small">{g.diagnostics.lead}</p>
+            </div>
+            {diagnosticsSupported && (
+              <button
+                type="button"
+                className="button small"
+                disabled={busy || runningDiagnostics}
+                onClick={() => void runDiagnostics()}
+              >
+                <Icon name="refresh" className={runningDiagnostics ? 'spin' : ''} />
+                {runningDiagnostics ? g.diagnostics.running : g.diagnostics.runCheck}
+              </button>
+            )}
+          </div>
+
+          {diagnosticsState.error && (
+            <p className="form-error" role="alert"><Icon name="alert" />{diagnosticsState.error}</p>
+          )}
+
+          {!diagnostics && !diagnosticsSupported && (
+            <p className="muted small">{g.diagnostics.unavailable}</p>
+          )}
+
+          {!diagnostics && diagnosticsSupported && !diagnosticsState.error && (
+            <p className="muted small" role="status">{g.diagnostics.running}</p>
+          )}
+
+          {diagnostics && (
+            <div className="gateway-diagnostics-grid">
+              <div className="gateway-diagnostic-item">
+                <div className="gateway-diagnostic-head">
+                  <strong>{g.diagnostics.watchdogTitle}</strong>
+                  <span className={`badge ${watchdogStateTone(diagnostics.watchdog.state)}`}>
+                    {g.diagnostics.watchdogStates[diagnostics.watchdog.state] ?? diagnostics.watchdog.state}
+                  </span>
+                </div>
+                <span className="muted small">
+                  {diagnostics.watchdog.leaseAgeMs !== undefined
+                    ? `${g.diagnostics.leaseAge(diagnostics.watchdog.leaseAgeMs)} · `
+                    : ''}
+                  {diagnostics.watchdog.reason}
+                </span>
+              </div>
+
+              <div className="gateway-diagnostic-item">
+                <div className="gateway-diagnostic-head">
+                  <strong>{g.diagnostics.conformanceTitle}</strong>
+                  <span className={`badge ${diagnostics.conformance.passed ? 'ok' : 'error'}`}>
+                    {diagnostics.conformance.passed ? g.diagnostics.conformancePassed : g.diagnostics.conformanceFailed}
+                  </span>
+                </div>
+                <span className="muted small">
+                  {g.diagnostics.conformanceSummary(
+                    passedConformanceChecks,
+                    totalConformanceChecks,
+                    diagnostics.conformance.provider,
+                  )}
+                </span>
+                <div className="gateway-conformance-checks">
+                  {diagnostics.conformance.checks.map(check => (
+                    <span
+                      key={check.id}
+                      className={`gateway-conformance-pill ${check.passed ? 'ok' : 'error'}`}
+                      title={check.detail}
+                    >
+                      <span className="gateway-conformance-dot" aria-hidden="true" />
+                      <code>{check.id}</code>
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <div className="gateway-diagnostic-item">
+                <div className="gateway-diagnostic-head">
+                  <strong>{g.diagnostics.whatsappTitle}</strong>
+                  <span className={`badge ${diagnostics.whatsappPosture.failClosed ? 'ok' : 'error'}`}>
+                    {g.diagnostics.whatsappFailClosed}
+                  </span>
+                </div>
+                <span className="muted small">
+                  {g.diagnostics.whatsappSummary(
+                    diagnostics.whatsappPosture.enabledConnectors,
+                    diagnostics.whatsappPosture.configuredConnectors,
+                    diagnostics.whatsappPosture.allowedSignalCount,
+                    diagnostics.whatsappPosture.serviceWindowHours,
+                  )}
+                </span>
+              </div>
+            </div>
+          )}
         </article>
 
         {/* 2. Identity Linking card */}

@@ -8,13 +8,16 @@ import { CopyButton } from '../ui/CopyButton';
 import { RestartPrompt } from '../ui/RestartPrompt';
 import { Select } from '../ui/Select';
 import { ApprovalNotificationSetting } from '../approvals/NotificationSetting';
+import { ExecutionSafetyPanel } from '../approvals/ExecutionSafetyPanel';
 import { ConnectAgentAppsCard } from './ConnectAgentAppsCard';
 import { AutoWatchLocations, IgnoredFolders } from './AutoWatchLocations';
 import { availableSettingsSections, nextSettingsSection, resolveSettingsSection, type SettingsSection } from './settings/settingsSections';
 import './settings/settingsNav.css';
 
+import { BridgeClientsCard } from './settings/BridgeClientsCard';
 import { ConnectionsSection } from './settings/ConnectionsSection';
 import { GatewaySettingsSection } from './settings/GatewaySettingsSection';
+import { OwnedSnapshotCard } from './settings/OwnedSnapshotCard';
 import { WorkspacesSection } from './settings/WorkspacesSection';
 import { KnowledgeVaultSection } from './settings/KnowledgeVaultSection';
 import { OperatingProfilesSection } from '../operatingProfiles/OperatingProfilesSection';
@@ -63,7 +66,7 @@ function SettingsPageContent({ t, platform, preferences, onChange, hostState, on
   const picker = hostState?.host.kind === 'desktop' ? platform.capabilities.filesystem : undefined;
   const sections = availableSettingsSections({
     agents: Boolean(agents && hostState),
-    system: Boolean(updater || platform.capabilities.restart),
+    system: Boolean(updater || platform.capabilities.restart || platform.capabilities.bridgePairing),
     profiles: !observeOnly && typeof agents?.listOperatingProfiles === 'function',
     gateway: !observeOnly && typeof agents?.gatewayOverview === 'function',
   });
@@ -228,6 +231,11 @@ function SettingsPageContent({ t, platform, preferences, onChange, hostState, on
                 <ApprovalNotificationSetting t={t} hostKind={platform.info.kind} notifier={platform.capabilities.notifications} />
               </section>
             )}
+            {agents && hostState && !observeOnly && (
+              <section className="card settings-section" aria-labelledby="settings-execution-safety">
+                <ExecutionSafetyPanel t={t} language={preferences.language} agents={agents} />
+              </section>
+            )}
           </>}
           {item === 'connections' && agents && hostState && <ConnectionsSection t={t} agents={agents} state={hostState} onState={onHostState} />}
           {item === 'profiles' && agents && hostState && <OperatingProfilesSection t={t} agents={agents} state={hostState} onState={onHostState} onCatalogChanged={() => setProfileCatalogRevision(value => value + 1)} />}
@@ -256,6 +264,9 @@ function SettingsPageContent({ t, platform, preferences, onChange, hostState, on
               </section>
             )}
             {agents && hostState && <KnowledgeVaultSection t={t} agents={agents} picker={picker} />}
+            {agents && hostState && agents.previewOwnedDataExport && agents.exportOwnedDataSnapshot && agents.previewOwnedDataRestore && (
+              <OwnedSnapshotCard t={t} agents={agents} />
+            )}
           </>}
           {item === 'system' && <>
             {updater && <UpdatesSection t={t} updater={updater} status={updateStatus} />}
@@ -264,6 +275,9 @@ function SettingsPageContent({ t, platform, preferences, onChange, hostState, on
                 <h2 id="settings-restart">{t.restart.title}</h2>
                 <RestartPrompt t={t} restart={platform.capabilities.restart} hostState={hostState} reason={t.restart.manualLead} />
               </section>
+            )}
+            {platform.capabilities.bridgePairing && (
+              <BridgeClientsCard t={t} language={preferences.language} pairing={platform.capabilities.bridgePairing} />
             )}
           </>}
         </>}

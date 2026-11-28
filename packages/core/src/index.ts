@@ -20,3 +20,4 @@ export * from './modelGuide.js';
 export * from './teamRuntimePolicy.js';
 
 export * from './operatingProfiles.js';
+export * from './snapshot.js';

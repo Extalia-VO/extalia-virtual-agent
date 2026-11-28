@@ -8,6 +8,7 @@ import { errorMessage } from '../host/remote';
 import type { Language, Messages } from '../i18n';
 import { Icon } from '../ui/Icon';
 import { ProviderLogo } from '../ui/ProviderLogo';
+import { MissionAuthorityPanel } from './MissionAuthorityPanel';
 import { hasWriteTasks, MissionChanges, missionChangesSupported } from './MissionChanges';
 import { MissionDag } from './MissionDag';
 import { isNeverStarted, isTerminalRun, missionBudgetView, missionGraphTasks, missionProgress, shortId, taskTone } from './missionModel';
@@ -267,6 +268,10 @@ export function MissionMonitor({ t, language, agents, session, connections, init
           );
         })}
       </ol>
+
+      {typeof agents.missionAuthorityOverview === 'function' && (
+        <MissionAuthorityPanel t={t} language={language} agents={agents} run={run} onRunUpdated={next => { setRun(next); onChanged(next); }} />
+      )}
 
       {hasWriteTasks(run) && missionChangesSupported(agents) && <MissionChanges t={t} language={language} agents={agents} run={run} workspace={workspace} onEditGate={onEditGate} />}
 

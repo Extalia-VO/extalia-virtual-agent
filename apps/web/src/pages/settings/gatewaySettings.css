@@ -80,6 +80,74 @@
   color: var(--error);
 }
 
+.gateway-diagnostics-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.gateway-diagnostic-item {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-solid);
+}
+
+.gateway-diagnostic-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.gateway-conformance-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.gateway-conformance-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface-solid);
+  color: var(--muted);
+  font-size: .74rem;
+}
+
+.gateway-conformance-pill.ok {
+  border-color: transparent;
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+
+.gateway-conformance-pill.warn {
+  border-color: transparent;
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.gateway-conformance-pill.error {
+  border-color: transparent;
+  background: var(--error-soft);
+  color: var(--error);
+}
+
+.gateway-conformance-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
 .gateway-form {
   display: grid;
   gap: 12px;

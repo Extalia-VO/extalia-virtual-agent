@@ -1,8 +1,8 @@
 # PRD — Extalia Schedule & Automation vNext
 
-> **Status:** Proposed / implementation-ready specification; **not implemented by this document**  
-> **PRD revision:** 1.1 — 2026-11-24 (Universal Gateway / autonomous Chat-report alignment addendum)  
-> **Verified source baseline:** Git tag [`v0.4.353`](https://github.com/Extalia-VO/extalia-virtual-agent/tree/v0.4.353) (source and existing tests reviewed; no live environment or real Discord test executed for this PRD)  
+> **Status:** Core & local deliverables implemented (`WP-SCH-01` through `WP-SCH-13`); live OS/packaged-build multi-day soak and live Discord API acceptance remain separate environment gates  
+> **PRD revision:** 1.2 — 2026-11-27 (Local implementation & synthetic soak/fault-matrix verification sync)  
+> **Verified source baseline:** Git tag [`v0.4.353`](https://github.com/Extalia-VO/extalia-virtual-agent/tree/v0.4.353) → current local repository verification (synthetic 64-job 24h DST soak, crash/restart fault-injection matrix, downgrade refusal, rollback & docs verified locally; no live external Discord API or multi-day packaged OS soak executed here)  
 > **Repository path:** `docs/product/prd-schedule-automation-vnext.md`  
 > **Companion PRDs:** [Universal Gateway Module v2 (`prd-universal-gateway-v2.md`)](prd-universal-gateway-v2.md) *(Revision 2.0, superseding `prd-universal-gateway-v1.md`)* — covers Discord/Telegram/WhatsApp and autonomous Knowledge/Skills reports; appendix at the end supersedes Discord-only delivery assumptions. Also aligns with [Session-first workspace, coding workers & Discord (`prd-session-first-coding-discord.md`)](prd-session-first-coding-discord.md).  
 > **Ownership:** Product owner / Extalia host, platform, runtime, desktop/CLI, web and gateway maintainers  
@@ -54,6 +54,12 @@ Extalia already provides saved one-off, interval and five-field cron jobs; edita
 ### 1.3 Scope compatibility
 
 Read alongside [app-flow PRD](prd-app-flow-and-live-agents.md), [Universal Gateway Module v2](prd-universal-gateway-v2.md), [Session-first workspace, coding workers and Discord (`PRD-SF-1.0`)](prd-session-first-coding-discord.md), [v2 acceptance map](prd-v2-acceptance-map.md), [Native module](../modules/native-agent.md), [security](../architecture/security.md), [storage](../architecture/storage.md), [runtime adapters](../architecture/runtime-adapters.md), and [Schedules guide](../getting-started/schedules.md). This PRD is an *additive product specification*; do not replace the existing app-flow PRD or declare v0.5 release gates closed. When implemented, update its main tracker, the module guide, changelog and requirement crosswalk.
+
+### 1.4 Implementation & local verification addendum (2026-11-27)
+
+- **Implemented locally (`WP-SCH-01`..`WP-SCH-13`):** Canonical `state/schedules.sqlite` ledger (`ScheduleStore` / `GeneralScheduleManager`), immutable `0o600` `schedules.pre-sqlite.json` migration backup, schema downgrade refusal (`ScheduleStoreDowngradeError`), atomic occurrence admission & `unknown` crash quarantine + manual CAS review (`reviewUnknownScheduleRun`), split dispatch/turn/verification truth, per-job IANA `timeZone` + authoritative Host DST preview, single-owner `extalia service` CLI/manager (`launchd`, `systemd --user`, Windows Task Scheduler) enforcing `state/host.lock`, workspace-isolated Gateway report fanout (`onRunSettled` + `recordDelivery`), EN/ID Run History & Timezone UI, and synchronized [Schedules guide](../getting-started/schedules.md).
+- **Verified locally (synthetic & temp-dir harnesses):** `packages/host/test/scheduleSoakAndFaultMatrix.test.ts` (64-job 24h multi-timezone US Spring-Forward DST soak with 0 duplicate `occurrenceKey`s and clean timer teardown, US Fall-Back repeated `01:30` EDT/EST and 25-hour wall-clock verification, abrupt crash/restart fault-injection matrix across `admitting`/`dispatched`/`running`/`deferred`/`pending`, immutable backup + `ScheduleStoreDowngradeError` + clean pre-SQLite rollback verification) alongside `scheduleLedger.test.ts`, `scheduleTimezone.test.ts`, `scheduleFaults.test.ts`, and `scheduleRecovery.test.ts`.
+- **Remaining separate environment gates:** Multi-day live OS/packaged-build soak (`SCH-AT-32` real packaged build RSS/CPU telemetry) and external live Discord API acceptance (`SCH-AT-24..28`) remain separate release environment gates rather than being claimed from synthetic local tests.
 
 ---
 

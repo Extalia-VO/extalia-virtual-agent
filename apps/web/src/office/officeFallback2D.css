@@ -1,0 +1,288 @@
+.office-fallback-2d {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  height: 100%;
+  overflow: auto;
+  padding: 20px;
+  background: var(--sunken);
+  color: var(--text);
+}
+
+@media (min-width: 701px) {
+  .office-stage:has(.office-panel:not(.office-panel-collapsed)) .office-fallback-2d {
+    padding-right: calc(min(280px, 38%) + 28px);
+  }
+  .office-stage.has-dock .office-fallback-2d {
+    padding-bottom: var(--office-left-reserve, 96px);
+  }
+}
+
+.office-fallback-2d-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.office-fallback-2d-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.office-fallback-2d-title-row h2 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.office-fallback-2d-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.office-fallback-2d-actions .button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.office-fallback-2d-banner {
+  margin: 0;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-solid);
+  color: var(--muted);
+  font-size: .88rem;
+  line-height: 1.45;
+}
+
+.office-fallback-2d-banner[data-reason='webgl-unavailable'] {
+  border-color: color-mix(in srgb, var(--warn) 35%, var(--line));
+  background: var(--warn-soft);
+  color: var(--text);
+}
+
+.office-fallback-2d-empty {
+  display: grid;
+  place-items: center;
+  flex: 1;
+  min-height: 160px;
+  padding: 24px;
+  border: 1px dashed var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  color: var(--muted);
+  text-align: center;
+}
+
+.office-fallback-2d-empty p {
+  margin: 0;
+  max-width: 46ch;
+}
+
+.office-fallback-2d-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.office-fallback-2d-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface-solid);
+}
+
+.office-fallback-2d-card[data-tone='error'] {
+  border-color: color-mix(in srgb, var(--error) 40%, var(--line));
+}
+
+.office-fallback-2d-card[data-tone='warn'],
+.office-fallback-2d-card[data-tone='wait'] {
+  border-color: color-mix(in srgb, var(--warn) 38%, var(--line));
+}
+
+.office-fallback-2d-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.office-fallback-2d-card-identity {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.office-fallback-2d-card-identity strong {
+  font-size: .95rem;
+  overflow-wrap: anywhere;
+}
+
+.office-fallback-2d-role {
+  color: var(--muted);
+  font-size: .78rem;
+}
+
+.office-fallback-2d-status {
+  flex: none;
+}
+
+.office-fallback-2d-status[data-tone='work'] {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+
+.office-fallback-2d-status[data-tone='warn'],
+.office-fallback-2d-status[data-tone='wait'] {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.office-fallback-2d-status[data-tone='error'] {
+  background: var(--error-soft);
+  color: var(--error);
+}
+
+.office-fallback-2d-status[data-tone='observe'] {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.office-fallback-2d-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.office-fallback-2d-workspace {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--sunken);
+  color: var(--text);
+  font-size: .76rem;
+  max-width: 100%;
+}
+
+.office-fallback-2d-workspace .icon {
+  width: 13px;
+  height: 13px;
+  color: var(--muted);
+}
+
+.office-fallback-2d-workspace[data-unassigned='true'] {
+  color: var(--muted);
+}
+
+.office-fallback-2d-observed {
+  background: var(--sunken);
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+
+.office-fallback-2d-model {
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: var(--sunken);
+  color: var(--muted);
+  font-size: .75rem;
+  overflow-wrap: anywhere;
+}
+
+.office-fallback-2d-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.office-fallback-2d-task {
+  margin: 0;
+  font-size: .84rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.office-fallback-2d-detail {
+  margin: 0;
+  color: var(--muted);
+  font-size: .82rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.office-fallback-2d-approval {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--warn) 38%, var(--line));
+  border-radius: 12px;
+  background: var(--warn-soft);
+}
+
+.office-fallback-2d-approval[data-risk='high'] {
+  border-color: color-mix(in srgb, var(--error) 42%, var(--line));
+  background: var(--error-soft);
+}
+
+.office-fallback-2d-approval-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: .8rem;
+}
+
+.office-fallback-2d-approval-action {
+  margin: 0;
+  font-size: .82rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.office-fallback-2d-approval-detail {
+  margin: 0;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: var(--surface-solid);
+  color: var(--muted);
+  font-size: .76rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.office-fallback-2d-card-foot {
+  margin-top: auto;
+  display: flex;
+  justify-content: flex-start;
+  padding-top: 2px;
+}
+
+.office-fallback-2d-card-foot .button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}

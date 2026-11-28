@@ -1,8 +1,8 @@
-import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { validateConnectorHealth } from '@extalia/platform';
+import { validateConnectorHealth, validateHostWatchdogLeaseSnapshot } from '@extalia/platform';
 import { GatewayHostBridge } from '../src/gateway/index.js';
 import { GeneralScheduleManager } from '../src/schedules.js';
 import { createAgentHost, type AgentHostOptions, type AgentHostRuntime } from '../src/service.js';
@@ -536,5 +536,78 @@ describe('GatewayHostBridge & Host Gateway RPCs (Tahap 3: WP-SCH-09..11, GW-WP-1
     expect(alphaSessionReports.reports).toHaveLength(1);
     const betaInbox = bridge.listWorkspaceReports('ws-beta');
     expect(betaInbox.reports).toEqual([]);
+  });
+
+  it('reports healthy Host Watchdog lease, 6/6 Adapter SDK conformance, and WhatsApp fail-closed posture via diagnostics()', async () => {
+    const { runtime, root } = await setupHost();
+    const { host } = runtime;
+
+    const initialDiag = await host.gatewayDiagnostics!();
+    expect(initialDiag.watchdog.state).toBe('healthy');
+    expect(initialDiag.watchdog.probeOk).toBe(true);
+    expect(initialDiag.watchdog.leaseAgeMs).toBeGreaterThanOrEqual(0);
+    expect(initialDiag.conformance.provider).toBe('webhook-relay');
+    expect(initialDiag.conformance.passed).toBe(true);
+    expect(initialDiag.conformance.checks).toHaveLength(6);
+    expect(initialDiag.conformance.checks.every(check => check.passed)).toBe(true);
+    expect(initialDiag.whatsappPosture).toEqual({
+      configuredConnectors: 0,
+      enabledConnectors: 0,
+      failClosed: true,
+      allowedSignalCount: 4,
+      serviceWindowHours: 24,
+    });
+
+    const leasePath = path.join(root, 'extalia-home', 'state', 'gateway-watchdog-lease.json');
+    const leaseRaw = JSON.parse(await readFile(leasePath, 'utf8')) as unknown;
+    expect(validateHostWatchdogLeaseSnapshot(leaseRaw).ok).toBe(true);
+
+    // Register a disabled WhatsApp connector, then enable it and verify posture counts update.
+    await host.saveGatewayConnector!({
+      id: 'conn-wa-diag',
+      provider: 'whatsapp',
+      providerAccountId: 'waba-diag',
+      secretRef: 'keychain:extalia-wa-diag',
+      status: 'disabled',
+    });
+    const disabledDiag = await host.gatewayDiagnostics!();
+    expect(disabledDiag.whatsappPosture).toEqual({
+      configuredConnectors: 1,
+      enabledConnectors: 0,
+      failClosed: true,
+      allowedSignalCount: 4,
+      serviceWindowHours: 24,
+    });
+
+    await host.setGatewayConnectorStatus!('conn-wa-diag', 'connected');
+    const enabledDiag = await host.gatewayDiagnostics!();
+    expect(enabledDiag.whatsappPosture).toEqual({
+      configuredConnectors: 1,
+      enabledConnectors: 1,
+      failClosed: true,
+      allowedSignalCount: 4,
+      serviceWindowHours: 24,
+    });
+
+    // Custom hostId & watchdogLeasePath overrides write the lease snapshot to the specified path.
+    const customLeasePath = path.join(root, 'custom-watchdog', 'lease.json');
+    const customBridge = await GatewayHostBridge.open({
+      dbPath: path.join(root, 'custom-state', 'gateway.sqlite'),
+      hostId: 'custom-host-1',
+      watchdogLeasePath: customLeasePath,
+      validateWorkspace: () => undefined,
+      listRegisteredWorkspaceIds: () => new Set(['ws-custom']),
+      now: () => '2026-11-26T12:00:00.000Z',
+    });
+    bridges.push(customBridge);
+    const customDiag = await customBridge.diagnostics();
+    expect(customDiag.watchdog.state).toBe('healthy');
+    expect(customDiag.watchdog.leaseAgeMs).toBe(0);
+    expect(customDiag.conformance.passed).toBe(true);
+    expect(customDiag.conformance.checks).toHaveLength(6);
+    expect(customDiag.whatsappPosture.failClosed).toBe(true);
+    const customLeaseRaw = JSON.parse(await readFile(customLeasePath, 'utf8')) as { ownerId?: string };
+    expect(customLeaseRaw.ownerId).toBe('custom-host-1');
+    expect(validateHostWatchdogLeaseSnapshot(customLeaseRaw).ok).toBe(true);
   });
 });

@@ -1,0 +1,193 @@
+.bridge-clients-card {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.bridge-pairing-form {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--sunken);
+}
+
+.bridge-pairing-form h3,
+.bridge-clients-list-wrap h3 {
+  margin: 0;
+  font-size: .95rem;
+}
+
+.bridge-pairing-form .field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.bridge-pairing-form input[type='text'] {
+  width: 100%;
+  min-width: 0;
+}
+
+.bridge-scope-fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.bridge-scope-fieldset legend {
+  padding: 0;
+  font-weight: 600;
+}
+
+.bridge-scope-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.bridge-scope-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-solid);
+  font-size: .82rem;
+  font-weight: 550;
+  cursor: pointer;
+}
+
+.bridge-scope-pill:has(input:checked) {
+  border-color: var(--accent, currentColor);
+  background: var(--accent-soft, var(--sunken));
+}
+
+.bridge-challenge-banner,
+.bridge-token-banner {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-solid);
+}
+
+.bridge-challenge-banner {
+  border-color: var(--warn);
+  background: var(--warn-soft);
+}
+
+.bridge-token-banner {
+  border-color: var(--ok);
+  background: var(--ok-soft);
+}
+
+[data-material='liquid-glass'] .bridge-pairing-form,
+[data-material='liquid-glass'] .bridge-challenge-banner,
+[data-material='liquid-glass'] .bridge-token-banner {
+  background: var(--surface);
+}
+
+.bridge-banner-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+}
+
+.bridge-banner-head h3 {
+  margin: 0;
+  font-size: .95rem;
+}
+
+.bridge-challenge-code-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-solid);
+}
+
+.bridge-challenge-code-row code {
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: .08em;
+}
+
+.bridge-token-banner .command-line {
+  background: var(--surface-solid);
+}
+
+.bridge-token-banner .command-line code {
+  overflow-wrap: anywhere;
+}
+
+.bridge-token-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 9px;
+  background: var(--warn-soft);
+  color: var(--warn);
+  font-size: .82rem;
+  overflow-wrap: anywhere;
+}
+
+.bridge-token-warning .icon {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  margin-top: 2px;
+}
+
+.bridge-clients-list-wrap {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.bridge-client-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+
+.bridge-client-scopes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.bridge-client-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: 4px;
+  font-size: .78rem;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 480px) {
+  .bridge-pairing-form,
+  .bridge-challenge-banner,
+  .bridge-token-banner {
+    padding: 12px;
+  }
+}

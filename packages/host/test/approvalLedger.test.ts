@@ -1,6 +1,7 @@
 import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import type { ExtaliaEvent } from '@extalia/protocol';
 import {
   ExactApprovalLedger,
   canonicalArgumentsJson,
@@ -10,6 +11,7 @@ import { createAgentHost } from '../src/service.js';
 import { WORKSPACE_COMMAND_UNAVAILABLE } from '../src/tools/command.js';
 import type { CommandSandboxExecutor } from '../src/tools/commandSandbox.js';
 import { useTempDirs } from './helpers.js';
+import { mockModelDiscovery } from './modelDiscoveryFixture.js';
 
 const tempDir = useTempDirs();
 
@@ -284,6 +286,155 @@ describe('AgentHost Slice C sandbox status and approval revocation APIs', () => 
       expect(status).toEqual(verifiedSandbox.status);
     } finally {
       await verifiedRuntime.close();
+    }
+  });
+
+  it('lists approvals without raw arguments, redacts target secrets, filters by session, and reflects revocation', async () => {
+    const root = await tempDir('extalia-host-list-approvals-');
+    const project = path.join(root, 'project');
+    const data = path.join(root, 'data');
+    const home = path.join(root, 'home');
+    await mkdir(project);
+    await mkdir(home);
+
+    const sse = (chunks: unknown[]) =>
+      new Response(chunks.map(chunk => `data: ${JSON.stringify(chunk)}\n\n`).join('') + 'data: [DONE]\n\n', {
+        headers: { 'content-type': 'text/event-stream' },
+      });
+
+    const testSecretToken = ['sk', 'test', '1234567890abcdef1234'].join('-');
+    let callCounter = 0;
+    const fetch = async (url: string, init?: RequestInit): Promise<Response> => {
+      if (url.endsWith('/models')) return Response.json({ data: [{ id: 'mock-agent' }] });
+      const body = JSON.parse(String(init?.body)) as { messages: Array<{ role: string }> };
+      const last = body.messages.at(-1);
+      if (last?.role !== 'tool') {
+        callCounter++;
+        const filePath = callCounter === 1
+          ? `notes-${testSecretToken}.txt`
+          : 'second-file.txt';
+        return sse([
+          {
+            choices: [
+              {
+                delta: {
+                  tool_calls: [
+                    {
+                      index: 0,
+                      id: `call_write_${callCounter}`,
+                      function: {
+                        name: 'write_file',
+                        arguments: JSON.stringify({
+                          path: filePath,
+                          content: 'SECRET_ARGUMENT_BODY_SHOULD_NOT_LEAK',
+                        }),
+                      },
+                    },
+                  ],
+                },
+                finish_reason: 'tool_calls',
+              },
+            ],
+          },
+        ]);
+      }
+      return sse([{ choices: [{ delta: { content: 'Done.' }, finish_reason: 'stop' }] }]);
+    };
+
+    const runtime = await createAgentHost({
+      kind: 'bridge',
+      version: '0.0.0-test',
+      dataDirectory: data,
+      homeDirectory: home,
+      importHome: home,
+      env: { EXTALIA_SECRET_STORE: 'memory', PATH: process.env.PATH, HOME: home },
+      fetch,
+      modelDiscovery: mockModelDiscovery(fetch),
+      knowledge: { autoSyncAfterMs: Infinity, watcher: false },
+    });
+    const events: ExtaliaEvent[] = [];
+    runtime.host.subscribe(event => events.push(event));
+
+    try {
+      const saved = await runtime.host.saveConnection({
+        name: 'Mock',
+        preset: 'custom',
+        api: 'openai-chat',
+        baseUrl: 'http://mock.test/v1',
+        model: 'mock-agent',
+        credential: { kind: 'none' },
+        features: { memory: 'off', skills: 'off' },
+      });
+      await runtime.host.saveWorkspace({
+        name: 'Project',
+        projectLocation: project,
+        connectionId: saved.connections[0]!.id,
+        permissions: { fileWrite: 'ask', commands: 'ask' },
+      });
+      await runtime.host.completeSetup();
+      const workspaceId = (await runtime.host.getState()).workspaces[0]!.id;
+
+      const sessionA = await runtime.host.createSession(workspaceId);
+      const sessionB = await runtime.host.createSession(workspaceId);
+
+      // Trigger first pending approval on sessionA (with credential-shaped target)
+      await runtime.host.sendPrompt(sessionA.id, 'Write secret note');
+      let approvalAId = '';
+      await vi.waitFor(() => {
+        const event = events.find(item => item.sessionId === sessionA.id && item.body.type === 'approval.requested');
+        expect(event).toBeDefined();
+        approvalAId = (event!.body as { approvalId: string }).approvalId;
+      }, { timeout: 5_000, interval: 10 });
+
+      const listedA = await runtime.host.listApprovals!(sessionA.id);
+      expect(listedA).toHaveLength(1);
+      expect(listedA[0]).toMatchObject({
+        approvalId: approvalAId,
+        sessionId: sessionA.id,
+        workspaceId,
+        toolName: 'write_file',
+        access: 'write',
+        target: 'notes-[redacted].txt',
+        state: 'pending',
+      });
+      expect('argumentsJson' in listedA[0]!).toBe(false);
+      expect(JSON.stringify(listedA)).not.toContain('SECRET_ARGUMENT_BODY_SHOULD_NOT_LEAK');
+      expect(JSON.stringify(listedA)).not.toContain(testSecretToken);
+
+      // Revoke immediately updates state in listApprovals
+      await runtime.host.revokeApproval!(sessionA.id, approvalAId);
+      await vi.waitFor(() => expect(runtime.isBusy()).toBe(false), { timeout: 5_000, interval: 10 });
+
+      const afterRevoke = await runtime.host.listApprovals!(sessionA.id);
+      expect(afterRevoke[0]).toMatchObject({
+        approvalId: approvalAId,
+        state: 'revoked',
+        revokeReason: 'revoked by user',
+      });
+
+      // Trigger second approval on sessionB and verify filtering + newest-first order
+      await runtime.host.sendPrompt(sessionB.id, 'Write second note');
+      let approvalBId = '';
+      await vi.waitFor(() => {
+        const event = events.find(item => item.sessionId === sessionB.id && item.body.type === 'approval.requested');
+        expect(event).toBeDefined();
+        approvalBId = (event!.body as { approvalId: string }).approvalId;
+      }, { timeout: 5_000, interval: 10 });
+
+      const allApprovals = await runtime.host.listApprovals!();
+      expect(allApprovals).toHaveLength(2);
+      expect(allApprovals[0]!.approvalId).toBe(approvalBId);
+      expect(allApprovals[1]!.approvalId).toBe(approvalAId);
+
+      const onlyB = await runtime.host.listApprovals!(sessionB.id);
+      expect(onlyB.map(item => item.approvalId)).toEqual([approvalBId]);
+
+      await expect(runtime.host.listApprovals!('   ')).rejects.toThrow(/Invalid session filter/);
+
+      await runtime.host.resolveApproval(sessionB.id, approvalBId, 'reject');
+      await vi.waitFor(() => expect(runtime.isBusy()).toBe(false), { timeout: 5_000, interval: 10 });
+    } finally {
+      await runtime.close();
     }
   });
 });

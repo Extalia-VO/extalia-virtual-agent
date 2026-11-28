@@ -1,4 +1,6 @@
+import path from 'node:path';
 import type { AgentHostOptions, AgentHostRuntime, HookIngest } from '@extalia/host';
+import { BridgePairingStore } from './bridge/pairing';
 import { BridgeRequestError, startBridgeServer, type BridgeServer } from './bridge/server';
 import { FORWARDED_SIGNALS, relaunchPlan, supervise, type SignalSource, type SupervisedChild } from './relaunch';
 import { installBlocker, type Updater } from './update';
@@ -58,11 +60,18 @@ export async function startBridge(options: StartOptions, deps: StartDeps): Promi
   let relaunch: () => void = () => undefined;
 
   let server: BridgeServer;
+  const pairing = await BridgePairingStore.open({
+    filePath: path.join(deps.dataDirectory, 'state', 'bridge-grants.json'),
+  }).catch(error => {
+    deps.err(`Scoped Bridge pairing disabled: ${message(error)}`);
+    return undefined;
+  });
   try {
     server = await startBridgeServer({
       port: options.port,
       webRoot: deps.webRoot,
       ...(deps.token ? { token: deps.token } : {}),
+      ...(pairing ? { pairing } : {}),
       agents: () => runtimeReady.then(ready => ready.host),
       codexPermissions: async (request, response) => {
         const ready = await runtimeReady.catch(() => undefined);

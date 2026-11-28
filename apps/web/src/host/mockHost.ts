@@ -1,20 +1,40 @@
-import { DEFAULT_PERMISSIONS, modelPlanningBasis, applyTeamSpec, defaultOrchestration, generateFullName, initialSessionTeam, parseTeamSpec, withDistinctMemberNames, pickTeamModels, planModelOrder, planTeamHeuristic, presetById, workspaceCrossAccess, type AgentTeam, type Workspace } from '@extalia/core';
+import {
+  DEFAULT_PERMISSIONS, modelPlanningBasis, applyTeamSpec, defaultOrchestration, generateFullName, initialSessionTeam,
+  parseTeamSpec, withDistinctMemberNames, pickTeamModels, planModelOrder, planTeamHeuristic, presetById, workspaceCrossAccess,
+  OWNED_DATA_SNAPSHOT_FORMAT, OWNED_DATA_SNAPSHOT_SCHEMA_VERSION, canonicalSnapshotJson,
+  normalizeApplyOwnedDataRestoreInput, normalizeOwnedDataBackupId, normalizeOwnedDataSnapshotSelection,
+  sanitizeSnapshotValue, sha256Utf8Hex, snapshotManifestDigestInput, summarizeSnapshotSectionCounts, verifyOwnedDataSnapshotIntegrity,
+  type AgentTeam, type Workspace,
+} from '@extalia/core';
 import type {
   AgentAppConnection, AgentAppConnectOptions, AgentAppConnectPlan, AgentAppConnectResult, AgentAppDisconnectResult,
-  AgentAppId, AgentAppRecoveryReport, AgentAppTestResult, AgentHostApi, ApprovalDecisionInput, ChatSystemReportsView, CommandSandboxStatus, ConnectionInput, ConnectionView,
-  ConnectorHealth, GatewayAuditEntryView, GatewayConfirmLinkInput, GatewayConnectorSaveInput, GatewayConnectorState, GatewayConnectorView,
-  GatewayIssueChallengeInput, GatewayLinkChallengeView, GatewayOverview, GatewayPrincipalLinkView, GatewayRouteSaveInput, GatewayRouteView,
-  GeneralSchedule, GeneralScheduleCatalog, HealthDimensionStatus, HookIngestStatus, HostState, ModelChoices, ModelSelectionGuide, NextRunPreview,
-  Platform, ProfilePreferences, ProjectGitInspection, ProjectPlannedAction, ProjectProvisionApplyInput,
+  AgentAppId, AgentAppRecoveryReport, AgentAppTestResult, AgentHostApi, ApprovalDecisionInput, ApplyOwnedDataRestoreInput,
+  BridgeClientGrantView, BridgePairingCapability, BridgePairingChallengeView,
+  ChatSystemReportsView, CommandSandboxStatus, ConnectionInput, ConnectionView,
+  ConnectorHealth, ExactApprovalView, GatewayAuditEntryView, GatewayConfirmLinkInput, GatewayConnectorSaveInput, GatewayConnectorState, GatewayConnectorView,
+  GatewayDiagnosticsView, GatewayIssueChallengeInput, GatewayLinkChallengeView, GatewayOverview, GatewayPrincipalLinkView, GatewayRouteSaveInput, GatewayRouteView,
+  GeneralSchedule, GeneralScheduleCatalog, GrantMissionWaiverInput, HealthDimensionStatus, HookIngestStatus, HostMissionRun, HostState,
+  MissionAuthorityOverview, MissionEvidenceRecord, MissionReconciliationCommitInput, MissionReconciliationCommitResult,
+  MissionReconciliationPreview, MissionReconciliationReceipt, MissionWaiverRecord, ModelChoices, ModelSelectionGuide, NextRunPreview,
+  OperatingProfile, OwnedDataBackupSummary, OwnedDataRestoreApplyErrorCode, OwnedDataRestoreApplyResult,
+  OwnedDataRestoreConflict, OwnedDataRestorePreview, OwnedDataSnapshotBundle, OwnedDataSnapshotEntry,
+  OwnedDataSnapshotExportPreview, OwnedDataSnapshotExportResult, OwnedDataSnapshotManifest, OwnedDataSnapshotSection,
+  OwnedDataSnapshotSelection, Platform, ProfilePreferences, ProjectGitInspection, ProjectPlannedAction, ProjectProvisionApplyInput,
   ProjectProvisionPreview, ProjectProvisionPreviewInput, ProjectProvisionReceipt, ProjectProvisionStepReceipt,
-  ProjectProvisionWarning, SaveGeneralScheduleInput, ScheduleDeliveryV1, ScheduleReviewDecision,
+  ProjectProvisionWarning, RecordMissionEvidenceInput, RollbackOwnedDataRestoreResult, SaveGeneralScheduleInput, ScheduleDeliveryV1, ScheduleReviewDecision,
   ScheduleRunDetail, ScheduleRunFilter, ScheduleRunPage, ScheduleRunV1, ScheduleTrigger,
   SessionMovePreview, SessionSummary, UpdateCapability, UpdateStatus, UserProfile,
-  WorkspaceReportsInboxView, WorkspaceSystemReport,
+  WorkerLeaseReconcileAction, WorkerLeaseView, WorkspaceReportsInboxView, WorkspaceSystemReport,
 } from '@extalia/platform';
 import {
-  isProtectedBranchName, nextScheduleRunAt, normalizeModelSelectionGuideInput, normalizeSaveGeneralSchedule,
-  normalizeScheduleReviewDecision, normalizeScheduleRunFilter, previewScheduleNextRuns as computeSchedulePreview,
+  GATEWAY_ADAPTER_SDK_VERSION,
+  computeMissionReviewDigest, deriveEvidenceAcceptance, evaluateMissionTaskGates,
+  isProtectedBranchName, nextScheduleRunAt, normalizeApprovalSessionFilter,
+  normalizeBridgeClientId, normalizeBridgeClientName, normalizeBridgeClientScopes,
+  normalizeGrantMissionWaiverInput, normalizeMissionReconciliationCommitInput,
+  normalizeModelSelectionGuideInput, normalizeRecordMissionEvidenceInput, normalizeSaveGeneralSchedule,
+  normalizeScheduleReviewDecision, normalizeScheduleRunFilter, normalizeWaiverId,
+  normalizeWorkerLeaseId, normalizeWorkerLeaseReconcileAction, previewScheduleNextRuns as computeSchedulePreview,
   PROJECT_SCAFFOLD_TEMPLATES, sanitizeGatewayText, validateProjectFolderName,
   attachmentLimit, classifyAttachment, normalizeAgentTeam, normalizeIntegrationGate, normalizePromptLearnSkill,
   normalizeSessionOptions, normalizeTeamPlanRequest, sanitizeAttachmentName, type PromptAttachment,
@@ -231,6 +251,8 @@ function createMockAgents(options: MockOptions): AgentHostApi {
   const listeners = new Set<(event: ExtaliaEvent) => void>();
   const runs = new Map<string, Run>();
   const pending = new Map<string, PendingApproval>();
+  const mockApprovals = new Map<string, ExactApprovalView>();
+  const mockWorkerLeases: WorkerLeaseView[] = [];
   const grants = new Map<string, Set<'write' | 'execute'>>();
   const storedSecrets = new Set<string>();
   /** Subagent teams per session (kept with the session record on a real host). */
@@ -320,13 +342,46 @@ function createMockAgents(options: MockOptions): AgentHostApi {
       const mode = access === 'write' ? permissionsFor(id).fileWrite : permissionsFor(id).commands;
       if (mode === 'allow' || grants.get(id)?.has(access)) return true;
       const approvalId = nextId('approval');
+      const issuedAt = at().getTime();
+      const toolName = access === 'write' ? 'edit_file' : 'run_command';
+      const actionDigest = `sha256:${approvalId.replace(/[^a-z0-9]/gi, '').padEnd(64, 'a').slice(0, 64)}`;
+      mockApprovals.set(approvalId, {
+        approvalId,
+        sessionId: id,
+        workspaceId: summary.workspaceId,
+        toolName,
+        access,
+        target: request.detail,
+        generation: 1,
+        actionDigest,
+        state: 'pending',
+        issuedAt,
+        expiresAt: issuedAt + 15 * 60_000,
+      });
       send({ type: 'agent.state', state: 'waiting', summary: request.action });
       send({ type: 'approval.requested', approvalId, ...request });
       summary.pendingApprovalId = approvalId;
       const decision = run.decide ?? await new Promise<ApprovalDecisionInput | typeof CANCELLED>(resolve => pending.set(approvalId, { sessionId: id, access, resolve }));
       pending.delete(approvalId);
       delete summary.pendingApprovalId;
-      if (decision === CANCELLED) throw CANCELLED;
+      if (decision === CANCELLED) {
+        const current = mockApprovals.get(approvalId);
+        if (current && current.state !== 'revoked') {
+          mockApprovals.set(approvalId, { ...current, state: 'revoked', revokedAt: Date.now(), revokeReason: 'cancelled' });
+        }
+        throw CANCELLED;
+      }
+      const current = mockApprovals.get(approvalId);
+      if (current) {
+        const resolvedAt = at().getTime();
+        mockApprovals.set(approvalId, {
+          ...current,
+          state: decision === 'reject' ? 'rejected' : run.decide ? 'consumed' : 'granted',
+          decision,
+          resolvedAt,
+          ...(decision !== 'reject' && run.decide ? { consumedAt: resolvedAt } : {}),
+        });
+      }
       if (!run.decide) {
         // Seeded sessions replay instantly; everything after a real decision runs at normal speed.
         run.pace = 1;
@@ -620,6 +675,197 @@ function createMockAgents(options: MockOptions): AgentHostApi {
       const otp = addSession(app);
       applyPromptTeam(otp, MOCK_OTP_TEAM_PROMPT);
       startTurn(otp, MOCK_OTP_TEAM_PROMPT, { clock: past(1), decide: 'once' });
+    }
+    const sampleSessionId = state.sessions[0]?.id ?? 'session-demo';
+    const sampleIssuedAt = Date.now() - 5 * 60_000;
+    mockApprovals.set('approval-seed-granted', {
+      approvalId: 'approval-seed-granted',
+      sessionId: sampleSessionId,
+      workspaceId: app.id,
+      toolName: 'run_command',
+      access: 'execute',
+      target: 'npm run test:coverage',
+      generation: 2,
+      actionDigest: 'sha256:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
+      state: 'granted',
+      decision: 'once',
+      issuedAt: sampleIssuedAt,
+      resolvedAt: sampleIssuedAt + 4_000,
+      expiresAt: sampleIssuedAt + 15 * 60_000,
+    });
+    mockApprovals.set('approval-seed-consumed', {
+      approvalId: 'approval-seed-consumed',
+      sessionId: sampleSessionId,
+      workspaceId: app.id,
+      toolName: 'edit_file',
+      access: 'write',
+      target: 'package.json',
+      generation: 1,
+      actionDigest: 'sha256:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
+      state: 'consumed',
+      decision: 'once',
+      issuedAt: sampleIssuedAt - 10 * 60_000,
+      resolvedAt: sampleIssuedAt - 9 * 60_000,
+      consumedAt: sampleIssuedAt - 8 * 60_000,
+      expiresAt: sampleIssuedAt + 5 * 60_000,
+    });
+    mockWorkerLeases.push(
+      {
+        leaseId: 'wl-a1b2c3d4e5f6',
+        ownerId: 'mission-worker-1',
+        taskId: 'stabilize-test',
+        sessionId: sampleSessionId,
+        fencingToken: 7,
+        pid: 41208,
+        processGroupId: 41208,
+        status: 'quarantined',
+        settlement: 'unknown',
+        quarantineReason: 'Worker process exited during restart before reporting final settlement; inspect worktree before continuing.',
+        acquiredAt: new Date(Date.now() - 18 * 60_000).toISOString(),
+        heartbeatAt: new Date(Date.now() - 14 * 60_000).toISOString(),
+        leaseExpiresAt: new Date(Date.now() - 12 * 60_000).toISOString(),
+      },
+      {
+        leaseId: 'wl-001122334455',
+        ownerId: 'mission-worker-2',
+        taskId: 'fix-validation',
+        sessionId: sampleSessionId,
+        fencingToken: 6,
+        status: 'settled',
+        settlement: 'completed',
+        acquiredAt: new Date(Date.now() - 30 * 60_000).toISOString(),
+        heartbeatAt: new Date(Date.now() - 26 * 60_000).toISOString(),
+        leaseExpiresAt: new Date(Date.now() - 20 * 60_000).toISOString(),
+        settledAt: new Date(Date.now() - 25 * 60_000).toISOString(),
+      },
+    );
+  }
+
+  // V2-04 / V2-06: Per-mission authority state (evidence, waivers, reconciliation receipts & overrides).
+  const missionAuthorityRuns = new Map<string, HostMissionRun>();
+  const missionEvidence = new Map<string, MissionEvidenceRecord[]>();
+  const missionWaivers = new Map<string, MissionWaiverRecord[]>();
+  const missionReceipts = new Map<string, MissionReconciliationReceipt>();
+  let missionAuthoritySeq = 0;
+
+  const missionAuthorityKey = (sessionId: string, missionId: string) => `${sessionId}:${missionId}`;
+
+  const resolveMissionRun = (sessionId: string, missionId: string): HostMissionRun => {
+    const key = missionAuthorityKey(sessionId, missionId);
+    const override = missionAuthorityRuns.get(key);
+    if (override) return structuredClone(override);
+    return missionHost.run(sessionId, missionId);
+  };
+
+  const leasesForMission = (run: HostMissionRun) => {
+    const taskIds = new Set(run.tasks.map(task => task.taskId));
+    const matching = mockWorkerLeases.filter(
+      lease => lease.sessionId === run.sessionId && lease.taskId !== undefined && taskIds.has(lease.taskId),
+    );
+    return {
+      activeLeaseIds: matching.filter(lease => lease.status === 'active').map(lease => lease.leaseId),
+      quarantinedLeaseIds: matching.filter(lease => lease.status === 'quarantined').map(lease => lease.leaseId),
+    };
+  };
+
+  const buildMissionAuthorityOverview = (run: HostMissionRun): MissionAuthorityOverview => {
+    const key = missionAuthorityKey(run.sessionId, run.id);
+    const evidence = missionEvidence.get(key) ?? [];
+    const waivers = missionWaivers.get(key) ?? [];
+    const receipt = missionReceipts.get(key);
+    const { activeLeaseIds, quarantinedLeaseIds } = leasesForMission(run);
+    const reviewDigest = computeMissionReviewDigest({
+      missionId: run.id,
+      sessionId: run.sessionId,
+      workspaceId: run.workspaceId,
+      state: run.state,
+      updatedAt: run.updatedAt,
+      ...(run.recovery?.source ? { recoverySource: run.recovery.source } : {}),
+      tasks: run.tasks.map(task => ({
+        taskId: task.taskId,
+        state: task.state,
+        ...(task.verification !== undefined ? { verification: task.verification } : {}),
+      })),
+      activeLeaseIds,
+      quarantinedLeaseIds,
+      evidenceDigests: evidence.map(item => `${item.evidenceId}:${item.contentSha256}:${item.acceptance}`),
+      waiverIds: waivers.map(waiver => `${waiver.waiverId}:${waiver.revokedAt ? 'revoked' : 'active'}`),
+    });
+    const { taskGates, verifiedComplete } = evaluateMissionTaskGates(run, evidence, waivers);
+    return structuredClone({
+      missionId: run.id,
+      sessionId: run.sessionId,
+      workspaceId: run.workspaceId,
+      reviewDigest,
+      verifiedComplete,
+      ...(receipt ? { reconciliationReceipt: receipt } : {}),
+      evidence,
+      waivers,
+      taskGates,
+    });
+  };
+
+  if (options.missions && options.seed === 'ready') {
+    const recoverySession = state.sessions.find(item => item.control === 'managed' && !item.runtime);
+    if (recoverySession) {
+      const recoveryMissionId = '90000000-0000-4000-8000-000000000001';
+      const verifyTaskId = '90000000-0000-4000-8000-000000000101';
+      const releaseTaskId = '90000000-0000-4000-8000-000000000102';
+      const recoveredAt = new Date(Date.now() - 12 * 60_000).toISOString();
+      const recoveryRun: HostMissionRun = {
+        id: recoveryMissionId,
+        sessionId: recoverySession.id,
+        workspaceId: recoverySession.workspaceId ?? 'workspace-demo',
+        title: 'Verify release checklist after restart',
+        state: 'recovering',
+        createdAt: new Date(Date.now() - 18 * 60_000).toISOString(),
+        updatedAt: recoveredAt,
+        transient: false,
+        recovery: { source: 'host-restart', at: recoveredAt },
+        tasks: [
+          {
+            id: 'verify-build',
+            taskId: verifyTaskId,
+            agentId: '90000000-0000-4000-8000-000000000201',
+            title: 'Verify build artifacts',
+            connectionId: 'connection-seed',
+            model: 'claude-opus-5-5',
+            state: 'completed',
+            verification: 'unverified',
+            evidenceIds: ['ev-seed-observed'],
+          },
+          {
+            id: 'release-check',
+            taskId: releaseTaskId,
+            agentId: '90000000-0000-4000-8000-000000000202',
+            title: 'Prepare release summary',
+            dependsOn: ['verify-build'],
+            connectionId: 'connection-seed',
+            model: 'claude-opus-5-5',
+            state: 'unknown',
+            reason: 'recovery-interrupted',
+            evidenceIds: [],
+          },
+        ],
+      };
+      const key = missionAuthorityKey(recoverySession.id, recoveryMissionId);
+      missionAuthorityRuns.set(key, recoveryRun);
+      missionEvidence.set(key, [
+        {
+          evidenceId: 'ev-seed-observed',
+          missionId: recoveryMissionId,
+          sessionId: recoverySession.id,
+          workspaceId: recoveryRun.workspaceId,
+          taskId: verifyTaskId,
+          sourceKind: 'observed-claim',
+          validation: 'passed',
+          acceptance: 'unverified',
+          contentSha256: 'a'.repeat(64),
+          summary: 'Worker reported build checks passed without host-verified artifact.',
+          recordedAt: recoveredAt,
+          verifiedByHost: false,
+        },
+      ]);
     }
   }
 
@@ -1312,9 +1558,636 @@ function createMockAgents(options: MockOptions): AgentHostApi {
     if (/^(?:bot|bearer)\s+/i.test(trimmed)) return true;
     return false;
   };
+  interface MockRestoreBackupRecord {
+    summary: OwnedDataBackupSummary;
+    snapshotData: {
+      profile: UserProfile;
+      state: HostState;
+      events: Map<string, ExtaliaEvent[]>;
+      teams: Map<string, AgentTeam>;
+      mockSchedules: GeneralSchedule[];
+      restoredOperatingProfiles: Map<string, OperatingProfile>;
+      suppressedOperatingProfileIds: Set<string>;
+      baseOperatingProfileIds: Set<string>;
+      restoredMissions: Map<string, HostMissionRun>;
+    };
+  }
+
+  const restoredOperatingProfiles = new Map<string, OperatingProfile>();
+  const suppressedOperatingProfileIds = new Set<string>();
+  const restoredMissions = new Map<string, HostMissionRun>();
+  const mockRestoreBackups: MockRestoreBackupRecord[] = [];
+  let restoreBackupSeq = 0;
+
+  const listMockOperatingProfiles = async (): Promise<OperatingProfile[]> => {
+    const base = await operatingProfiles.api.listOperatingProfiles();
+    const merged = new Map<string, OperatingProfile>();
+    for (const item of base) {
+      if (!suppressedOperatingProfileIds.has(item.id)) merged.set(item.id, item);
+    }
+    for (const [id, item] of restoredOperatingProfiles) {
+      if (!suppressedOperatingProfileIds.has(id)) merged.set(id, structuredClone(item));
+    }
+    return [...merged.values()];
+  };
+
+  const buildOwnedSnapshotBundle = async (rawSelection: OwnedDataSnapshotSelection): Promise<{
+    selection: OwnedDataSnapshotSelection;
+    bundle: OwnedDataSnapshotBundle;
+    bundleJson: string;
+    byteLength: number;
+    omittedSecretFields: number;
+  }> => {
+    const selection = normalizeOwnedDataSnapshotSelection(rawSelection);
+    const entries: OwnedDataSnapshotEntry[] = [];
+    let omittedSecretFields = 0;
+
+    const pushEntry = (section: OwnedDataSnapshotEntry['section'], id: string, rawPayload: unknown) => {
+      const sanitized = sanitizeSnapshotValue(rawPayload);
+      omittedSecretFields += sanitized.omittedSecretFields;
+      const payload = (sanitized.value && typeof sanitized.value === 'object' && !Array.isArray(sanitized.value)
+        ? sanitized.value
+        : { value: sanitized.value }) as Record<string, unknown>;
+      entries.push({
+        section,
+        id,
+        sha256: sha256Utf8Hex(canonicalSnapshotJson(payload)),
+        payload,
+      });
+    };
+
+    const workspaceFilter = selection.workspaceIds ? new Set(selection.workspaceIds) : null;
+    const sessionFilter = selection.sessionIds ? new Set(selection.sessionIds) : null;
+    const missionFilter = selection.missionIds ? new Set(selection.missionIds) : null;
+
+    for (const section of selection.sections) {
+      if (section === 'settings') {
+        pushEntry('settings', 'profile', {
+          profile: state.profile,
+          preferences: profile.preferences,
+          workflow: state.workflow ?? 'managed',
+          connections: state.connections.map(item => ({
+            id: item.id,
+            name: item.name,
+            preset: item.preset,
+            api: item.api,
+            baseUrl: item.baseUrl,
+            model: item.model,
+            credential: item.credential,
+            features: item.features,
+          })),
+        });
+      } else if (section === 'workspaces') {
+        for (const workspace of state.workspaces) {
+          if (workspaceFilter && !workspaceFilter.has(workspace.id)) continue;
+          pushEntry('workspaces', workspace.id, workspace);
+        }
+      } else if (section === 'operatingProfiles') {
+        const profilesList = await listMockOperatingProfiles();
+        for (const item of profilesList) {
+          pushEntry('operatingProfiles', item.id, item);
+        }
+      } else if (section === 'sessions') {
+        for (const item of state.sessions) {
+          if (item.control !== 'managed') continue;
+          if (sessionFilter && !sessionFilter.has(item.id)) continue;
+          pushEntry('sessions', item.id, {
+            ...item,
+            events: events.get(item.id) ?? [],
+          });
+        }
+      } else if (section === 'missions') {
+        const seenMissions = new Set<string>();
+        for (const item of state.sessions) {
+          if (item.control !== 'managed') continue;
+          for (const run of missionHost.list(item.id)) {
+            if (seenMissions.has(run.id)) continue;
+            if (missionFilter && !missionFilter.has(run.id)) continue;
+            seenMissions.add(run.id);
+            pushEntry('missions', run.id, run);
+          }
+        }
+        for (const run of restoredMissions.values()) {
+          if (seenMissions.has(run.id)) continue;
+          if (missionFilter && !missionFilter.has(run.id)) continue;
+          seenMissions.add(run.id);
+          pushEntry('missions', run.id, run);
+        }
+      } else if (section === 'schedules') {
+        for (const item of mockSchedules) {
+          if (workspaceFilter && !workspaceFilter.has(item.workspaceId)) continue;
+          pushEntry('schedules', item.id, item);
+        }
+      }
+    }
+
+    const manifestHeader = {
+      format: OWNED_DATA_SNAPSHOT_FORMAT,
+      schemaVersion: OWNED_DATA_SNAPSHOT_SCHEMA_VERSION,
+      selection,
+    } as const;
+    const manifest: OwnedDataSnapshotManifest = {
+      ...manifestHeader,
+      provenance: {
+        appVersion: APP_VERSION,
+        exportedAt: iso(),
+        format: OWNED_DATA_SNAPSHOT_FORMAT,
+        schemaVersion: OWNED_DATA_SNAPSHOT_SCHEMA_VERSION,
+        hostKind: options.host,
+      },
+      entryCount: entries.length,
+      manifestSha256: sha256Utf8Hex(snapshotManifestDigestInput(manifestHeader, entries)),
+      secretCanaryChecked: true,
+    };
+    const bundle: OwnedDataSnapshotBundle = { manifest, entries };
+    const bundleJson = JSON.stringify(bundle, null, 2);
+    const byteLength = new TextEncoder().encode(bundleJson).byteLength;
+    return { selection, bundle, bundleJson, byteLength, omittedSecretFields };
+  };
+
+  const analyzeOwnedRestore = async (
+    bundle: OwnedDataSnapshotBundle,
+    integrityConflicts: readonly OwnedDataRestoreConflict[],
+  ) => {
+    const existingWorkspaces = new Set(state.workspaces.map(item => item.id));
+    const existingProfiles = new Set((await listMockOperatingProfiles()).map(item => item.id));
+    const existingSessions = new Set(state.sessions.map(item => item.id));
+    const existingSchedules = new Set(mockSchedules.map(item => item.id));
+    const existingMissions = new Set<string>(restoredMissions.keys());
+    for (const item of state.sessions) {
+      for (const run of missionHost.list(item.id)) existingMissions.add(run.id);
+    }
+    const archiveWorkspaces = new Set(
+      bundle.entries.filter(entry => entry.section === 'workspaces').map(entry => entry.id),
+    );
+
+    const conflicts: OwnedDataRestoreConflict[] = [...integrityConflicts];
+    const entryPlans: Array<{
+      entry: OwnedDataSnapshotEntry;
+      collides: boolean;
+      missingDependency: boolean;
+    }> = [];
+    let wouldAdd = 0;
+    let wouldCollide = 0;
+
+    for (const entry of bundle.entries) {
+      const collides = entry.section === 'workspaces' ? existingWorkspaces.has(entry.id)
+        : entry.section === 'operatingProfiles' ? existingProfiles.has(entry.id)
+        : entry.section === 'sessions' ? existingSessions.has(entry.id)
+        : entry.section === 'missions' ? existingMissions.has(entry.id)
+        : entry.section === 'schedules' ? existingSchedules.has(entry.id)
+        : false;
+
+      let missingDependency = false;
+      if (entry.section === 'sessions' || entry.section === 'missions' || entry.section === 'schedules') {
+        const rawWsId = entry.payload.workspaceId;
+        const wsId = typeof rawWsId === 'string' && rawWsId.trim() ? rawWsId : undefined;
+        if (wsId && !existingWorkspaces.has(wsId) && !archiveWorkspaces.has(wsId)) {
+          missingDependency = true;
+          conflicts.push({
+            kind: 'missing-dependency',
+            section: entry.section,
+            id: entry.id,
+            detail: `References missing workspace "${wsId}".`,
+          });
+        }
+      }
+
+      if (collides) {
+        wouldCollide += 1;
+        conflicts.push({
+          kind: 'id-collision',
+          section: entry.section,
+          id: entry.id,
+          detail: `Existing ${entry.section} entry "${entry.id}" already exists in this profile.`,
+        });
+      } else if (!missingDependency) {
+        wouldAdd += 1;
+      }
+
+      entryPlans.push({ entry, collides, missingDependency });
+    }
+
+    return { conflicts, wouldAdd, wouldCollide, entryPlans };
+  };
+
+  const countLiveSnapshotRecords = (operatingProfilesCount: number): number =>
+    1
+    + state.workspaces.length
+    + operatingProfilesCount
+    + state.sessions.length
+    + mockSchedules.length
+    + restoredMissions.size;
+
   return {
     ...operatingProfiles.api,
     ...mockQueues,
+    async listOperatingProfiles() {
+      return listMockOperatingProfiles();
+    },
+    async previewOwnedDataExport(selection: OwnedDataSnapshotSelection): Promise<OwnedDataSnapshotExportPreview> {
+      await latency();
+      const built = await buildOwnedSnapshotBundle(selection);
+      return {
+        selection: built.selection,
+        totalEntries: built.bundle.entries.length,
+        sectionCounts: summarizeSnapshotSectionCounts(built.bundle.entries),
+        estimatedBytes: built.byteLength,
+        excludesSecrets: true,
+        excludesVendorSources: true,
+        warnings: built.bundle.entries.length === 0 ? ['No owned entries matched the selected snapshot sections.'] : [],
+      };
+    },
+    async exportOwnedDataSnapshot(selection: OwnedDataSnapshotSelection): Promise<OwnedDataSnapshotExportResult> {
+      await latency();
+      const built = await buildOwnedSnapshotBundle(selection);
+      return {
+        bundle: built.bundle,
+        bundleJson: built.bundleJson,
+        sha256: sha256Utf8Hex(built.bundleJson),
+        byteLength: built.byteLength,
+        omittedSecretFields: built.omittedSecretFields,
+      };
+    },
+    async previewOwnedDataRestore(bundleJson: string): Promise<OwnedDataRestorePreview> {
+      await latency();
+      const integrity = verifyOwnedDataSnapshotIntegrity(bundleJson, sha256Utf8Hex);
+      if (!integrity.bundle) {
+        return {
+          valid: false,
+          dryRunOnly: true,
+          ...(integrity.schemaVersion !== undefined ? { schemaVersion: integrity.schemaVersion } : {}),
+          entryCount: 0,
+          sectionCounts: {},
+          wouldAdd: 0,
+          wouldCollide: 0,
+          checksumVerified: integrity.checksumVerified,
+          secretFreeVerified: integrity.secretFreeVerified,
+          conflicts: integrity.conflicts,
+          warnings: [],
+        };
+      }
+
+      const bundle = integrity.bundle;
+      const analysis = await analyzeOwnedRestore(bundle, integrity.conflicts);
+
+      return {
+        valid: analysis.conflicts.length === 0,
+        dryRunOnly: true,
+        schemaVersion: integrity.schemaVersion ?? bundle.manifest.schemaVersion,
+        entryCount: bundle.entries.length,
+        sectionCounts: summarizeSnapshotSectionCounts(bundle.entries),
+        wouldAdd: analysis.wouldAdd,
+        wouldCollide: analysis.wouldCollide,
+        checksumVerified: integrity.checksumVerified,
+        secretFreeVerified: integrity.secretFreeVerified,
+        conflicts: analysis.conflicts,
+        warnings: [],
+      };
+    },
+    async applyOwnedDataRestore(rawInput: ApplyOwnedDataRestoreInput): Promise<OwnedDataRestoreApplyResult> {
+      await latency();
+      const input = normalizeApplyOwnedDataRestoreInput(rawInput);
+
+      if (!input.confirmBackup) {
+        return {
+          ok: false,
+          code: 'confirmation-required',
+          rolledBack: false,
+          conflicts: [],
+          detail: 'Pre-restore backup confirmation is required before applying restore.',
+        };
+      }
+
+      const actualBundleSha256 = sha256Utf8Hex(input.bundleJson);
+      if (actualBundleSha256 !== input.expectedBundleSha256) {
+        return {
+          ok: false,
+          code: 'digest-mismatch',
+          rolledBack: false,
+          conflicts: [],
+          detail: 'Snapshot archive SHA-256 digest does not match expectedBundleSha256.',
+        };
+      }
+
+      const integrity = verifyOwnedDataSnapshotIntegrity(input.bundleJson, sha256Utf8Hex);
+      if (!integrity.ok || !integrity.bundle) {
+        const firstKind = integrity.conflicts[0]?.kind;
+        const code: OwnedDataRestoreApplyErrorCode = firstKind === 'secret-detected'
+          ? 'secret-detected'
+          : firstKind === 'schema-mismatch'
+            ? 'schema-mismatch'
+            : firstKind === 'checksum-mismatch'
+              ? 'checksum-mismatch'
+              : firstKind === 'id-collision'
+                ? 'id-collision'
+                : 'corrupt-archive';
+        return {
+          ok: false,
+          code,
+          rolledBack: false,
+          conflicts: integrity.conflicts,
+          detail: integrity.conflicts[0]?.detail ?? 'Snapshot archive failed integrity verification.',
+        };
+      }
+
+      const bundle = integrity.bundle;
+      const analysis = await analyzeOwnedRestore(bundle, integrity.conflicts);
+      const missingConflicts = analysis.conflicts.filter(item => item.kind === 'missing-dependency');
+      if (missingConflicts.length > 0) {
+        return {
+          ok: false,
+          code: 'missing-dependency',
+          rolledBack: false,
+          conflicts: analysis.conflicts,
+          detail: missingConflicts[0]?.detail ?? 'Snapshot archive has unresolved workspace dependencies.',
+        };
+      }
+
+      const collisionConflicts = analysis.conflicts.filter(item => item.kind === 'id-collision');
+      if (input.conflictPolicy === 'fail-on-collision' && collisionConflicts.length > 0) {
+        return {
+          ok: false,
+          code: 'id-collision',
+          rolledBack: false,
+          conflicts: analysis.conflicts,
+          detail: collisionConflicts[0]?.detail ?? 'Restore refused because existing records collide.',
+        };
+      }
+
+      const baseProfiles = await operatingProfiles.api.listOperatingProfiles();
+      const currentProfiles = await listMockOperatingProfiles();
+      const createdAt = iso();
+      const backupId = `bk-${sha256Utf8Hex(`${actualBundleSha256}:${++restoreBackupSeq}:${createdAt}`).slice(0, 12)}`;
+
+      const backupRecord: MockRestoreBackupRecord = {
+        summary: {
+          backupId,
+          createdAt,
+          reason: 'pre-restore',
+          sourceBundleSha256: actualBundleSha256,
+          fileCount: countLiveSnapshotRecords(currentProfiles.length),
+        },
+        snapshotData: {
+          profile: structuredClone(profile),
+          state: structuredClone(state),
+          events: new Map([...events.entries()].map(([key, value]) => [key, structuredClone(value)])),
+          teams: new Map([...teams.entries()].map(([key, value]) => [key, structuredClone(value)])),
+          mockSchedules: structuredClone(mockSchedules),
+          restoredOperatingProfiles: new Map([...restoredOperatingProfiles.entries()].map(([key, value]) => [key, structuredClone(value)])),
+          suppressedOperatingProfileIds: new Set(suppressedOperatingProfileIds),
+          baseOperatingProfileIds: new Set(baseProfiles.map(item => item.id)),
+          restoredMissions: new Map([...restoredMissions.entries()].map(([key, value]) => [key, structuredClone(value)])),
+        },
+      };
+      mockRestoreBackups.unshift(backupRecord);
+
+      let appliedCount = 0;
+      let skippedCount = 0;
+      const appliedBySection: Partial<Record<OwnedDataSnapshotSection, number>> = {};
+      const skippedIds: string[] = [];
+      const warnings: string[] = [];
+
+      const recordApplied = (section: OwnedDataSnapshotSection) => {
+        appliedCount += 1;
+        appliedBySection[section] = (appliedBySection[section] ?? 0) + 1;
+      };
+
+      for (const plan of analysis.entryPlans) {
+        const { entry, collides } = plan;
+        if (collides) {
+          skippedCount += 1;
+          skippedIds.push(entry.id);
+          continue;
+        }
+
+        if (entry.section === 'settings') {
+          const payload = entry.payload;
+          if (payload.preferences && typeof payload.preferences === 'object' && !Array.isArray(payload.preferences)) {
+            profile = {
+              ...profile,
+              preferences: { ...profile.preferences, ...(payload.preferences as ProfilePreferences) },
+              updatedAt: iso(),
+            };
+          }
+          if (typeof payload.displayName === 'string') {
+            profile.displayName = payload.displayName;
+          }
+          if (payload.workflow === 'managed' || payload.workflow === 'observe') {
+            state.workflow = payload.workflow;
+          }
+          if (payload.profile && typeof payload.profile === 'object' && !Array.isArray(payload.profile)) {
+            const p = payload.profile as Record<string, unknown>;
+            if (typeof p.id === 'string' && typeof p.name === 'string') {
+              state.profile = { id: p.id, name: p.name };
+            }
+          }
+          recordApplied('settings');
+        } else if (entry.section === 'workspaces') {
+          const raw = entry.payload;
+          const restored: Workspace = {
+            id: entry.id,
+            profileId: typeof raw.profileId === 'string' && raw.profileId ? raw.profileId : state.profile.id,
+            name: typeof raw.name === 'string' && raw.name ? raw.name : entry.id,
+            projectLocation: typeof raw.projectLocation === 'string' ? raw.projectLocation : `${HOME}/${entry.id}`,
+            providerProfileId: typeof raw.providerProfileId === 'string'
+              ? raw.providerProfileId
+              : (state.connections[0]?.id ?? ''),
+            permissions: raw.permissions && typeof raw.permissions === 'object' && !Array.isArray(raw.permissions)
+              ? structuredClone(raw.permissions as Workspace['permissions'])
+              : { fileWrite: 'ask', commands: 'ask' },
+            createdAt: typeof raw.createdAt === 'string' ? raw.createdAt : iso(),
+            updatedAt: typeof raw.updatedAt === 'string' ? raw.updatedAt : iso(),
+            ...(raw.mode === 'managed' || raw.mode === 'observe' ? { mode: raw.mode } : {}),
+            ...(raw.runtimeId === 'extalia-native' || raw.runtimeId === 'hermes' ? { runtimeId: raw.runtimeId } : {}),
+            ...(typeof raw.runtimeProfileId === 'string' ? { runtimeProfileId: raw.runtimeProfileId } : {}),
+            ...(typeof raw.runtimeModel === 'string' ? { runtimeModel: raw.runtimeModel } : {}),
+            ...(Array.isArray(raw.additionalProjectLocations) ? { additionalProjectLocations: structuredClone(raw.additionalProjectLocations as string[]) } : {}),
+            ...(Array.isArray(raw.missionConnectionIds) ? { missionConnectionIds: structuredClone(raw.missionConnectionIds as string[]) } : {}),
+            ...(typeof raw.operatingProfileId === 'string' ? { operatingProfileId: raw.operatingProfileId } : {}),
+            ...(raw.operatingProfileOverrides && typeof raw.operatingProfileOverrides === 'object' && !Array.isArray(raw.operatingProfileOverrides)
+              ? { operatingProfileOverrides: structuredClone(raw.operatingProfileOverrides as Workspace['operatingProfileOverrides']) }
+              : {}),
+            ...(raw.crossWorkspaceAccess ? { crossWorkspaceAccess: structuredClone(raw.crossWorkspaceAccess as Workspace['crossWorkspaceAccess']) } : {}),
+            ...(raw.team && typeof raw.team === 'object' && !Array.isArray(raw.team) ? { team: structuredClone(raw.team as Workspace['team']) } : {}),
+            ...(raw.integrationGate && typeof raw.integrationGate === 'object' && !Array.isArray(raw.integrationGate)
+              ? { integrationGate: structuredClone(raw.integrationGate as Workspace['integrationGate']) }
+              : {}),
+          };
+          state.workspaces.push(restored);
+          recordApplied('workspaces');
+        } else if (entry.section === 'operatingProfiles') {
+          const raw = entry.payload;
+          const restored: OperatingProfile = {
+            id: entry.id,
+            name: typeof raw.name === 'string' && raw.name ? raw.name : entry.id,
+            revision: typeof raw.revision === 'number' && Number.isInteger(raw.revision) && raw.revision > 0 ? raw.revision : 1,
+            createdAt: typeof raw.createdAt === 'string' ? raw.createdAt : iso(),
+            updatedAt: typeof raw.updatedAt === 'string' ? raw.updatedAt : iso(),
+            defaults: raw.defaults && typeof raw.defaults === 'object' && !Array.isArray(raw.defaults)
+              ? structuredClone(raw.defaults as OperatingProfile['defaults'])
+              : {},
+            ...(typeof raw.purpose === 'string' ? { purpose: raw.purpose } : {}),
+            ...(typeof raw.personality === 'string' ? { personality: raw.personality } : {}),
+          };
+          suppressedOperatingProfileIds.delete(entry.id);
+          restoredOperatingProfiles.set(entry.id, restored);
+          recordApplied('operatingProfiles');
+        } else if (entry.section === 'sessions') {
+          const raw = entry.payload;
+          const restored: SessionSummary = {
+            id: entry.id,
+            workspaceId: typeof raw.workspaceId === 'string' ? raw.workspaceId : null,
+            connectionId: typeof raw.connectionId === 'string' ? raw.connectionId : '',
+            title: typeof raw.title === 'string' ? raw.title : entry.id,
+            control: 'managed',
+            createdAt: typeof raw.createdAt === 'string' ? raw.createdAt : iso(),
+            lastActiveAt: typeof raw.lastActiveAt === 'string' ? raw.lastActiveAt : iso(),
+            running: false,
+            ...(typeof raw.projectLocation === 'string' ? { projectLocation: raw.projectLocation } : {}),
+            ...(typeof raw.agentName === 'string' ? { agentName: raw.agentName } : {}),
+            ...(raw.agentGender === 'female' || raw.agentGender === 'male' ? { agentGender: raw.agentGender } : {}),
+            ...(raw.options && typeof raw.options === 'object' ? { options: structuredClone(raw.options as SessionSummary['options']) } : {}),
+            ...(raw.operatingProfile && typeof raw.operatingProfile === 'object'
+              ? { operatingProfile: structuredClone(raw.operatingProfile as SessionSummary['operatingProfile']) }
+              : {}),
+            ...(raw.team && typeof raw.team === 'object' ? { team: structuredClone(raw.team as SessionSummary['team']) } : {}),
+            ...(raw.runtime && typeof raw.runtime === 'object' ? { runtime: structuredClone(raw.runtime as SessionSummary['runtime']) } : {}),
+          };
+          state.sessions.push(restored);
+          const rawEvents = Array.isArray(raw.events) ? raw.events : Array.isArray(raw.messages) ? raw.messages : undefined;
+          if (rawEvents) {
+            events.set(entry.id, structuredClone(rawEvents as ExtaliaEvent[]));
+          }
+          recordApplied('sessions');
+        } else if (entry.section === 'missions') {
+          restoredMissions.set(entry.id, structuredClone({
+            ...(entry.payload as unknown as HostMissionRun),
+            id: entry.id,
+          }));
+          recordApplied('missions');
+        } else if (entry.section === 'schedules') {
+          const raw = entry.payload;
+          const fallbackWorkspaceId = state.workspaces[0]?.id ?? '';
+          const trigger: ScheduleTrigger = raw.trigger && typeof raw.trigger === 'object' && !Array.isArray(raw.trigger)
+            ? structuredClone(raw.trigger as ScheduleTrigger)
+            : { kind: 'cron', cron: '0 9 * * *', timeZone: scheduleTimeZone, dstPolicy: 'each-valid-instant' };
+          const restored: GeneralSchedule = {
+            id: entry.id,
+            revision: typeof raw.revision === 'number' && Number.isInteger(raw.revision) && raw.revision > 0 ? raw.revision : 1,
+            workspaceId: typeof raw.workspaceId === 'string' && raw.workspaceId ? raw.workspaceId : fallbackWorkspaceId,
+            name: typeof raw.name === 'string' && raw.name ? raw.name : entry.id,
+            prompt: typeof raw.prompt === 'string' ? raw.prompt : '',
+            enabled: typeof raw.enabled === 'boolean' ? raw.enabled : true,
+            trigger,
+            sessionTarget: raw.sessionTarget && typeof raw.sessionTarget === 'object' && !Array.isArray(raw.sessionTarget)
+              ? structuredClone(raw.sessionTarget as GeneralSchedule['sessionTarget'])
+              : { mode: 'new-each-run' },
+            assignment: raw.assignment && typeof raw.assignment === 'object' && !Array.isArray(raw.assignment)
+              ? structuredClone(raw.assignment as GeneralSchedule['assignment'])
+              : { teamMode: 'solo' },
+            missedPolicy: raw.missedPolicy === 'run-once' || raw.missedPolicy === 'skip'
+              ? raw.missedPolicy
+              : raw.missedRunPolicy === 'run-once' || raw.missedRunPolicy === 'skip'
+                ? raw.missedRunPolicy
+                : 'skip',
+            state: raw.state === 'paused' || raw.state === 'scheduled' || raw.state === 'completed' || raw.state === 'failed'
+              ? raw.state
+              : 'scheduled',
+            runCount: typeof raw.runCount === 'number' ? raw.runCount : 0,
+            createdAt: typeof raw.createdAt === 'string' ? raw.createdAt : iso(),
+            updatedAt: typeof raw.updatedAt === 'string' ? raw.updatedAt : iso(),
+          };
+          mockSchedules.push(restored);
+          scheduleCatalogSeq += 1;
+          recordApplied('schedules');
+        }
+      }
+
+      if (skippedCount > 0) {
+        warnings.push(`Skipped ${skippedCount} colliding record(s) under skip-existing policy.`);
+      }
+
+      return {
+        ok: true,
+        backupId,
+        bundleSha256: actualBundleSha256,
+        appliedCount,
+        skippedCount,
+        appliedBySection,
+        skippedIds,
+        vendorSourcesUntouched: true,
+        warnings,
+      };
+    },
+    async listOwnedDataBackups(): Promise<OwnedDataBackupSummary[]> {
+      await latency();
+      return structuredClone(mockRestoreBackups.map(item => item.summary));
+    },
+    async rollbackOwnedDataRestore(rawBackupId: string): Promise<RollbackOwnedDataRestoreResult> {
+      await latency();
+      const backupId = normalizeOwnedDataBackupId(rawBackupId);
+      const record = mockRestoreBackups.find(item => item.summary.backupId === backupId);
+      if (!record) {
+        return {
+          ok: false,
+          backupId,
+          detail: `Pre-restore backup "${backupId}" was not found.`,
+        };
+      }
+
+      const currentProfiles = await listMockOperatingProfiles();
+      const beforeCount = countLiveSnapshotRecords(currentProfiles.length);
+      const saved = record.snapshotData;
+
+      profile = structuredClone(saved.profile);
+      state.workflow = saved.state.workflow;
+      state.setupComplete = saved.state.setupComplete;
+      state.profile = structuredClone(saved.state.profile);
+      state.connections.splice(0, state.connections.length, ...structuredClone(saved.state.connections));
+      state.workspaces.splice(0, state.workspaces.length, ...structuredClone(saved.state.workspaces));
+      state.sessions.splice(0, state.sessions.length, ...structuredClone(saved.state.sessions));
+
+      events.clear();
+      for (const [key, value] of saved.events) events.set(key, structuredClone(value));
+
+      teams.clear();
+      for (const [key, value] of saved.teams) teams.set(key, structuredClone(value));
+
+      mockSchedules.splice(0, mockSchedules.length, ...structuredClone(saved.mockSchedules));
+      scheduleCatalogSeq += 1;
+
+      restoredOperatingProfiles.clear();
+      for (const [key, value] of saved.restoredOperatingProfiles) {
+        restoredOperatingProfiles.set(key, structuredClone(value));
+      }
+      suppressedOperatingProfileIds.clear();
+      for (const id of saved.suppressedOperatingProfileIds) {
+        suppressedOperatingProfileIds.add(id);
+      }
+      const currentBaseProfiles = await operatingProfiles.api.listOperatingProfiles();
+      for (const item of currentBaseProfiles) {
+        if (!saved.baseOperatingProfileIds.has(item.id)) {
+          suppressedOperatingProfileIds.add(item.id);
+        }
+      }
+
+      restoredMissions.clear();
+      for (const [key, value] of saved.restoredMissions) {
+        restoredMissions.set(key, structuredClone(value));
+      }
+
+      const restoredFiles = record.summary.fileCount;
+      const removedFiles = Math.max(0, beforeCount - restoredFiles);
+
+      return {
+        ok: true,
+        backupId,
+        restoredFiles,
+        removedFiles,
+        detail: `Restored ${restoredFiles} checkpoint record(s) and removed ${removedFiles} post-restore record(s) from ${backupId}.`,
+      };
+    },
     async observedCodexNativeQueueStatus(id) {
       await latency();
       const selected = session(id);
@@ -1967,8 +2840,19 @@ function createMockAgents(options: MockOptions): AgentHostApi {
       if (typeof sessionId !== 'string' || typeof missionId !== 'string') throw new Error('This native mission has changed or already finished. Refresh its status before cancelling.');
       missionHost.cancel(sessionId, missionId);
     },
-    async nativeMissionRun(sessionId, missionId) { await latency(); return missionHost.run(sessionId, missionId); },
-    async listNativeMissions(sessionId) { await latency(); return missionHost.list(sessionId); },
+    async nativeMissionRun(sessionId, missionId) {
+      await latency();
+      return resolveMissionRun(sessionId, missionId);
+    },
+    async listNativeMissions(sessionId) {
+      await latency();
+      const base = missionHost.list(sessionId);
+      const byId = new Map(base.map(item => [item.id, item]));
+      for (const override of missionAuthorityRuns.values()) {
+        if (override.sessionId === sessionId) byId.set(override.id, structuredClone(override));
+      }
+      return [...byId.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    },
     async listWorktrees() { await latency(); return worktreeHost.list(); },
     async worktreeStatus(worktreeId) { await latency(); return worktreeHost.status(worktreeId); },
     async worktreeDiff(worktreeId) { await latency(); return worktreeHost.diff(worktreeId); },
@@ -2015,14 +2899,40 @@ function createMockAgents(options: MockOptions): AgentHostApi {
       startTurn(summary, text, undefined, attached.map(info => ({ name: info.name, kind: info.kind, size: info.size })));
       if (fromPrompt) for (const member of teams.get(sessionId)?.members ?? []) emit(sessionId, { type: 'subagent.spawned', subagentId: member.id, role: member.role, label: member.name });
     },
+    async listApprovals(sessionId?: string): Promise<ExactApprovalView[]> {
+      await latency();
+      const filter = normalizeApprovalSessionFilter(sessionId);
+      const rows = [...mockApprovals.values()]
+        .filter(item => !filter || item.sessionId === filter)
+        .sort((a, b) => b.issuedAt - a.issuedAt);
+      return structuredClone(rows);
+    },
     async resolveApproval(sessionId, approvalId, decision) {
       await latency();
       const request = pending.get(approvalId);
       if (!request || request.sessionId !== sessionId) throw new Error('This approval is no longer pending.');
+      const record = mockApprovals.get(approvalId);
+      if (record && record.sessionId === sessionId) {
+        mockApprovals.set(approvalId, {
+          ...record,
+          state: decision === 'reject' ? 'rejected' : 'granted',
+          decision,
+          resolvedAt: Date.now(),
+        });
+      }
       request.resolve(decision);
     },
     async revokeApproval(sessionId, approvalId) {
       await latency();
+      const record = mockApprovals.get(approvalId);
+      if (record && record.sessionId === sessionId && (record.state === 'pending' || record.state === 'granted')) {
+        mockApprovals.set(approvalId, {
+          ...record,
+          state: 'revoked',
+          revokedAt: Date.now(),
+          revokeReason: 'revoked by user',
+        });
+      }
       const request = pending.get(approvalId);
       if (request && request.sessionId === sessionId) {
         pending.delete(approvalId);
@@ -2038,6 +2948,30 @@ function createMockAgents(options: MockOptions): AgentHostApi {
         networkAccess: 'denied',
         verifiedAt: new Date().toISOString(),
       };
+    },
+    async listWorkerLeases(): Promise<WorkerLeaseView[]> {
+      await latency();
+      return structuredClone(mockWorkerLeases);
+    },
+    async reconcileWorkerLease(leaseId: string, action: WorkerLeaseReconcileAction): Promise<WorkerLeaseView> {
+      await latency();
+      const id = normalizeWorkerLeaseId(leaseId);
+      const normalizedAction = normalizeWorkerLeaseReconcileAction(action);
+      const index = mockWorkerLeases.findIndex(item => item.leaseId === id);
+      if (index < 0) throw new Error('Worker lease not found.');
+      const current = mockWorkerLeases[index]!;
+      if (current.status !== 'quarantined') throw new Error('Only quarantined worker leases can be reconciled.');
+      if (normalizedAction === 'acknowledge') {
+        const updated: WorkerLeaseView = {
+          ...current,
+          status: 'settled',
+          settlement: current.settlement ?? 'unknown',
+          settledAt: new Date().toISOString(),
+        };
+        mockWorkerLeases[index] = updated;
+        return structuredClone(updated);
+      }
+      return structuredClone(current);
     },
     async cancel(sessionId) {
       await latency();
@@ -2446,6 +3380,70 @@ function createMockAgents(options: MockOptions): AgentHostApi {
       await latency();
       return gatewaySnapshot();
     },
+    async gatewayDiagnostics(): Promise<GatewayDiagnosticsView> {
+      await latency();
+      const observedAt = iso();
+      const whatsappConnectors = gatewayConnectors.filter(item => item.provider === 'whatsapp');
+      const enabledWhatsapp = whatsappConnectors.filter(
+        item => item.status === 'connected' || item.status === 'degraded',
+      ).length;
+      return {
+        observedAt,
+        watchdog: {
+          state: 'healthy',
+          checkedAt: observedAt,
+          leaseAgeMs: 12,
+          heartbeatAt: observedAt,
+          probeOk: true,
+          reason: 'Host lease is fresh and healthy.',
+        },
+        conformance: {
+          sdkVersion: GATEWAY_ADAPTER_SDK_VERSION,
+          provider: 'webhook-relay',
+          passed: true,
+          checks: [
+            {
+              id: 'sdk-version-and-capabilities',
+              passed: true,
+              detail: `SDK ${GATEWAY_ADAPTER_SDK_VERSION} and capabilities validated for provider "webhook-relay".`,
+            },
+            {
+              id: 'inbound-signature-fail-closed',
+              passed: true,
+              detail: 'Valid request accepted; tampered and unsigned requests rejected fail-closed.',
+            },
+            {
+              id: 'outbound-sanitization-and-redaction',
+              passed: true,
+              detail: 'Outbound payload redacted synthetic bearer token before transmission.',
+            },
+            {
+              id: 'receipt-truthfulness',
+              passed: true,
+              detail: 'Accepted outbound returned non-empty remoteMessageId.',
+            },
+            {
+              id: 'rate-limit-handling',
+              passed: true,
+              detail: 'HTTP 429 mapped truthfully to rate-limited.',
+            },
+            {
+              id: 'ambiguous-timeout-isolation',
+              passed: true,
+              detail: 'Transport timeout isolated to ambiguous-timeout without throwing or claiming delivery.',
+            },
+          ],
+          ranAt: observedAt,
+        },
+        whatsappPosture: {
+          configuredConnectors: whatsappConnectors.length,
+          enabledConnectors: enabledWhatsapp,
+          failClosed: true,
+          allowedSignalCount: 4,
+          serviceWindowHours: 24,
+        },
+      };
+    },
     async saveGatewayConnector(input: GatewayConnectorSaveInput): Promise<GatewayOverview> {
       await latency();
       const provider = input.provider.trim();
@@ -2621,6 +3619,230 @@ function createMockAgents(options: MockOptions): AgentHostApi {
       );
       return structuredClone({ workspaceId, sessionId, reports });
     },
+    async missionAuthorityOverview(sessionId: string, missionId: string): Promise<MissionAuthorityOverview> {
+      await latency();
+      const run = resolveMissionRun(sessionId, missionId);
+      return buildMissionAuthorityOverview(run);
+    },
+    async previewMissionReconciliation(sessionId: string, missionId: string): Promise<MissionReconciliationPreview> {
+      await latency();
+      const run = resolveMissionRun(sessionId, missionId);
+      const overview = buildMissionAuthorityOverview(run);
+      const { activeLeaseIds, quarantinedLeaseIds } = leasesForMission(run);
+      const warnings: string[] = [];
+      if (run.state !== 'recovering') {
+        warnings.push(`Mission is currently ${run.state}; reconciliation only applies to recovering missions.`);
+      }
+      if (activeLeaseIds.length > 0) {
+        warnings.push('Active worker leases remain present; wait for local execution to drain before committing.');
+      }
+      if (quarantinedLeaseIds.length > 0) {
+        warnings.push('Quarantined worker leases remain recorded; worktrees will not be released automatically.');
+      }
+      const eligibleDecisions = run.state === 'recovering' && !overview.reconciliationReceipt
+        ? ['mark-failed', 'mark-cancelled', 'retain-quarantine'] as const
+        : [];
+      return structuredClone({
+        missionId: run.id,
+        sessionId: run.sessionId,
+        workspaceId: run.workspaceId,
+        currentState: run.state,
+        ...(run.recovery?.source ? { recoverySource: run.recovery.source } : {}),
+        reviewDigest: overview.reviewDigest,
+        taskSummaries: overview.taskGates.map(gate => ({
+          id: gate.id,
+          taskId: gate.taskId,
+          title: gate.title,
+          state: gate.state,
+          acceptance: gate.acceptance,
+          evidenceCount: gate.evidenceCount,
+        })),
+        activeLeaseIds,
+        quarantinedLeaseIds,
+        eligibleDecisions: [...eligibleDecisions],
+        ...(overview.reconciliationReceipt ? { existingReceipt: overview.reconciliationReceipt } : {}),
+        warnings,
+      });
+    },
+    async commitMissionReconciliation(rawInput: MissionReconciliationCommitInput): Promise<MissionReconciliationCommitResult> {
+      await latency();
+      const input = normalizeMissionReconciliationCommitInput(rawInput);
+      let run: HostMissionRun;
+      try {
+        run = resolveMissionRun(input.sessionId, input.missionId);
+      } catch {
+        return {
+          ok: false,
+          code: 'not-found',
+          detail: 'Mission or session could not be found.',
+        };
+      }
+      const key = missionAuthorityKey(input.sessionId, input.missionId);
+      const overview = buildMissionAuthorityOverview(run);
+      const existingReceipt = missionReceipts.get(key);
+      if (existingReceipt) {
+        if (
+          existingReceipt.decisionKey === input.decisionKey
+          && existingReceipt.decision === input.decision
+          && existingReceipt.reviewDigest === input.expectedReviewDigest
+        ) {
+          return {
+            ok: true,
+            idempotentReplay: true,
+            receipt: structuredClone(existingReceipt),
+            run: structuredClone(run),
+          };
+        }
+        return {
+          ok: false,
+          code: 'already-reconciled',
+          currentReviewDigest: overview.reviewDigest,
+          detail: 'Mission already has a committed reconciliation receipt with a different decision.',
+        };
+      }
+      if (run.state !== 'recovering') {
+        return {
+          ok: false,
+          code: 'not-recovering',
+          currentReviewDigest: overview.reviewDigest,
+          detail: 'Only recovering missions can be reconciled.',
+        };
+      }
+      const { activeLeaseIds } = leasesForMission(run);
+      if (activeLeaseIds.length > 0) {
+        return {
+          ok: false,
+          code: 'local-active',
+          currentReviewDigest: overview.reviewDigest,
+          detail: 'Active worker leases are still present.',
+        };
+      }
+      if (input.expectedReviewDigest !== overview.reviewDigest) {
+        return {
+          ok: false,
+          code: 'stale-review-digest',
+          currentReviewDigest: overview.reviewDigest,
+          detail: 'Review digest does not match the current mission, evidence, or waiver state.',
+        };
+      }
+      const resultingState: HostMissionRun['state'] = input.decision === 'mark-failed'
+        ? 'failed'
+        : input.decision === 'mark-cancelled'
+          ? 'cancelled'
+          : 'recovering';
+      const committedAt = iso();
+      const nextRun: HostMissionRun = {
+        ...structuredClone(run),
+        state: resultingState,
+        updatedAt: committedAt,
+      };
+      missionAuthorityRuns.set(key, nextRun);
+      const receipt: MissionReconciliationReceipt = {
+        receiptId: `rcpt-${sha256Utf8Hex(`${key}:${input.decisionKey}:${++missionAuthoritySeq}`).slice(0, 12)}`,
+        missionId: run.id,
+        sessionId: run.sessionId,
+        workspaceId: run.workspaceId,
+        reviewDigest: overview.reviewDigest,
+        decisionKey: input.decisionKey,
+        decision: input.decision,
+        previousState: run.state,
+        resultingState,
+        actor: input.actor,
+        reason: input.reason,
+        committedAt,
+        worktreesReleased: false,
+        replayedTasks: false,
+      };
+      missionReceipts.set(key, receipt);
+      return {
+        ok: true,
+        idempotentReplay: false,
+        receipt: structuredClone(receipt),
+        run: structuredClone(nextRun),
+      };
+    },
+    async recordMissionEvidence(rawInput: RecordMissionEvidenceInput): Promise<MissionAuthorityOverview> {
+      await latency();
+      const input = normalizeRecordMissionEvidenceInput(rawInput);
+      const run = resolveMissionRun(input.sessionId, input.missionId);
+      const taskIndex = run.tasks.findIndex(task => task.taskId === input.taskId);
+      if (taskIndex < 0) {
+        throw new Error('Task not found in this mission.');
+      }
+      const key = missionAuthorityKey(input.sessionId, input.missionId);
+      const { verifiedByHost, acceptance } = deriveEvidenceAcceptance(input.sourceKind, input.validation);
+      const evidenceId = `ev-${sha256Utf8Hex(`${key}:${input.taskId}:${input.contentSha256}:${++missionAuthoritySeq}`).slice(0, 12)}`;
+      const record: MissionEvidenceRecord = {
+        evidenceId,
+        missionId: run.id,
+        sessionId: run.sessionId,
+        workspaceId: run.workspaceId,
+        taskId: input.taskId,
+        sourceKind: input.sourceKind,
+        validation: input.validation,
+        acceptance,
+        contentSha256: input.contentSha256,
+        ...(input.artifactPath !== undefined ? { artifactPath: input.artifactPath } : {}),
+        summary: input.summary,
+        recordedAt: iso(),
+        verifiedByHost,
+      };
+      const existing = missionEvidence.get(key) ?? [];
+      missionEvidence.set(key, [...existing, record]);
+      const updatedRun = structuredClone(run);
+      updatedRun.tasks[taskIndex]!.evidenceIds = [...updatedRun.tasks[taskIndex]!.evidenceIds, evidenceId];
+      updatedRun.updatedAt = iso();
+      missionAuthorityRuns.set(key, updatedRun);
+      return buildMissionAuthorityOverview(updatedRun);
+    },
+    async grantMissionWaiver(rawInput: GrantMissionWaiverInput): Promise<MissionAuthorityOverview> {
+      await latency();
+      const input = normalizeGrantMissionWaiverInput(rawInput);
+      const run = resolveMissionRun(input.sessionId, input.missionId);
+      if (!run.tasks.some(task => task.taskId === input.taskId)) {
+        throw new Error('Task not found in this mission.');
+      }
+      const overview = buildMissionAuthorityOverview(run);
+      if (input.expectedReviewDigest !== overview.reviewDigest) {
+        throw new Error('Review digest is stale. Refresh to review the latest state before granting a waiver.');
+      }
+      const key = missionAuthorityKey(input.sessionId, input.missionId);
+      const grantedAtMs = Date.now();
+      const waiver: MissionWaiverRecord = {
+        waiverId: `wv-${sha256Utf8Hex(`${key}:${input.taskId}:${grantedAtMs}:${++missionAuthoritySeq}`).slice(0, 12)}`,
+        missionId: run.id,
+        sessionId: run.sessionId,
+        workspaceId: run.workspaceId,
+        taskId: input.taskId,
+        actor: input.actor,
+        reason: input.reason,
+        policyVersion: input.policyVersion,
+        scope: input.scope,
+        reviewDigest: overview.reviewDigest,
+        grantedAt: new Date(grantedAtMs).toISOString(),
+        expiresAt: new Date(grantedAtMs + input.ttlMs).toISOString(),
+      };
+      const existing = missionWaivers.get(key) ?? [];
+      missionWaivers.set(key, [...existing, waiver]);
+      return buildMissionAuthorityOverview(run);
+    },
+    async revokeMissionWaiver(sessionId: string, missionId: string, rawWaiverId: string): Promise<MissionAuthorityOverview> {
+      await latency();
+      const waiverId = normalizeWaiverId(rawWaiverId);
+      const run = resolveMissionRun(sessionId, missionId);
+      const key = missionAuthorityKey(sessionId, missionId);
+      const existing = missionWaivers.get(key) ?? [];
+      const index = existing.findIndex(item => item.waiverId === waiverId);
+      if (index < 0) {
+        throw new Error('Waiver not found for this mission.');
+      }
+      const next = [...existing];
+      if (!next[index]!.revokedAt) {
+        next[index] = { ...next[index]!, revokedAt: iso() };
+        missionWaivers.set(key, next);
+      }
+      return buildMissionAuthorityOverview(run);
+    },
     subscribe(listener) {
       listeners.add(listener);
       return () => { listeners.delete(listener); };
@@ -2658,6 +3880,99 @@ function createMockUpdater(options: MockOptions): UpdateCapability {
   };
 }
 
+function createMockBridgePairing(seed: MockOptions['seed']): BridgePairingCapability {
+  const challengeAlphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let challengeCounter = 0;
+  let clientCounter = seed === 'ready' ? 1 : 0;
+  const clients: BridgeClientGrantView[] = seed === 'ready'
+    ? [{
+        clientId: 'bc-000000000001',
+        name: 'Local companion',
+        scopes: ['read', 'events'],
+        state: 'active',
+        issuedAt: new Date(Date.now() - 3_600_000).toISOString(),
+        lastUsedAt: new Date(Date.now() - 120_000).toISOString(),
+      }]
+    : [];
+  const challenges = new Map<string, { view: BridgePairingChallengeView; used: boolean }>();
+
+  const formatCode = (index: number) => {
+    let value = index;
+    let suffix = '';
+    for (let i = 0; i < 4; i++) {
+      suffix = challengeAlphabet[value % challengeAlphabet.length]! + suffix;
+      value = Math.floor(value / challengeAlphabet.length);
+    }
+    return `PAIR${suffix}`;
+  };
+
+  return {
+    async listClients() {
+      const nowMs = Date.now();
+      for (let index = 0; index < clients.length; index++) {
+        const client = clients[index]!;
+        if (client.state === 'active' && client.expiresAt && Date.parse(client.expiresAt) <= nowMs) {
+          clients[index] = { ...client, state: 'expired' };
+        }
+      }
+      return structuredClone(clients);
+    },
+    async issueChallenge(input) {
+      const clientName = normalizeBridgeClientName(input.name);
+      const requestedScopes = normalizeBridgeClientScopes(input.scopes);
+      const ttlMs = Math.max(5_000, Math.min(900_000, input.ttlMs ?? 120_000));
+      const index = ++challengeCounter;
+      const view: BridgePairingChallengeView = {
+        challengeId: `bpc-${index.toString(16).padStart(8, '0')}`,
+        clientName,
+        requestedScopes,
+        code: formatCode(index),
+        expiresAt: new Date(Date.now() + ttlMs).toISOString(),
+      };
+      challenges.set(view.challengeId, { view, used: false });
+      return structuredClone(view);
+    },
+    async confirmChallenge(input) {
+      const entry = challenges.get(input.challengeId);
+      if (!entry) throw new Error('Pairing challenge not found.');
+      if (entry.used) throw new Error('Pairing challenge has already been used.');
+      if (Date.parse(entry.view.expiresAt) <= Date.now()) throw new Error('Pairing challenge expired.');
+      if (input.code.trim().toUpperCase() !== entry.view.code.toUpperCase()) {
+        throw new Error('Invalid pairing code.');
+      }
+      entry.used = true;
+      const clientId = `bc-${(++clientCounter).toString(16).padStart(12, '0')}`;
+      const issuedAt = new Date().toISOString();
+      const client: BridgeClientGrantView = {
+        clientId,
+        name: entry.view.clientName,
+        scopes: [...entry.view.requestedScopes],
+        state: 'active',
+        issuedAt,
+        ...(input.grantTtlMs ? { expiresAt: new Date(Date.now() + input.grantTtlMs).toISOString() } : {}),
+      };
+      clients.unshift(client);
+      const token = `extb_${clientId}_${'0'.repeat(64)}`;
+      return { client: structuredClone(client), token };
+    },
+    async revokeClient(clientId, reason) {
+      const normalizedId = normalizeBridgeClientId(clientId);
+      const index = clients.findIndex(item => item.clientId === normalizedId);
+      const existing = index >= 0 ? clients[index] : undefined;
+      if (!existing) throw new Error('Bridge client grant not found.');
+      if (existing.state === 'revoked') return structuredClone(existing);
+      const updated: BridgeClientGrantView = {
+        ...existing,
+        state: 'revoked',
+        revokedAt: new Date().toISOString(),
+        ...(reason?.trim() ? { revokeReason: reason.trim() } : {}),
+      };
+      clients[index] = updated;
+      return structuredClone(updated);
+    },
+  };
+}
+
 export function createMockPlatform(options: MockOptions): Platform {
   const desktop = options.host === 'desktop';
   return {
@@ -2665,6 +3980,7 @@ export function createMockPlatform(options: MockOptions): Platform {
     capabilities: {
       agents: createMockAgents(options),
       updater: createMockUpdater(options),
+      bridgePairing: createMockBridgePairing(options.seed),
       // The mock only reloads the page; nothing is really restarted.
       restart: { kind: desktop ? 'relaunch' : 'reload', restart: async () => { location.reload(); } },
       // v0.0.48: approval notifications use the browser API here (shown only after the Settings opt-in).

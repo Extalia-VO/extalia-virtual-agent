@@ -22,10 +22,12 @@ export interface CommandToolOptions {
   killGraceMs?: number;
   /** Minimum time between streamed `command.output` events per command. Defaults to 200 ms. */
   outputIntervalMs?: number;
+  /** Optional hook called immediately after the child process spawns with a PID. */
+  onChildSpawned?: (info: { pid?: number; processGroupId?: number }) => void;
 }
 
 type CommandSettings = Required<Pick<CommandToolOptions, 'env' | 'killGraceMs' | 'outputIntervalMs'>>
-  & Pick<CommandToolOptions, 'sandbox' | 'dataDirectory' | 'homeDirectory'>;
+  & Pick<CommandToolOptions, 'sandbox' | 'dataDirectory' | 'homeDirectory' | 'onChildSpawned'>;
 
 type CommandInput = { command: string; timeout_seconds?: number };
 type Stream = 'stdout' | 'stderr';
@@ -193,6 +195,17 @@ async function runCommand(root: string, input: CommandInput, context: ToolRunCon
     return { ok: false, output: `Could not start the command: ${message}\nexit code 127`, settlement: 'failed' };
   }
 
+  if (child.pid !== undefined) {
+    try {
+      options.onChildSpawned?.({
+        pid: child.pid,
+        ...(process.platform !== 'win32' ? { processGroupId: child.pid } : {}),
+      });
+    } catch {
+      // Callback failures must not interrupt command execution.
+    }
+  }
+
   try {
     const capture = new OutputCapture();
     const pending: Record<Stream, string> = { stdout: '', stderr: '' };
@@ -297,6 +310,7 @@ export function createCommandTool(root: string, options: CommandToolOptions = {}
     ...(options.sandbox?.status.supported ? { sandbox: options.sandbox } : {}),
     ...(options.dataDirectory ? { dataDirectory: options.dataDirectory } : {}),
     ...(options.homeDirectory ? { homeDirectory: options.homeDirectory } : {}),
+    ...(options.onChildSpawned ? { onChildSpawned: options.onChildSpawned } : {}),
   };
   const boundaryRequired = options.filesystemBoundary === 'required';
   const unavailable = boundaryRequired && !options.sandbox?.status.supported;
