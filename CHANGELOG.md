@@ -16,6 +16,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.367] - 2026-11-28
+
+- Add end-to-end CLI and Web Settings surfaces for **Scoped Bridge Pairing & Client Grants (`#58` / `V2-20`)**: add `BridgePairingCapability` (`packages/platform/src/capabilities.ts`), loopback-enforced `extalia bridge <clients|pair|revoke>` commands supporting `--json`, `--dry-run`, `--yes`, `--challenge-only`, and live SSE revocation (`apps/cli/src/bridgeClients.ts`, `cli.ts`, `apps/cli/test/bridgeClientsCli.test.ts`), and the EN/ID `BridgeClientsCard` in Settings → System (`apps/web/src/host/bridgeHost.ts`, `platform.ts`, `mockHost.ts`, `pages/settings/BridgeClientsCard.tsx`, `bridgeClients.css`, `SettingsPage.tsx`, `apps/web/test/bridgeClientsUi.test.ts`).
+
 ## [0.4.366] - 2026-11-27
 
 - Implement Scoped Bridge Pairing, least-privilege client grants, and immediate revocation (`#58` / `V2-20`): add browser-safe scope classification & validators (`packages/platform/src/bridgeGrants.ts`, defaulting unclassified RPCs fail-closed to `'admin'`), hashed-token atomic `BridgePairingStore` (`apps/cli/src/bridge/pairing.ts`, `state/bridge-grants.json`, `0o600`, challenge lockout, corrupt store refusal), scoped `/api/call` / `/api/events` / `/api/update*` & loopback `/api/bridge/*` routes with instant SSE termination upon revocation (`apps/cli/src/bridge/server.ts`, `apps/cli/src/start.ts`, `apps/cli/test/bridgePairing.test.ts`).

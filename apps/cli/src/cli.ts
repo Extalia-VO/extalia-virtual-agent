@@ -2,6 +2,7 @@ import { PORTABLE_SESSION_FORMAT, previewImport } from '@extalia/core';
 import type { ConnectService, ServiceRunCommand } from '@extalia/host';
 import { DATA_DIRECTORY_OVERRIDE, legacyDataDirectories, resolveDataDirectory } from '@extalia/platform';
 import { PROTOCOL_VERSION, parseEvent, parseEventLines, type ParseResult } from '@extalia/protocol';
+import { runBridgeClients } from './bridgeClients';
 import { runConnect, runConnections, runDisconnect, runMcp, runReply } from './connect';
 import { runCodexPermissions } from './codexPermissions';
 import { runInbox } from './inbox';
@@ -53,6 +54,10 @@ Commands:
     --yes, -y           Apply without asking for confirmation (install/uninstall)
     --port <number>     Loopback Bridge port on 127.0.0.1 (install)
     --json              Output machine-readable JSON (status)
+  bridge <action>     Manage scoped Bridge client grants (clients, pair, revoke)
+    clients [--json]  List paired scoped Bridge clients
+    pair              Issue/confirm a scoped client token (--name, --scopes, --url, --token)
+    revoke <id>       Revoke a scoped Bridge client (--yes, --dry-run, optional --url/--token)
   connect <app>       Connect an agent app (codex, claude, gemini, antigravity, hermes)
     --dry-run           Preview configuration changes without writing
     --yes, -y           Apply changes without asking for confirmation
@@ -199,6 +204,8 @@ export async function run(args: readonly string[], host: CliHost): Promise<numbe
       return start(host, rest);
     case 'service':
       return runService(host, rest);
+    case 'bridge':
+      return runBridgeClients(host, rest);
     case 'connect':
       return rest[0] === 'codex-permission' ? runCodexPermissions(host, rest.slice(1)) : runConnect(host, rest);
     case 'disconnect':

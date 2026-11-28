@@ -1,5 +1,5 @@
 import { DESKTOP_HOST_GLOBAL, type DesktopHostApi, type HostInfo, type Platform, type PlatformCapabilities, type RestartCapability } from '@extalia/platform';
-import { bridgeAgentHost, bridgeUpdater, createBridgeConnection, readBridgeToken } from './host/bridgeHost';
+import { bridgeAgentHost, bridgePairing, bridgeUpdater, createBridgeConnection, readBridgeToken } from './host/bridgeHost';
 import { browserNotifications } from './approvals/browserNotifications';
 import { desktopAgentHost, desktopNotifications, desktopRestart, desktopUpdater } from './host/desktopHost';
 
@@ -74,7 +74,7 @@ export async function resolvePlatform(): Promise<Platform> {
     const connection = createBridgeConnection(token);
     // Browser handles omit absolute paths. Bridge forms use its authenticated
     // host-directory browser directly, avoiding two consecutive folder dialogs.
-    return { info, capabilities: { ...browserCapabilities(false), agents: bridgeAgentHost(connection), updater: bridgeUpdater(connection), restart: reloadPage } };
+    return { info, capabilities: { ...browserCapabilities(false), agents: bridgeAgentHost(connection), updater: bridgeUpdater(connection), restart: reloadPage, bridgePairing: bridgePairing(connection) } };
   }
   return { info, capabilities: { ...browserCapabilities(), restart: reloadPage } };
 }

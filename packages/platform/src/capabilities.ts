@@ -1,5 +1,6 @@
 import type { ExtaliaEvent } from '@extalia/protocol';
 import type { AgentHostApi, AgentHostMethod } from './agentHost.js';
+import type { BridgeClientGrantView, BridgeClientScope, BridgePairingChallengeView } from './bridgeGrants.js';
 
 /**
  * Platform capabilities. Application code asks for a capability instead of
@@ -127,6 +128,14 @@ export interface RestartCapability {
   restart(options?: RestartOptions): Promise<void>;
 }
 
+/** Least-privilege client pairing and immediate revocation exposed over the local Bridge. */
+export interface BridgePairingCapability {
+  listClients(): Promise<BridgeClientGrantView[]>;
+  issueChallenge(input: { name: string; scopes: BridgeClientScope[]; ttlMs?: number }): Promise<BridgePairingChallengeView>;
+  confirmChallenge(input: { challengeId: string; code: string; grantTtlMs?: number }): Promise<{ client: BridgeClientGrantView; token: string }>;
+  revokeClient(clientId: string, reason?: string): Promise<BridgeClientGrantView>;
+}
+
 export interface PlatformCapabilities {
   filesystem?: FileSystemCapability;
   terminal?: TerminalCapability;
@@ -138,6 +147,8 @@ export interface PlatformCapabilities {
   agents?: AgentHostApi;
   /** Restarts or reloads the app on the user's request; the UI never restarts without confirmation. */
   restart?: RestartCapability;
+  /** Scoped Bridge client pairing and grant revocation when running on the local Bridge. */
+  bridgePairing?: BridgePairingCapability;
 }
 
 /** Feature capabilities shown in diagnostics. `restart` is an action, not a feature, so it is not listed. */

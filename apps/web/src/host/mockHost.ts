@@ -1,7 +1,9 @@
 import { DEFAULT_PERMISSIONS, modelPlanningBasis, applyTeamSpec, defaultOrchestration, generateFullName, initialSessionTeam, parseTeamSpec, withDistinctMemberNames, pickTeamModels, planModelOrder, planTeamHeuristic, presetById, workspaceCrossAccess, type AgentTeam, type Workspace } from '@extalia/core';
 import type {
   AgentAppConnection, AgentAppConnectOptions, AgentAppConnectPlan, AgentAppConnectResult, AgentAppDisconnectResult,
-  AgentAppId, AgentAppRecoveryReport, AgentAppTestResult, AgentHostApi, ApprovalDecisionInput, ChatSystemReportsView, CommandSandboxStatus, ConnectionInput, ConnectionView,
+  AgentAppId, AgentAppRecoveryReport, AgentAppTestResult, AgentHostApi, ApprovalDecisionInput,
+  BridgeClientGrantView, BridgePairingCapability, BridgePairingChallengeView,
+  ChatSystemReportsView, CommandSandboxStatus, ConnectionInput, ConnectionView,
   ConnectorHealth, ExactApprovalView, GatewayAuditEntryView, GatewayConfirmLinkInput, GatewayConnectorSaveInput, GatewayConnectorState, GatewayConnectorView,
   GatewayDiagnosticsView, GatewayIssueChallengeInput, GatewayLinkChallengeView, GatewayOverview, GatewayPrincipalLinkView, GatewayRouteSaveInput, GatewayRouteView,
   GeneralSchedule, GeneralScheduleCatalog, HealthDimensionStatus, HookIngestStatus, HostState, ModelChoices, ModelSelectionGuide, NextRunPreview,
@@ -14,7 +16,9 @@ import type {
 } from '@extalia/platform';
 import {
   GATEWAY_ADAPTER_SDK_VERSION,
-  isProtectedBranchName, nextScheduleRunAt, normalizeApprovalSessionFilter, normalizeModelSelectionGuideInput, normalizeSaveGeneralSchedule,
+  isProtectedBranchName, nextScheduleRunAt, normalizeApprovalSessionFilter,
+  normalizeBridgeClientId, normalizeBridgeClientName, normalizeBridgeClientScopes,
+  normalizeModelSelectionGuideInput, normalizeSaveGeneralSchedule,
   normalizeScheduleReviewDecision, normalizeScheduleRunFilter, normalizeWorkerLeaseId, normalizeWorkerLeaseReconcileAction, previewScheduleNextRuns as computeSchedulePreview,
   PROJECT_SCAFFOLD_TEMPLATES, sanitizeGatewayText, validateProjectFolderName,
   attachmentLimit, classifyAttachment, normalizeAgentTeam, normalizeIntegrationGate, normalizePromptLearnSkill,
@@ -2871,6 +2875,99 @@ function createMockUpdater(options: MockOptions): UpdateCapability {
   };
 }
 
+function createMockBridgePairing(seed: MockOptions['seed']): BridgePairingCapability {
+  const challengeAlphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let challengeCounter = 0;
+  let clientCounter = seed === 'ready' ? 1 : 0;
+  const clients: BridgeClientGrantView[] = seed === 'ready'
+    ? [{
+        clientId: 'bc-000000000001',
+        name: 'Local companion',
+        scopes: ['read', 'events'],
+        state: 'active',
+        issuedAt: new Date(Date.now() - 3_600_000).toISOString(),
+        lastUsedAt: new Date(Date.now() - 120_000).toISOString(),
+      }]
+    : [];
+  const challenges = new Map<string, { view: BridgePairingChallengeView; used: boolean }>();
+
+  const formatCode = (index: number) => {
+    let value = index;
+    let suffix = '';
+    for (let i = 0; i < 4; i++) {
+      suffix = challengeAlphabet[value % challengeAlphabet.length]! + suffix;
+      value = Math.floor(value / challengeAlphabet.length);
+    }
+    return `PAIR${suffix}`;
+  };
+
+  return {
+    async listClients() {
+      const nowMs = Date.now();
+      for (let index = 0; index < clients.length; index++) {
+        const client = clients[index]!;
+        if (client.state === 'active' && client.expiresAt && Date.parse(client.expiresAt) <= nowMs) {
+          clients[index] = { ...client, state: 'expired' };
+        }
+      }
+      return structuredClone(clients);
+    },
+    async issueChallenge(input) {
+      const clientName = normalizeBridgeClientName(input.name);
+      const requestedScopes = normalizeBridgeClientScopes(input.scopes);
+      const ttlMs = Math.max(5_000, Math.min(900_000, input.ttlMs ?? 120_000));
+      const index = ++challengeCounter;
+      const view: BridgePairingChallengeView = {
+        challengeId: `bpc-${index.toString(16).padStart(8, '0')}`,
+        clientName,
+        requestedScopes,
+        code: formatCode(index),
+        expiresAt: new Date(Date.now() + ttlMs).toISOString(),
+      };
+      challenges.set(view.challengeId, { view, used: false });
+      return structuredClone(view);
+    },
+    async confirmChallenge(input) {
+      const entry = challenges.get(input.challengeId);
+      if (!entry) throw new Error('Pairing challenge not found.');
+      if (entry.used) throw new Error('Pairing challenge has already been used.');
+      if (Date.parse(entry.view.expiresAt) <= Date.now()) throw new Error('Pairing challenge expired.');
+      if (input.code.trim().toUpperCase() !== entry.view.code.toUpperCase()) {
+        throw new Error('Invalid pairing code.');
+      }
+      entry.used = true;
+      const clientId = `bc-${(++clientCounter).toString(16).padStart(12, '0')}`;
+      const issuedAt = new Date().toISOString();
+      const client: BridgeClientGrantView = {
+        clientId,
+        name: entry.view.clientName,
+        scopes: [...entry.view.requestedScopes],
+        state: 'active',
+        issuedAt,
+        ...(input.grantTtlMs ? { expiresAt: new Date(Date.now() + input.grantTtlMs).toISOString() } : {}),
+      };
+      clients.unshift(client);
+      const token = `extb_${clientId}_${'0'.repeat(64)}`;
+      return { client: structuredClone(client), token };
+    },
+    async revokeClient(clientId, reason) {
+      const normalizedId = normalizeBridgeClientId(clientId);
+      const index = clients.findIndex(item => item.clientId === normalizedId);
+      const existing = index >= 0 ? clients[index] : undefined;
+      if (!existing) throw new Error('Bridge client grant not found.');
+      if (existing.state === 'revoked') return structuredClone(existing);
+      const updated: BridgeClientGrantView = {
+        ...existing,
+        state: 'revoked',
+        revokedAt: new Date().toISOString(),
+        ...(reason?.trim() ? { revokeReason: reason.trim() } : {}),
+      };
+      clients[index] = updated;
+      return structuredClone(updated);
+    },
+  };
+}
+
 export function createMockPlatform(options: MockOptions): Platform {
   const desktop = options.host === 'desktop';
   return {
@@ -2878,6 +2975,7 @@ export function createMockPlatform(options: MockOptions): Platform {
     capabilities: {
       agents: createMockAgents(options),
       updater: createMockUpdater(options),
+      bridgePairing: createMockBridgePairing(options.seed),
       // The mock only reloads the page; nothing is really restarted.
       restart: { kind: desktop ? 'relaunch' : 'reload', restart: async () => { location.reload(); } },
       // v0.0.48: approval notifications use the browser API here (shown only after the Settings opt-in).

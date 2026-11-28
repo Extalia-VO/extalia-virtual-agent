@@ -50,11 +50,23 @@
       "unresolvedRuntimeImports": 0
     },
     {
+      "path": "apps/cli/src/bridgeClients.ts",
+      "category": "legacy-backend",
+      "sha256": "c5777c64a3b6de6db19d7f2254cf8ea4657b71ce3374fc966436c2b1429d0014",
+      "loc": 483,
+      "bytes": 15995,
+      "effectKinds": [
+        "node-builtin",
+        "runtime-call"
+      ],
+      "unresolvedRuntimeImports": 0
+    },
+    {
       "path": "apps/cli/src/cli.ts",
       "category": "legacy-backend",
-      "sha256": "38c4f1b97cbc65948fafd91913ccb0ff9499f19274feff3da509371ea6ae4e1f",
-      "loc": 234,
-      "bytes": 11794,
+      "sha256": "f55e999726b6e2021358db7427e5229b183399912057c14bd4be61a59dc17679",
+      "loc": 241,
+      "bytes": 12233,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -2620,9 +2632,9 @@
     {
       "path": "packages/platform/src/capabilities.ts",
       "category": "shared-backend-review",
-      "sha256": "b1327803f6ba547898d9b262841b301a6c2a9b0fea6a43f41296c95409d4b3f5",
-      "loc": 200,
-      "bytes": 9210,
+      "sha256": "c5c2ba7fcf9a573e47465d5293012349937a8daa99efa1604190ce1cf44f936c",
+      "loc": 211,
+      "bytes": 10002,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -6292,6 +6304,11 @@
       "runtimeSignature": "2c857bc24bd2ce82eae610caca697e2080df579d46d16bf2af0b38411868c57a"
     },
     {
+      "path": "apps/web/src/pages/settings/BridgeClientsCard.tsx",
+      "category": "ui",
+      "runtimeSignature": "e1d442e139d7c928cb0b83bd667ab10e2c7509493e3199ef66674c2a38e00992"
+    },
+    {
       "path": "apps/web/src/pages/settings/ConnectionsSection.tsx",
       "category": "ui",
       "runtimeSignature": "1a1689c51609d39a127001860dfacd62eff7adf6f49b33736a40d0b6b47aad12"
@@ -6324,7 +6341,7 @@
     {
       "path": "apps/web/src/pages/SettingsPage.tsx",
       "category": "ui",
-      "runtimeSignature": "ec0b0793064fb4b609a2096a58edd5d42a7edd3bd9e22c831d60568093cfcf79"
+      "runtimeSignature": "5d2f92c4adf5ada0a3209eb5ac8095e61975119ccbb6ad49ebed3507e73d4b7e"
     },
     {
       "path": "apps/web/src/pages/StartPage.tsx",

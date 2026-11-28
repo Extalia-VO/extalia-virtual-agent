@@ -1,4 +1,15 @@
-import { ATTACHMENT_BODY_HEADER, GOAL_DOCUMENT_BODY_HEADER, MAX_GOAL_DOCUMENT_RPC_BODY_BYTES, type AgentHostApi, type UpdateCapability, type UpdateStatus } from '@extalia/platform';
+import {
+  ATTACHMENT_BODY_HEADER,
+  GOAL_DOCUMENT_BODY_HEADER,
+  MAX_GOAL_DOCUMENT_RPC_BODY_BYTES,
+  type AgentHostApi,
+  type BridgeClientGrantView,
+  type BridgeClientScope,
+  type BridgePairingCapability,
+  type BridgePairingChallengeView,
+  type UpdateCapability,
+  type UpdateStatus,
+} from '@extalia/platform';
 import type { ExtaliaEvent } from '@extalia/protocol';
 import { createRemoteHost, listenerSet } from './remote';
 
@@ -252,6 +263,38 @@ export function bridgeUpdater(credential: string | BridgeConnection, options: Up
       const remove = statuses.add(listener);
       if (last) listener(last);
       return remove;
+    },
+  };
+}
+
+/** Scoped Bridge client pairing and immediate revocation over the local Bridge. */
+export function bridgePairing(credential: string | BridgeConnection, deps: BridgeDeps = defaultDeps()): BridgePairingCapability {
+  const connection = typeof credential === 'string' ? createBridgeConnection(credential, { fetch: deps.fetch }) : credential;
+  const call = async (path: string, init: { method?: string; body?: unknown } = {}) => {
+    const token = connection.token;
+    const payload = await request(deps, token, path, init);
+    assertCurrentCredential(connection, token);
+    return payload;
+  };
+  return {
+    async listClients(): Promise<BridgeClientGrantView[]> {
+      const payload = await call('/api/bridge/clients');
+      return (payload?.clients as BridgeClientGrantView[]) ?? [];
+    },
+    async issueChallenge(input: { name: string; scopes: BridgeClientScope[]; ttlMs?: number }): Promise<BridgePairingChallengeView> {
+      const payload = await call('/api/bridge/pair/challenge', { method: 'POST', body: input });
+      return payload?.challenge as BridgePairingChallengeView;
+    },
+    async confirmChallenge(input: { challengeId: string; code: string; grantTtlMs?: number }): Promise<{ client: BridgeClientGrantView; token: string }> {
+      const payload = await call('/api/bridge/pair/confirm', { method: 'POST', body: input });
+      return payload as { client: BridgeClientGrantView; token: string };
+    },
+    async revokeClient(clientId: string, reason?: string): Promise<BridgeClientGrantView> {
+      const payload = await call('/api/bridge/clients/revoke', {
+        method: 'POST',
+        body: { clientId, ...(reason ? { reason } : {}) },
+      });
+      return payload?.client as BridgeClientGrantView;
     },
   };
 }

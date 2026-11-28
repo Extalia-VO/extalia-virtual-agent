@@ -14,6 +14,7 @@ import { AutoWatchLocations, IgnoredFolders } from './AutoWatchLocations';
 import { availableSettingsSections, nextSettingsSection, resolveSettingsSection, type SettingsSection } from './settings/settingsSections';
 import './settings/settingsNav.css';
 
+import { BridgeClientsCard } from './settings/BridgeClientsCard';
 import { ConnectionsSection } from './settings/ConnectionsSection';
 import { GatewaySettingsSection } from './settings/GatewaySettingsSection';
 import { WorkspacesSection } from './settings/WorkspacesSection';
@@ -64,7 +65,7 @@ function SettingsPageContent({ t, platform, preferences, onChange, hostState, on
   const picker = hostState?.host.kind === 'desktop' ? platform.capabilities.filesystem : undefined;
   const sections = availableSettingsSections({
     agents: Boolean(agents && hostState),
-    system: Boolean(updater || platform.capabilities.restart),
+    system: Boolean(updater || platform.capabilities.restart || platform.capabilities.bridgePairing),
     profiles: !observeOnly && typeof agents?.listOperatingProfiles === 'function',
     gateway: !observeOnly && typeof agents?.gatewayOverview === 'function',
   });
@@ -270,6 +271,9 @@ function SettingsPageContent({ t, platform, preferences, onChange, hostState, on
                 <h2 id="settings-restart">{t.restart.title}</h2>
                 <RestartPrompt t={t} restart={platform.capabilities.restart} hostState={hostState} reason={t.restart.manualLead} />
               </section>
+            )}
+            {platform.capabilities.bridgePairing && (
+              <BridgeClientsCard t={t} language={preferences.language} pairing={platform.capabilities.bridgePairing} />
             )}
           </>}
         </>}
