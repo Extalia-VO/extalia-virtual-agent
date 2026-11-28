@@ -40,6 +40,26 @@ import {
   type WorkerLeaseReconcileAction,
   type WorkerLeaseView,
 } from './executionSafety.js';
+import {
+  PORTABLE_SNAPSHOT_HOST_METHODS,
+  type ApplyOwnedDataRestoreInput,
+  type OwnedDataBackupSummary,
+  type OwnedDataRestoreApplyResult,
+  type OwnedDataRestorePreview,
+  type OwnedDataSnapshotExportPreview,
+  type OwnedDataSnapshotExportResult,
+  type OwnedDataSnapshotSelection,
+  type RollbackOwnedDataRestoreResult,
+} from './portableSnapshot.js';
+import {
+  MISSION_AUTHORITY_HOST_METHODS,
+  type GrantMissionWaiverInput,
+  type MissionAuthorityOverview,
+  type MissionReconciliationCommitInput,
+  type MissionReconciliationCommitResult,
+  type MissionReconciliationPreview,
+  type RecordMissionEvidenceInput,
+} from './missionAuthority.js';
 import type {
   KnowledgeGraph, KnowledgeLinkPage, KnowledgeNodeLookup, KnowledgeNoteResult, KnowledgeOverview, KnowledgeOverviewOptions, KnowledgeSearchResult, KnowledgeStatus, KnowledgeSyncMode,
   KnowledgeSyncOutcome,
@@ -1302,6 +1322,20 @@ export interface AgentHostApi extends ObservedMemoryApi {
   listSessionSystemReports?(workspaceId: string, sessionId: string): Promise<ChatSystemReportsView>;
   /** Host resolves the registered vault; an optional expected binding only refuses stale callers. */
   workspaceKnowledge?(workspaceId: string, method: WorkspaceKnowledgeMethod, args: unknown[], expectedBinding?: WorkspaceKnowledgeBinding): Promise<unknown>;
+  /** Preview, export, and dry-run/reviewed restore of owned-data portable snapshots without modifying vendor sources. */
+  previewOwnedDataExport?(selection: OwnedDataSnapshotSelection): Promise<OwnedDataSnapshotExportPreview>;
+  exportOwnedDataSnapshot?(selection: OwnedDataSnapshotSelection): Promise<OwnedDataSnapshotExportResult>;
+  previewOwnedDataRestore?(bundleJson: string): Promise<OwnedDataRestorePreview>;
+  applyOwnedDataRestore?(input: ApplyOwnedDataRestoreInput): Promise<OwnedDataRestoreApplyResult>;
+  listOwnedDataBackups?(): Promise<OwnedDataBackupSummary[]>;
+  rollbackOwnedDataRestore?(backupId: string): Promise<RollbackOwnedDataRestoreResult>;
+  /** Reviewed mission terminal reconciliation, accepted validation evidence, and expiring waivers (V2-04/V2-06). */
+  previewMissionReconciliation?(sessionId: string, missionId: string): Promise<MissionReconciliationPreview>;
+  commitMissionReconciliation?(input: MissionReconciliationCommitInput): Promise<MissionReconciliationCommitResult>;
+  missionAuthorityOverview?(sessionId: string, missionId: string): Promise<MissionAuthorityOverview>;
+  recordMissionEvidence?(input: RecordMissionEvidenceInput): Promise<MissionAuthorityOverview>;
+  grantMissionWaiver?(input: GrantMissionWaiverInput): Promise<MissionAuthorityOverview>;
+  revokeMissionWaiver?(sessionId: string, missionId: string, waiverId: string): Promise<MissionAuthorityOverview>;
   /** Live protocol events for every session. Returns an unsubscribe function. */
   subscribe(listener: (event: ExtaliaEvent) => void): () => void;
 }
@@ -1314,6 +1348,8 @@ export const AGENT_HOST_METHODS = [
   ...OPERATING_PROFILE_HOST_METHODS,
   ...GENERAL_SCHEDULE_HOST_METHODS,
   ...GATEWAY_HOST_METHODS,
+  ...PORTABLE_SNAPSHOT_HOST_METHODS,
+  ...MISSION_AUTHORITY_HOST_METHODS,
   'completeSetup', 'createSession', 'setSessionOptions', 'modelChoices', 'teamModelChoices', 'getSessionTeam', 'saveSessionTeam', 'saveWorkspaceTeam', 'planTeam', 'continueSession', 'renameSession', 'previewSessionMove', 'moveSession', 'setSessionProjectRoot', 'sessionContinuity', 'handoverHarnesses', 'createHandoverDestination', 'previewHandover', 'applyHandover', 'readContinuity', 'reconcileHandover', 'deleteSession', 'sessionEvents', 'sendPrompt', 'uploadAttachment', 'removeAttachment', 'attachmentPreview', 'resolveApproval', 'revokeApproval', 'commandSandboxStatus', ...EXECUTION_SAFETY_HOST_METHODS, 'cancel',
   'setWorkflow', 'observeImports', 'observationSession', 'markObservedRead', 'setObservation', 'setAutoWatch',
   'observedWorkspaceLink', 'setObservedWorkspaceLink',

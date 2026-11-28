@@ -46,3 +46,5 @@ export * from './gatewayAdapter.js';
 export * from './projectProvisioning.js';
 export * from './executionSafety.js';
 export * from './bridgeGrants.js';
+export * from './portableSnapshot.js';
+export * from './missionAuthority.js';

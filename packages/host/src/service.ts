@@ -1,8 +1,12 @@
 import { SessionBrowser } from './sessionBrowser.js';
 import { sessionBrowserProject } from '@extalia/platform';
-import { decodeSessionOperatingProfile, resolveOperatingProfile, type AgentPersona, type SessionOperatingProfile, type OperatingProfileOverrides } from '@extalia/core';
-import { normalizeOperatingProfileInput, normalizeWorkspaceOperatingProfile, normalizeSessionOperatingProfileInput } from '@extalia/platform';
+import { decodeSessionOperatingProfile, decodeOperatingProfile, normalizeOwnedDataBackupId, OPERATING_PROFILE_LIMITS, resolveOperatingProfile, type AgentPersona, type OwnedDataSnapshotSection, type SessionOperatingProfile, type OperatingProfileOverrides } from '@extalia/core';
+import { GENERAL_SCHEDULE_LIMITS, normalizeOperatingProfileInput, normalizeWorkspaceOperatingProfile, normalizeSessionOperatingProfileInput } from '@extalia/platform';
 import { createOperatingProfileStore } from './operatingProfiles.js';
+import { createOwnedDataRestoreService } from './ownedDataRestore.js';
+import { createOwnedDataSnapshotService, sha256Hex } from './ownedDataSnapshot.js';
+import { decodeStoredSchedule, LEGACY_SCHEDULE_JSON_SCHEMA, ScheduleStore } from './scheduleStore.js';
+import { createMissionAuthorityService } from './missionAuthority.js';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { AntigravityHandoverService } from './antigravityHandoverService.js';
 import { HermesHandoverService } from './hermesHandoverService.js';
@@ -213,6 +217,8 @@ export interface AgentHostOptions {
   commandSandbox?: CommandSandboxExecutor;
   /** Optional profile-scoped meeting exporter. History-off sessions never invoke it. */
   onMeetingMinutes?(record: NativeMeetingMinutes, context: { sessionId: string; workspaceId: string }): Promise<string | undefined>;
+  /** Test harness only; invoked before each snapshot section is written during owned-data restore. */
+  onBeforeOwnedDataRestoreSection?: (section: OwnedDataSnapshotSection) => void | Promise<void>;
   /**
    * Core for new native missions. `EXTALIA_NATIVE_CORE` in `env` overrides it, and it
    * overrides `nativeCore` in `config/extalia.json`. Default `typescript`.
@@ -7663,9 +7669,10 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     }
   };
 
-  const generalSchedules = new GeneralScheduleManager({
+  const schedulesSqlitePath = path.join(layout.state, 'schedules.sqlite');
+  const createGeneralScheduleManager = () => new GeneralScheduleManager({
     directory: layout.config,
-    sqlitePath: path.join(layout.state, 'schedules.sqlite'),
+    sqlitePath: schedulesSqlitePath,
     mirrorLegacyJson: true,
     callbacks: {
       validateWorkspace: workspaceId => {
@@ -7912,9 +7919,238 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       },
     },
   });
+  let generalSchedules = createGeneralScheduleManager();
   await generalSchedules.initialize();
 
+  const isNonPersistenceRestoreBusy = () =>
+    learningAdmissions.isBusy
+    || antigravityHandover.isBusy()
+    || hermesHandover.isBusy()
+    || observedCliResume.isBusy()
+    || Boolean(observedMemory?.isBusy())
+    || Boolean(workMemory?.isBusy())
+    || Boolean(generalSchedules?.isBusy)
+    || pendingGatewayFanouts.size > 0
+    || pendingScheduleSettlementWork.size > 0
+    || observedWorkspaceChange
+    || continuityWork > 0
+    || learningSchedule.isBusy
+    || runs.size > 0
+    || workspaceContextReaders > 0
+    || nativeStatusRefresh !== undefined
+    || nativeMemory.isBusy()
+    || !!promptQueues?.isBusy
+    || operatingMutations > 0
+    || workspaceBoundaryMutations > 0
+    || connectionChanges.size > 0
+    || registryWork > 0;
+
+  const reopenGeneralSchedules = async () => {
+    await generalSchedules.close().catch(() => undefined);
+    const next = createGeneralScheduleManager();
+    await next.initialize();
+    generalSchedules = next;
+  };
+
+  const ownedDataSnapshots = createOwnedDataSnapshotService({
+    appVersion: options.version,
+    hostKind: options.kind,
+    now,
+    getProfile: () => profiles.get(),
+    getHostSettings: () => ({
+      workflow: config.workflow,
+      setupComplete: config.setupComplete,
+      setupVersion: config.setupVersion,
+      nativeCore: config.nativeCore,
+      profile: config.profile,
+      connections: config.connections,
+      workspaces: config.workspaces,
+    }),
+    listOperatingProfiles: () => operatingProfiles,
+    listSessions: () => sessions.list(),
+    readSessionMessages: id => sessions.readMessages(id),
+    listMissions: sessionId => missions.list(sessionId),
+    listSchedules: () => generalSchedules.list(),
+  });
+
+  const ownedDataRestore = createOwnedDataRestoreService({
+    appVersion: options.version,
+    dataDirectory: layout.root,
+    now,
+    isBusy: () => isNonPersistenceRestoreBusy(),
+    previewRestore: bundleJson => ownedDataSnapshots.previewRestore(bundleJson),
+    ...(options.onBeforeOwnedDataRestoreSection
+      ? { onBeforeSectionApply: options.onBeforeOwnedDataRestoreSection }
+      : {}),
+    prepareForBackup: async () => {
+      await generalSchedules.close();
+    },
+    afterApply: async () => {
+      await reopenGeneralSchedules();
+    },
+    restoreOperatingProfile: async payload => {
+      const decoded = decodeOperatingProfile(payload);
+      if (!decoded.ok) throw new Error(decoded.errors.join(' '));
+      const current = await operatingProfileStore.list();
+      if (current.some(item => item.id === decoded.value.id)) {
+        throw new Error(`Operating profile "${decoded.value.id}" already exists.`);
+      }
+      if (current.length >= OPERATING_PROFILE_LIMITS.profiles) {
+        throw new Error('Keep at most 32 operating profiles.');
+      }
+      const next = [...current, decoded.value];
+      const filePayload = { schema: 'extalia.operating-profiles.v1', profiles: next };
+      if (Buffer.byteLength(`${JSON.stringify(filePayload, null, 2)}\n`) > OPERATING_PROFILE_LIMITS.storeBytes) {
+        throw new Error('Operating profiles exceed the 512 KiB library limit.');
+      }
+      await writeJsonAtomic(path.join(layout.config, 'operating-profiles.json'), filePayload, { mode: PRIVATE_FILE_MODE });
+      operatingProfiles = await operatingProfileStore.list();
+    },
+    restoreWorkspace: async payload => {
+      const decoded = decodeWorkspace(payload);
+      if (!decoded.ok) throw new Error(decoded.errors.join(' '));
+      if (config.workspaces.some(item => item.id === decoded.value.id)) {
+        throw new Error(`Workspace "${decoded.value.id}" already exists.`);
+      }
+      const nextWorkspaces = [...config.workspaces, decoded.value];
+      const assignment = decoded.value.crossWorkspaceAccess === 'isolated'
+        ? assignWorkspaceVaultProfile({ profiles: config.vaultProfiles, workspaces: nextWorkspaces, defaultProfile: config.profile }, decoded.value.id)
+        : undefined;
+      config = {
+        ...config,
+        workspaces: assignment?.workspaces ?? nextWorkspaces,
+        ...(assignment ? { vaultProfiles: assignment.profiles } : {}),
+      };
+      await writeJsonAtomic(configFile, config, { mode: PRIVATE_FILE_MODE });
+    },
+    restoreSession: async payload => {
+      const rawMessages = payload.messages;
+      const messages = Array.isArray(rawMessages) ? structuredClone(rawMessages) : [];
+      const { messages: _ignoredMessages, ...rest } = payload;
+      const record = structuredClone(rest) as unknown as SessionRecord;
+      if (typeof record.workspaceId === 'string' && record.workspaceId.length > 0 && !config.workspaces.some(item => item.id === record.workspaceId)) {
+        throw new Error(`Session "${String(record.id)}" references missing workspace "${record.workspaceId}".`);
+      }
+      await savedSessions.create(record);
+      await savedSessions.writeMessages(record.id, messages);
+    },
+    restoreSchedule: async payload => {
+      const workspaceId = typeof payload.workspaceId === 'string' ? payload.workspaceId : '';
+      if (!config.workspaces.some(item => item.id === workspaceId)) {
+        throw new Error(`Schedule "${String(payload.id)}" references missing workspace "${workspaceId}".`);
+      }
+      const rawTrigger: unknown = payload.trigger && typeof payload.trigger === 'object' && !Array.isArray(payload.trigger)
+        ? { ...(payload.trigger as Record<string, unknown>) }
+        : payload.trigger;
+      if (rawTrigger && typeof rawTrigger === 'object' && !Array.isArray(rawTrigger)) {
+        const triggerRecord = rawTrigger as Record<string, unknown>;
+        if (triggerRecord.kind === 'cron' && triggerRecord.timeZone === undefined && typeof payload.timeZone === 'string') {
+          triggerRecord.timeZone = payload.timeZone;
+        }
+      }
+      const { nextRunAt: _ignoredNextRunAt, ...withoutNextRun } = payload;
+      const decoded = decodeStoredSchedule({
+        ...withoutNextRun,
+        trigger: rawTrigger,
+        missedPolicy: payload.missedPolicy ?? payload.missedRunPolicy ?? 'skip',
+        enabled: false,
+        state: 'paused',
+      });
+      await generalSchedules.close();
+      const store = await ScheduleStore.open(schedulesSqlitePath);
+      try {
+        const current = store.readCatalogState();
+        if (current.schedules.some(item => item.id === decoded.id)) {
+          throw new Error(`Schedule "${decoded.id}" already exists.`);
+        }
+        const nextSchedules = [...current.schedules, decoded];
+        const nextGenerations = new Map(current.triggerGenerations);
+        nextGenerations.set(decoded.id, 1);
+        const publicRecoveries = current.recoveries.map(item => ({
+          scheduleId: item.scheduleId,
+          reason: item.reason,
+          dueAt: item.dueAt,
+          retryAt: item.retryAt,
+          attempt: item.attempt,
+          ...(item.retryContext ? { retryContext: item.retryContext } : {}),
+        }));
+        const mirrorPayload = {
+          schema: LEGACY_SCHEDULE_JSON_SCHEMA,
+          schedules: nextSchedules,
+          ...(current.promptCreations.length ? { promptCreations: current.promptCreations } : {}),
+          ...(publicRecoveries.length ? { recoveries: publicRecoveries } : {}),
+        };
+        const encodedMirror = `${JSON.stringify(mirrorPayload, null, 2)}\n`;
+        if (Buffer.byteLength(encodedMirror) > GENERAL_SCHEDULE_LIMITS.storeBytes) {
+          throw userError('Schedules exceed the 512 KiB storage limit.');
+        }
+        const mirrorSha256 = sha256Hex(encodedMirror);
+        await writeJsonAtomic(path.join(layout.config, 'schedules.json'), mirrorPayload, { mode: PRIVATE_FILE_MODE });
+        store.replaceCatalogState({
+          schedules: nextSchedules,
+          promptCreations: current.promptCreations,
+          recoveries: current.recoveries,
+          triggerGenerations: nextGenerations,
+          lastJsonMirrorSha256: mirrorSha256,
+        });
+      } finally {
+        store.close();
+      }
+    },
+    restoreSettings: async payload => {
+      const currentProfile = await profiles.get();
+      const updatedMs = Date.parse(currentProfile.updatedAt);
+      const profileExists = (Number.isFinite(updatedMs) && updatedMs > 0)
+        || Boolean(currentProfile.displayName)
+        || Object.keys(currentProfile.preferences).length > 0
+        || Boolean(currentProfile.clientState && Object.keys(currentProfile.clientState).length > 0)
+        || config.setupComplete
+        || config.connections.length > 0;
+      if (profileExists) {
+        return { applied: false, warning: 'Skipped settings restore because profile preferences already exist on this host.' };
+      }
+      const patch: Record<string, unknown> = {};
+      if (typeof payload.displayName === 'string' && payload.displayName.trim()) {
+        patch.displayName = payload.displayName;
+      }
+      if (payload.preferences && typeof payload.preferences === 'object' && !Array.isArray(payload.preferences)) {
+        patch.preferences = structuredClone(payload.preferences);
+      }
+      if (payload.clientState && typeof payload.clientState === 'object' && !Array.isArray(payload.clientState)) {
+        patch.clientState = structuredClone(payload.clientState);
+      }
+      if (Object.keys(patch).length > 0) {
+        await profiles.save(patch);
+      }
+      return { applied: true };
+    },
+    reloadAfterRollback: async () => {
+      config = decodeConfig(await readJson<Partial<HostConfig> | undefined>(configFile, undefined));
+      operatingProfiles = await operatingProfileStore.list();
+      credentialStatus.clear();
+      await Promise.all(config.connections.map(refreshCredentialStatus));
+      sequence.clear();
+      queueWorkspaces.clear();
+      await reopenGeneralSchedules();
+    },
+  });
+
   const learningRecovery = new LearningRecovery({ queue: learningSchedule, list: listLearningRecoveries, prepare: prepareLearningRecovery });
+  const missionAuthority = await persistence.run(() => createMissionAuthorityService({
+    storeFile: path.join(layout.state, 'mission-authority.json'),
+    getMission: (sessionId, missionId) => {
+      if (observations.has(sessionId)) return undefined;
+      try {
+        return missions.get(sessionId, missionId);
+      } catch {
+        return undefined;
+      }
+    },
+    saveMission: run => persistence.run(() => missions.save(run)),
+    listWorkerLeases: missionId => workerLeases.list().filter(lease => lease.missionId === missionId),
+    isSessionActive: sessionId => closing || runs.has(sessionId) || missions.isReserved(sessionId),
+    now,
+  }));
 
   Object.assign(host, {
     learningSchedule: async () => { assertHostOpen(); return learningRecovery.snapshot(); },
@@ -8071,7 +8307,99 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       if (!gatewayBridge) throw userError('Gateway storage is unavailable.');
       return gatewayBridge.listSessionSystemReports(workspaceId, sessionId);
     },
-  } satisfies Pick<Required<AgentHostApi>, 'listVaultProfiles' | 'saveVaultProfile' | 'learningSchedule' | 'changeLearningSchedule' | 'requestKnowledgeUpdate' | 'listSchedules' | 'saveSchedule' | 'setScheduleEnabled' | 'runScheduleNow' | 'deleteSchedule' | 'listScheduleRuns' | 'scheduleRunDetail' | 'previewScheduleNextRuns' | 'reviewUnknownScheduleRun' | 'gatewayOverview' | 'gatewayDiagnostics' | 'saveGatewayConnector' | 'setGatewayConnectorStatus' | 'issueGatewayLinkChallenge' | 'confirmGatewayPrincipalLink' | 'revokeGatewayPrincipalLink' | 'saveGatewayRoute' | 'deleteGatewayRoute' | 'listWorkspaceReports' | 'listSessionSystemReports'>);
+    previewOwnedDataExport: async selection => {
+      assertHostOpen();
+      try { return await ownedDataSnapshots.previewExport(selection); }
+      catch (error) { throw userError(error instanceof Error ? error.message : 'Could not preview owned-data export.'); }
+    },
+    exportOwnedDataSnapshot: async selection => {
+      assertHostOpen();
+      try { return await ownedDataSnapshots.exportSnapshot(selection); }
+      catch (error) { throw userError(error instanceof Error ? error.message : 'Could not export owned-data snapshot.'); }
+    },
+    previewOwnedDataRestore: async bundleJson => {
+      assertHostOpen();
+      return ownedDataSnapshots.previewRestore(bundleJson);
+    },
+    applyOwnedDataRestore: async input => {
+      assertHostOpen();
+      if (isNonPersistenceRestoreBusy() || persistence.isBusy) {
+        return {
+          ok: false,
+          code: 'host-busy',
+          rolledBack: false,
+          conflicts: [],
+          detail: 'Host is busy with active work; wait until idle before applying a restore.',
+        };
+      }
+      return persistence.run(() => ownedDataRestore.applyRestore(input));
+    },
+    listOwnedDataBackups: async () => {
+      assertHostOpen();
+      return persistence.run(() => ownedDataRestore.listBackups());
+    },
+    rollbackOwnedDataRestore: async backupId => {
+      assertHostOpen();
+      if (isNonPersistenceRestoreBusy() || persistence.isBusy) {
+        let normalizedId = typeof backupId === 'string' ? backupId.trim() : '';
+        try { normalizedId = normalizeOwnedDataBackupId(backupId); } catch { /* retain caller string for diagnostics */ }
+        return {
+          ok: false,
+          backupId: normalizedId,
+          detail: 'Host is busy with active work; wait until idle before rolling back a restore.',
+        };
+      }
+      return persistence.run(() => ownedDataRestore.rollbackBackup(backupId));
+    },
+    previewMissionReconciliation: async (sessionId, missionId) => {
+      assertHostOpen();
+      try { return await missionAuthority.previewReconciliation(sessionId, missionId); }
+      catch (error) {
+        if (error instanceof Error && error.name === 'UserError') throw error;
+        throw userError(error instanceof Error ? error.message : 'Could not preview mission reconciliation.');
+      }
+    },
+    commitMissionReconciliation: async input => {
+      assertHostOpen();
+      try { return await persistence.run(() => missionAuthority.commitReconciliation(input)); }
+      catch (error) {
+        if (error instanceof Error && error.name === 'UserError') throw error;
+        throw userError(error instanceof Error ? error.message : 'Could not commit mission reconciliation.');
+      }
+    },
+    missionAuthorityOverview: async (sessionId, missionId) => {
+      assertHostOpen();
+      try { return await missionAuthority.overview(sessionId, missionId); }
+      catch (error) {
+        if (error instanceof Error && error.name === 'UserError') throw error;
+        throw userError(error instanceof Error ? error.message : 'Could not load mission authority overview.');
+      }
+    },
+    recordMissionEvidence: async input => {
+      assertHostOpen();
+      try { return await persistence.run(() => missionAuthority.recordEvidence(input)); }
+      catch (error) {
+        if (error instanceof Error && error.name === 'UserError') throw error;
+        throw userError(error instanceof Error ? error.message : 'Could not record mission evidence.');
+      }
+    },
+    grantMissionWaiver: async input => {
+      assertHostOpen();
+      try { return await persistence.run(() => missionAuthority.grantWaiver(input)); }
+      catch (error) {
+        if (error instanceof Error && error.name === 'UserError') throw error;
+        throw userError(error instanceof Error ? error.message : 'Could not grant mission waiver.');
+      }
+    },
+    revokeMissionWaiver: async (sessionId, missionId, waiverId) => {
+      assertHostOpen();
+      try { return await persistence.run(() => missionAuthority.revokeWaiver(sessionId, missionId, waiverId)); }
+      catch (error) {
+        if (error instanceof Error && error.name === 'UserError') throw error;
+        throw userError(error instanceof Error ? error.message : 'Could not revoke mission waiver.');
+      }
+    },
+  } satisfies Pick<Required<AgentHostApi>, 'listVaultProfiles' | 'saveVaultProfile' | 'learningSchedule' | 'changeLearningSchedule' | 'requestKnowledgeUpdate' | 'listSchedules' | 'saveSchedule' | 'setScheduleEnabled' | 'runScheduleNow' | 'deleteSchedule' | 'listScheduleRuns' | 'scheduleRunDetail' | 'previewScheduleNextRuns' | 'reviewUnknownScheduleRun' | 'gatewayOverview' | 'gatewayDiagnostics' | 'saveGatewayConnector' | 'setGatewayConnectorStatus' | 'issueGatewayLinkChallenge' | 'confirmGatewayPrincipalLink' | 'revokeGatewayPrincipalLink' | 'saveGatewayRoute' | 'deleteGatewayRoute' | 'listWorkspaceReports' | 'listSessionSystemReports' | 'previewOwnedDataExport' | 'exportOwnedDataSnapshot' | 'previewOwnedDataRestore' | 'applyOwnedDataRestore' | 'listOwnedDataBackups' | 'rollbackOwnedDataRestore' | 'previewMissionReconciliation' | 'commitMissionReconciliation' | 'missionAuthorityOverview' | 'recordMissionEvidence' | 'grantMissionWaiver' | 'revokeMissionWaiver'>);
 
   workMemory = new WorkMemory({ backend: rustLearning, directory: path.join(layout.state, 'work-memory-outbox'),
     resolve: resolveWorkMemory, authorizeCapture: authorizeWorkMemoryCapture, persist: operation => persistence.run(operation),

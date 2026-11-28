@@ -6,7 +6,9 @@ import { runBridgeClients } from './bridgeClients';
 import { runConnect, runConnections, runDisconnect, runMcp, runReply } from './connect';
 import { runCodexPermissions } from './codexPermissions';
 import { runInbox } from './inbox';
+import { runMissionAuthority } from './missionAuthority';
 import { runService } from './service';
+import { runSnapshot } from './snapshot';
 import type { StartOptions } from './start';
 
 export type { StartOptions } from './start';
@@ -79,6 +81,19 @@ Commands:
     --url <url> --token <secret> [--question <text>]
   inbox               Poll a manually paired external-agent inbox (no automatic retry)
     --url <url> --token <secret> [--ack <message ID>] [--wait-ms <0..25000>]
+  snapshot <action>   Manage owned-data snapshots (<export|verify|preview-restore|restore|backups|rollback>)
+    export            Export owned data (--sections, --workspace, --session, --mission, --out, --force, --url, --token, --data-dir, --json)
+    verify <file>     Verify snapshot checksums and secret-free integrity offline (--json)
+    preview-restore <file>  Dry-run restore preview without modifying state (--url, --token, --data-dir, --json)
+    restore <file>    Apply snapshot restore with pre-restore backup (--on-collision, --yes, --url, --token, --data-dir, --json)
+    backups           List pre-restore backups (--url, --token, --data-dir, --json)
+    rollback <id>     Roll back to a pre-restore backup (--yes, --url, --token, --data-dir, --json)
+  mission <action>    Reconcile mission recovery and inspect evidence or waivers
+    reconcile-preview Preview reviewed terminal reconciliation (--session, --mission, --url, --token, --data-dir, --json)
+    reconcile-commit  Commit reviewed terminal reconciliation (--session, --mission, --digest, --decision, --actor, --reason, [--key], --url, --token, --data-dir, --json)
+    evidence          Inspect task evidence and acceptance gates (--session, --mission, --url, --token, --data-dir, --json)
+    waive             Grant an expiring task acceptance waiver (--session, --mission, --task, --digest, --actor, --reason, --policy-version, [--scope], [--ttl-ms], --url, --token, --data-dir, --json)
+    revoke-waiver     Revoke an active task waiver (--session, --mission, --waiver, --url, --token, --data-dir, --json)
   update              Install the latest version from npm
     --check             Only report whether a newer version exists
   doctor              Show versions, platform and the user-data location
@@ -218,6 +233,10 @@ export async function run(args: readonly string[], host: CliHost): Promise<numbe
       return runReply(host, rest);
     case 'inbox':
       return runInbox(host, rest);
+    case 'snapshot':
+      return runSnapshot(rest, host);
+    case 'mission':
+      return runMissionAuthority(rest, host);
     case 'update':
       return update(host, rest);
     case 'help':

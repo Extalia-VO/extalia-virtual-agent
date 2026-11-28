@@ -158,6 +158,11 @@ const READ_METHODS = new Set<string>([
   'observedHermesStatus',
   'checkFolder',
   'browseDirectories',
+  'previewOwnedDataExport',
+  'previewOwnedDataRestore',
+  'listOwnedDataBackups',
+  'previewMissionReconciliation',
+  'missionAuthorityOverview',
 ]);
 
 const CHAT_METHODS = new Set<string>([
@@ -178,6 +183,9 @@ const APPROVAL_METHODS = new Set<string>([
   'revokeApproval',
   'reconcileWorkerLease',
   'reviewUnknownScheduleRun',
+  'commitMissionReconciliation',
+  'grantMissionWaiver',
+  'revokeMissionWaiver',
 ]);
 
 /**

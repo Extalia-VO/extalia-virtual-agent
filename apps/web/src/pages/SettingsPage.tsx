@@ -17,6 +17,7 @@ import './settings/settingsNav.css';
 import { BridgeClientsCard } from './settings/BridgeClientsCard';
 import { ConnectionsSection } from './settings/ConnectionsSection';
 import { GatewaySettingsSection } from './settings/GatewaySettingsSection';
+import { OwnedSnapshotCard } from './settings/OwnedSnapshotCard';
 import { WorkspacesSection } from './settings/WorkspacesSection';
 import { KnowledgeVaultSection } from './settings/KnowledgeVaultSection';
 import { OperatingProfilesSection } from '../operatingProfiles/OperatingProfilesSection';
@@ -263,6 +264,9 @@ function SettingsPageContent({ t, platform, preferences, onChange, hostState, on
               </section>
             )}
             {agents && hostState && <KnowledgeVaultSection t={t} agents={agents} picker={picker} />}
+            {agents && hostState && agents.previewOwnedDataExport && agents.exportOwnedDataSnapshot && agents.previewOwnedDataRestore && (
+              <OwnedSnapshotCard t={t} agents={agents} />
+            )}
           </>}
           {item === 'system' && <>
             {updater && <UpdatesSection t={t} updater={updater} status={updateStatus} />}

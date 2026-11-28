@@ -51,8 +51,17 @@ export {
   type LegacyMigrationResult as ScheduleLegacyMigrationResult,
   type RecordDeliveryInput, type StoredScheduleCatalogState,
 } from './scheduleStore.js';
+export {
+  createOwnedDataSnapshotService, MAX_SNAPSHOT_BYTES, sha256Hex,
+  type OwnedDataHostSettings, type OwnedDataSnapshotDependencies, type OwnedDataSnapshotService,
+} from './ownedDataSnapshot.js';
+export {
+  createOwnedDataRestoreService,
+  type OwnedDataRestoreDependencies, type OwnedDataRestoreService, type OwnedDataRestoreSettingsOutcome,
+} from './ownedDataRestore.js';
 export * from './serviceManager.js';
 export * from './gateway/index.js';
 export * from './tools/commandSandbox.js';
 export * from './approvalLedger.js';
 export * from './workerLease.js';
+export * from './missionAuthority.js';
