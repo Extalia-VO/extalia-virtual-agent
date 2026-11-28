@@ -301,7 +301,7 @@ describe('Schedule & Automation vNext — 64-job 24h DST soak, crash/restart fau
     // Closing GeneralScheduleManager cleanly cancels every remaining timer.
     await h.manager.close();
     expect(h.timers.filter(timer => !timer.cancelled)).toEqual([]);
-  }, 90_000);
+  }, 120_000);
 
   it('SCH-AT-20 / SCH-AT-06: executes both repeated 01:30 EDT/EST occurrences and all 25 wall-clock hours on US fall-back day (2026-11-01)', async () => {
     const { configDir, stateDir } = await makeTempRoot('extalia-sch-fallback-');

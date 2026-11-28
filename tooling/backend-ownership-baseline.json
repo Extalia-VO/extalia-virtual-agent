@@ -2170,9 +2170,9 @@
     {
       "path": "packages/host/src/schedules.ts",
       "category": "legacy-backend",
-      "sha256": "9caba7526e8d01e2ac77a2b21bc25b0ec39bda9096603f38279779e4648739db",
-      "loc": 1163,
-      "bytes": 50994,
+      "sha256": "af1090962a3ce57b8496cfa646209cbb17d708a268051e226f921e180636f435",
+      "loc": 1194,
+      "bytes": 52338,
       "effectKinds": [
         "node-builtin"
       ],
@@ -2181,9 +2181,9 @@
     {
       "path": "packages/host/src/scheduleStore.ts",
       "category": "legacy-backend",
-      "sha256": "7387658f502edcae22f52d37aa7d19eb4f46963b430304cc507e65721f7f5d4b",
-      "loc": 1757,
-      "bytes": 74102,
+      "sha256": "02ffd4f76e141f0e4da35fa514232c79893859cccb7922e7b05bbe8dbf486e08",
+      "loc": 1829,
+      "bytes": 76390,
       "effectKinds": [
         "node-builtin"
       ],

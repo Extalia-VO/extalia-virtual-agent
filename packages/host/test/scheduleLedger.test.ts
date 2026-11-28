@@ -683,4 +683,47 @@ describe('Schedule & Automation vNext — Durable SQLite ledger & lifecycle acce
     expect(detail?.deliveries).toHaveLength(1);
     expect(detail?.deliveries[0]).toMatchObject({ state: 'sent', discordMessageId: 'msg_1001' });
   });
+
+  it('rolls back both single-schedule upsert and run transition when runAtomic throws mid-transaction', async () => {
+    const { configDir, stateDir } = await makeTempRoot('extalia-sch-atomic-');
+    const f = makeFixture(configDir, stateDir, '2026-11-24T10:00:00.000Z');
+    await f.open();
+
+    const saved = (await f.manager.save({
+      workspaceId: 'ws_ledger',
+      name: 'Atomic job',
+      prompt: 'Ping',
+      enabled: true,
+      trigger: { kind: 'once', runAt: '2026-11-24T10:05:00.000Z' },
+      sessionTarget: { mode: 'existing', sessionId: 's_1' },
+      missedPolicy: 'run-once',
+    })).schedules[0]!;
+    await f.manager.close();
+
+    const store = await ScheduleStore.open(path.join(stateDir, 'schedules.sqlite'));
+    stores.push(store);
+
+    expect(() => store.runAtomic(() => {
+      const admission = store.admitOccurrence({
+        scheduleId: saved.id,
+        scheduleRevision: saved.revision + 1,
+        occurrenceKey: `manual:${saved.id}:req_atomic_rollback`,
+        occurrenceKind: 'manual',
+        scheduledFor: '2026-11-24T10:00:00.000Z',
+        requestedAt: '2026-11-24T10:00:00.000Z',
+        workspaceId: saved.workspaceId,
+        nowIso: '2026-11-24T10:00:00.000Z',
+      });
+      expect(admission.admitted).toBe(true);
+      store.upsertScheduleState({
+        schedule: { ...saved, revision: saved.revision + 1, state: 'running' },
+      });
+      throw new Error('Injected mid-transaction failure');
+    })).toThrow('Injected mid-transaction failure');
+
+    const after = store.readCatalogState().schedules.find(item => item.id === saved.id)!;
+    expect(after.revision).toBe(saved.revision);
+    expect(after.state).toBe('scheduled');
+    expect(store.listRuns({ workspaceId: saved.workspaceId, scheduleId: saved.id }).runs).toEqual([]);
+  });
 });
