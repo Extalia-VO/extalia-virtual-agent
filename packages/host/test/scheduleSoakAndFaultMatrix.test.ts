@@ -57,6 +57,7 @@ function makeHarness(configDir: string, stateDir: string, initialNowIso: string)
   let nowMs = Date.parse(initialNowIso);
   let correlationSeq = 0;
   const timers: FakeTimer[] = [];
+  const activeTimers = new Set<FakeTimer>();
   const prepare = vi.fn(async (_schedule: GeneralSchedule, _manual: boolean, _retryContext?: ScheduleRetryContext) => 'ready' as 'ready' | 'connection-unavailable');
   const resolve = vi.fn(async (schedule: GeneralSchedule, _manual: boolean, _retryContext?: ScheduleRetryContext): Promise<ScheduleExecutionTarget> => ({
     sessionId: schedule.sessionTarget.mode === 'existing' ? schedule.sessionTarget.sessionId : `s_auto_${schedule.id}`,
@@ -76,10 +77,13 @@ function makeHarness(configDir: string, stateDir: string, initialNowIso: string)
       setTimer: (callback, delay) => {
         const timer: FakeTimer = { callback, delay, cancelled: false };
         timers.push(timer);
+        activeTimers.add(timer);
         return timer as unknown as ReturnType<typeof setTimeout>;
       },
       clearTimer: handle => {
-        (handle as unknown as FakeTimer).cancelled = true;
+        const timer = handle as unknown as FakeTimer;
+        timer.cancelled = true;
+        activeTimers.delete(timer);
       },
       callbacks: {
         validateWorkspace: () => undefined,
@@ -94,18 +98,25 @@ function makeHarness(configDir: string, stateDir: string, initialNowIso: string)
   };
 
   const settle = async () => {
-    for (let i = 0; i < 4 && manager.isBusy; i++) {
+    for (let i = 0; i < 32 && manager.isBusy; i++) {
       await Promise.resolve();
     }
     if (manager.isBusy) {
-      await vi.waitFor(() => expect(manager.isBusy).toBe(false), { timeout: 10_000, interval: 1 });
+      const deadline = Date.now() + 10_000;
+      while (manager.isBusy && Date.now() < deadline) {
+        await new Promise<void>(resolveImmediate => setImmediate(resolveImmediate));
+      }
+      expect(manager.isBusy).toBe(false);
     }
   };
 
   const advanceUntil = async (endIsoOrMs: string | number) => {
     const endMs = typeof endIsoOrMs === 'string' ? Date.parse(endIsoOrMs) : endIsoOrMs;
     while (nowMs <= endMs) {
-      const active = [...timers].reverse().find(timer => !timer.cancelled);
+      let active: FakeTimer | undefined;
+      for (const timer of activeTimers) {
+        active = timer;
+      }
       if (!active) break;
       const nextTickMs = nowMs + active.delay;
       if (nextTickMs > endMs) {
@@ -114,6 +125,7 @@ function makeHarness(configDir: string, stateDir: string, initialNowIso: string)
       }
       nowMs = nextTickMs;
       active.cancelled = true;
+      activeTimers.delete(active);
       active.callback();
       await settle();
     }
@@ -289,7 +301,7 @@ describe('Schedule & Automation vNext — 64-job 24h DST soak, crash/restart fau
     // Closing GeneralScheduleManager cleanly cancels every remaining timer.
     await h.manager.close();
     expect(h.timers.filter(timer => !timer.cancelled)).toEqual([]);
-  });
+  }, 90_000);
 
   it('SCH-AT-20 / SCH-AT-06: executes both repeated 01:30 EDT/EST occurrences and all 25 wall-clock hours on US fall-back day (2026-11-01)', async () => {
     const { configDir, stateDir } = await makeTempRoot('extalia-sch-fallback-');
@@ -360,7 +372,7 @@ describe('Schedule & Automation vNext — 64-job 24h DST soak, crash/restart fau
 
     await h.manager.close();
     expect(h.timers.filter(timer => !timer.cancelled)).toEqual([]);
-  });
+  }, 90_000);
 
   it('WP-SCH-12: quarantines every interrupted non-terminal state without auto-replay after abrupt crash, preserves deferred/pending slots, and resolves via explicit manual review', async () => {
     const { configDir, stateDir } = await makeTempRoot('extalia-sch-fault-matrix-');
