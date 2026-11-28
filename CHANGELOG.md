@@ -16,6 +16,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.371] - 2026-11-28
+
+- Fix **Atomic Schedule Execution Commits & Windows CI Write Amplification (`ScheduleStore`, `GeneralScheduleManager`)**: add re-entrant `ScheduleStore.runAtomic()` and single-row `upsertScheduleState()` in [scheduleStore.ts](packages/host/src/scheduleStore.ts), combine `executeSchedule()` admission and settlement catalog updates with run-ledger transitions inside single `PRAGMA synchronous = FULL` transactions in [schedules.ts](packages/host/src/schedules.ts), add rollback atomicity test coverage in [scheduleLedger.test.ts](packages/host/test/scheduleLedger.test.ts), and adjust Windows soak timeout headroom in [scheduleSoakAndFaultMatrix.test.ts](packages/host/test/scheduleSoakAndFaultMatrix.test.ts).
+
 ## [0.4.370] - 2026-11-28
 
 - Add **Reviewed Portable Restore Apply, Atomic Pre-Restore Backup & Rollback (`V2-18`, `FR-037`, `AR-28`, `REL-010`)**: extend `OWNED_DATA_SNAPSHOT_FORMAT` contracts and fail-closed `'admin'` Bridge scopes with restore input/backup validators (`packages/core/src/snapshot.ts`, `packages/platform/src/portableSnapshot.ts`, `agentHost.ts`, `bridgeGrants.ts`); implement `createOwnedDataRestoreService` (`packages/host/src/ownedDataRestore.ts`, `service.ts`) enforcing confirmation & bundle digest preflight, `0o600` pre-restore backups across JSON and SQLite stores (`backups/restore/<backupId>/`), disabled-by-default schedule restoration, zero modification of external vendor files, automatic byte-for-byte rollback on mid-apply failure, and explicit `listOwnedDataBackups`/`rollbackOwnedDataRestore`; add `extalia snapshot <restore|backups|rollback>` CLI subcommands (`apps/cli/src/snapshot.ts`, `cli.ts`); and extend EN/ID `OwnedSnapshotCard` (`apps/web/src/pages/settings/OwnedSnapshotCard.tsx`, `ownedSnapshot.css`, `i18n.ts`, `mockHost.ts`) with reviewed apply controls, confirmation gating, backup list, and inline rollback confirmation.

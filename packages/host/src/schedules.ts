@@ -32,6 +32,7 @@ import {
   ScheduleStore,
   ScheduleStoreCorruptionError,
   ScheduleStoreDowngradeError,
+  type AdmitScheduleOccurrenceResult,
   type LegacyMigrationResult,
   type PromptCreationReceipt,
   type RecordDeliveryInput,
@@ -237,18 +238,28 @@ export class GeneralScheduleManager {
     return { payload, sha256: digest, bytes };
   }
 
+  private async writeLegacyMirrorIfEnabled(): Promise<string | undefined> {
+    this.assertStoreOpen();
+    if (!this.mirrorLegacyJson) return undefined;
+    try {
+      const mirror = this.serializeLegacyMirror();
+      if (mirror.bytes > GENERAL_SCHEDULE_LIMITS.storeBytes) {
+        throw userError('Schedules exceed the 512 KiB storage limit.');
+      }
+      await writeJsonAtomic(this.file, mirror.payload, { mode: 0o600 });
+      return mirror.sha256;
+    } catch (error) {
+      this.storageUnavailable = true;
+      this.cancelTimer();
+      throw error;
+    }
+  }
+
   private async writeToDisk(): Promise<void> {
     const store = this.assertStoreOpen();
     let mirrorSha256: string | undefined;
     try {
-      if (this.mirrorLegacyJson) {
-        const mirror = this.serializeLegacyMirror();
-        if (mirror.bytes > GENERAL_SCHEDULE_LIMITS.storeBytes) {
-          throw userError('Schedules exceed the 512 KiB storage limit.');
-        }
-        await writeJsonAtomic(this.file, mirror.payload, { mode: 0o600 });
-        mirrorSha256 = mirror.sha256;
-      }
+      mirrorSha256 = await this.writeLegacyMirrorIfEnabled();
       store.replaceCatalogState({
         schedules: this.schedules,
         promptCreations: [...this.promptCreations.values()],
@@ -532,32 +543,45 @@ export class GeneralScheduleManager {
       delete running.lastError;
       this.schedules[index] = running;
       this.activeRuns++;
+      let admission: AdmitScheduleOccurrenceResult;
       try {
-        await this.writeToDisk();
-        const admission = store.admitOccurrence({
-          scheduleId: running.id,
-          scheduleRevision: running.revision,
-          occurrenceKey,
-          occurrenceKind,
-          scheduledFor: plannedDue ?? stamp,
-          ...(manual ? { requestedAt: stamp } : {}),
-          workspaceId: running.workspaceId,
-          nowIso: stamp,
-          safeNoWorkProof: !manual && Boolean(pending),
+        const mirrorSha256 = await this.writeLegacyMirrorIfEnabled();
+        admission = store.runAtomic(() => {
+          const result = store.admitOccurrence({
+            scheduleId: running.id,
+            scheduleRevision: running.revision,
+            occurrenceKey,
+            occurrenceKind,
+            scheduledFor: plannedDue ?? stamp,
+            ...(manual ? { requestedAt: stamp } : {}),
+            workspaceId: running.workspaceId,
+            nowIso: stamp,
+            safeNoWorkProof: !manual && Boolean(pending),
+          });
+          if (!result.admitted) return result;
+          store.upsertScheduleState({
+            schedule: running,
+            triggerGeneration: this.triggerGenerations.get(id),
+            recovery: this.recoveries.get(id),
+            ...(mirrorSha256 !== undefined ? { lastJsonMirrorSha256: mirrorSha256 } : {}),
+          });
+          return result;
         });
-        if (!admission.admitted) {
-          this.activeRuns--;
-          this.schedules[index] = current;
-          await this.writeToDisk();
-          if (manual) throw userError('This scheduled occurrence was already admitted.');
-          return;
-        }
-        activeRun = admission.run;
       } catch (error) {
+        this.storageUnavailable = true;
+        this.cancelTimer();
         this.activeRuns--;
         this.schedules[index] = current;
         throw error;
       }
+      if (!admission.admitted) {
+        this.activeRuns--;
+        this.schedules[index] = current;
+        if (this.mirrorLegacyJson) await this.writeToDisk();
+        if (manual) throw userError('This scheduled occurrence was already admitted.');
+        return;
+      }
+      activeRun = admission.run;
       snapshot = structuredClone(running);
       this.armTimer();
       this.options.callbacks.onChange?.();
@@ -695,42 +719,49 @@ export class GeneralScheduleManager {
       if (!nextRunAt) delete updated.nextRunAt;
       if (!errorMessage) delete updated.lastError;
       this.schedules[index] = updated;
-      await this.writeToDisk();
-
+      const mirrorSha256 = await this.writeLegacyMirrorIfEnabled();
       const store = this.assertStoreOpen();
       try {
-        if (outcome === 'succeeded') {
-          store.markRunDispatched(activeRun!.id, activeRun!.revision, {
-            ...(sessionId ? { sessionId } : {}),
-            ...(dispatchReceipt?.runtimeId ? { runtimeId: dispatchReceipt.runtimeId } : {}),
-            ...(dispatchReceipt?.turnId ? { turnId: dispatchReceipt.turnId } : {}),
-            ...(dispatchReceipt?.correlationId ? { correlationId: dispatchReceipt.correlationId } : {}),
-            ...(dispatchReceipt?.executionGeneration ? { executionGeneration: dispatchReceipt.executionGeneration } : {}),
-            nowIso: finishedIso,
+        store.runAtomic(() => {
+          store.upsertScheduleState({
+            schedule: updated,
+            triggerGeneration: this.triggerGenerations.get(id),
+            recovery: this.recoveries.get(id),
+            ...(mirrorSha256 !== undefined ? { lastJsonMirrorSha256: mirrorSha256 } : {}),
           });
-        } else if (outcome === 'deferred-connection' || outcome === 'skipped-busy') {
-          if (recoverBusy || recoverConnection) {
-            store.markRunDeferred(activeRun!.id, activeRun!.revision, {
-              statusReason: outcome,
+          if (outcome === 'succeeded') {
+            store.markRunDispatched(activeRun!.id, activeRun!.revision, {
               ...(sessionId ? { sessionId } : {}),
+              ...(dispatchReceipt?.runtimeId ? { runtimeId: dispatchReceipt.runtimeId } : {}),
+              ...(dispatchReceipt?.turnId ? { turnId: dispatchReceipt.turnId } : {}),
+              ...(dispatchReceipt?.correlationId ? { correlationId: dispatchReceipt.correlationId } : {}),
+              ...(dispatchReceipt?.executionGeneration ? { executionGeneration: dispatchReceipt.executionGeneration } : {}),
               nowIso: finishedIso,
             });
+          } else if (outcome === 'deferred-connection' || outcome === 'skipped-busy') {
+            if (recoverBusy || recoverConnection) {
+              store.markRunDeferred(activeRun!.id, activeRun!.revision, {
+                statusReason: outcome,
+                ...(sessionId ? { sessionId } : {}),
+                nowIso: finishedIso,
+              });
+            } else {
+              terminalRun = store.markRunBlocked(activeRun!.id, activeRun!.revision, {
+                statusReason: outcome,
+                ...(sessionId ? { sessionId } : {}),
+                nowIso: finishedIso,
+              });
+              terminalSchedule = structuredClone(updated);
+            }
           } else {
-            terminalRun = store.markRunBlocked(activeRun!.id, activeRun!.revision, {
-              statusReason: outcome,
+            terminalRun = store.markRunFailed(activeRun!.id, activeRun!.revision, {
+              statusReason: errorMessage ?? 'Scheduled run failed.',
               ...(sessionId ? { sessionId } : {}),
               nowIso: finishedIso,
             });
             terminalSchedule = structuredClone(updated);
           }
-        } else {
-          terminalRun = store.markRunFailed(activeRun!.id, activeRun!.revision, {
-            statusReason: errorMessage ?? 'Scheduled run failed.',
-            ...(sessionId ? { sessionId } : {}),
-            nowIso: finishedIso,
-          });
-          terminalSchedule = structuredClone(updated);
-        }
+        });
       } catch (error) {
         this.storageUnavailable = true;
         this.cancelTimer();

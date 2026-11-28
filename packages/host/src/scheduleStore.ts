@@ -624,8 +624,81 @@ function decodeCursor(cursor: string): { createdAt: string; id: string } {
   }
 }
 
+const UPSERT_SCHEDULE_SQL = `
+  INSERT INTO schedules (
+    id, revision, workspace_id, name, prompt, enabled, trigger_kind, trigger_json, trigger_generation,
+    session_target_json, bound_session_id, assignment_json, missed_policy, state, next_run_at,
+    last_run_at, last_outcome, last_error, last_session_id, run_count, legacy_dispatch_count,
+    completed_run_count, created_at, updated_at
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  ON CONFLICT(id) DO UPDATE SET
+    revision = excluded.revision,
+    workspace_id = excluded.workspace_id,
+    name = excluded.name,
+    prompt = excluded.prompt,
+    enabled = excluded.enabled,
+    trigger_kind = excluded.trigger_kind,
+    trigger_json = excluded.trigger_json,
+    trigger_generation = excluded.trigger_generation,
+    session_target_json = excluded.session_target_json,
+    bound_session_id = excluded.bound_session_id,
+    assignment_json = excluded.assignment_json,
+    missed_policy = excluded.missed_policy,
+    state = excluded.state,
+    next_run_at = excluded.next_run_at,
+    last_run_at = excluded.last_run_at,
+    last_outcome = excluded.last_outcome,
+    last_error = excluded.last_error,
+    last_session_id = excluded.last_session_id,
+    run_count = excluded.run_count,
+    legacy_dispatch_count = COALESCE(excluded.legacy_dispatch_count, schedules.legacy_dispatch_count),
+    completed_run_count = MAX(schedules.completed_run_count, excluded.completed_run_count),
+    created_at = excluded.created_at,
+    updated_at = excluded.updated_at
+`;
+
+const INSERT_RECOVERY_SQL = `
+  INSERT INTO schedule_recoveries (schedule_id, reason, due_at, retry_at, attempt, retry_context_json, run_id)
+  VALUES (?, ?, ?, ?, ?, ?, ?)
+`;
+
+function scheduleUpsertParams(
+  item: GeneralSchedule,
+  generation: number,
+  legacyCount: number | null,
+  completedCount: number,
+) {
+  return [
+    item.id,
+    item.revision,
+    item.workspaceId,
+    item.name,
+    item.prompt,
+    item.enabled ? 1 : 0,
+    item.trigger.kind,
+    JSON.stringify(item.trigger),
+    generation,
+    JSON.stringify(item.sessionTarget),
+    item.boundSessionId ?? null,
+    JSON.stringify(item.assignment),
+    item.missedPolicy,
+    item.state,
+    item.nextRunAt ?? null,
+    item.lastRunAt ?? null,
+    item.lastOutcome ?? null,
+    item.lastError ?? null,
+    item.lastSessionId ?? null,
+    item.runCount,
+    legacyCount,
+    completedCount,
+    item.createdAt,
+    item.updatedAt,
+  ] as const;
+}
+
 export class ScheduleStore {
   private closed = false;
+  private transactionDepth = 0;
 
   private constructor(private readonly db: DatabaseSync, readonly filePath: string) {}
 
@@ -747,7 +820,16 @@ export class ScheduleStore {
 
   private transaction<T>(operation: () => T): T {
     this.assertOpen();
+    if (this.transactionDepth > 0) {
+      this.transactionDepth++;
+      try {
+        return operation();
+      } finally {
+        this.transactionDepth--;
+      }
+    }
     this.db.exec('BEGIN IMMEDIATE');
+    this.transactionDepth = 1;
     try {
       const result = operation();
       this.db.exec('COMMIT');
@@ -756,7 +838,14 @@ export class ScheduleStore {
     } catch (error) {
       try { this.db.exec('ROLLBACK'); } catch { /* Preserve original error. */ }
       throw error;
+    } finally {
+      this.transactionDepth = 0;
     }
+  }
+
+  /** Run multiple ScheduleStore mutations inside a single atomic SQLite transaction. */
+  runAtomic<T>(operation: () => T): T {
+    return this.transaction(operation);
   }
 
   getMeta(key: string): string | undefined {
@@ -980,70 +1069,14 @@ export class ScheduleStore {
         }
       }
 
-      const upsertSchedule = this.db.prepare(`
-        INSERT INTO schedules (
-          id, revision, workspace_id, name, prompt, enabled, trigger_kind, trigger_json, trigger_generation,
-          session_target_json, bound_session_id, assignment_json, missed_policy, state, next_run_at,
-          last_run_at, last_outcome, last_error, last_session_id, run_count, legacy_dispatch_count,
-          completed_run_count, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET
-          revision = excluded.revision,
-          workspace_id = excluded.workspace_id,
-          name = excluded.name,
-          prompt = excluded.prompt,
-          enabled = excluded.enabled,
-          trigger_kind = excluded.trigger_kind,
-          trigger_json = excluded.trigger_json,
-          trigger_generation = excluded.trigger_generation,
-          session_target_json = excluded.session_target_json,
-          bound_session_id = excluded.bound_session_id,
-          assignment_json = excluded.assignment_json,
-          missed_policy = excluded.missed_policy,
-          state = excluded.state,
-          next_run_at = excluded.next_run_at,
-          last_run_at = excluded.last_run_at,
-          last_outcome = excluded.last_outcome,
-          last_error = excluded.last_error,
-          last_session_id = excluded.last_session_id,
-          run_count = excluded.run_count,
-          legacy_dispatch_count = COALESCE(excluded.legacy_dispatch_count, schedules.legacy_dispatch_count),
-          completed_run_count = MAX(schedules.completed_run_count, excluded.completed_run_count),
-          created_at = excluded.created_at,
-          updated_at = excluded.updated_at
-      `);
+      const upsertSchedule = this.db.prepare(UPSERT_SCHEDULE_SQL);
 
       for (const item of state.schedules) {
         const prior = existingById.get(item.id);
         const generation = state.triggerGenerations?.get(item.id) ?? prior?.trigger_generation ?? 1;
         const legacyCount = item.legacyDispatchCount ?? prior?.legacy_dispatch_count ?? null;
         const completedCount = item.completedRunCount ?? prior?.completed_run_count ?? 0;
-        upsertSchedule.run(
-          item.id,
-          item.revision,
-          item.workspaceId,
-          item.name,
-          item.prompt,
-          item.enabled ? 1 : 0,
-          item.trigger.kind,
-          JSON.stringify(item.trigger),
-          generation,
-          JSON.stringify(item.sessionTarget),
-          item.boundSessionId ?? null,
-          JSON.stringify(item.assignment),
-          item.missedPolicy,
-          item.state,
-          item.nextRunAt ?? null,
-          item.lastRunAt ?? null,
-          item.lastOutcome ?? null,
-          item.lastError ?? null,
-          item.lastSessionId ?? null,
-          item.runCount,
-          legacyCount,
-          completedCount,
-          item.createdAt,
-          item.updatedAt,
-        );
+        upsertSchedule.run(...scheduleUpsertParams(item, generation, legacyCount, completedCount));
       }
 
       this.db.prepare('DELETE FROM schedule_prompt_creations').run();
@@ -1054,10 +1087,7 @@ export class ScheduleStore {
         insertReceipt.run(receipt.scheduleId, receipt.fingerprint, receipt.invalidated ? 1 : 0);
       }
 
-      const insertRecovery = this.db.prepare(`
-        INSERT INTO schedule_recoveries (schedule_id, reason, due_at, retry_at, attempt, retry_context_json, run_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `);
+      const insertRecovery = this.db.prepare(INSERT_RECOVERY_SQL);
       for (const recovery of state.recoveries) {
         insertRecovery.run(
           recovery.scheduleId,
@@ -1074,6 +1104,48 @@ export class ScheduleStore {
         this.db
           .prepare("INSERT INTO schedule_meta(key, value) VALUES ('last_json_mirror_sha256', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
           .run(state.lastJsonMirrorSha256);
+      }
+    });
+  }
+
+  /** Atomically persist a single schedule row and its recovery receipt without rewriting the full catalog. */
+  upsertScheduleState(input: {
+    schedule: GeneralSchedule;
+    triggerGeneration?: number;
+    recovery?: RecoveryReceipt;
+    lastJsonMirrorSha256?: string;
+  }): void {
+    this.transaction(() => {
+      const prior = this.db
+        .prepare('SELECT trigger_generation, legacy_dispatch_count, completed_run_count FROM schedules WHERE id = ?')
+        .all(input.schedule.id)[0] as
+        | { trigger_generation: number; legacy_dispatch_count: number | null; completed_run_count: number }
+        | undefined;
+      const generation = input.triggerGeneration ?? prior?.trigger_generation ?? 1;
+      const legacyCount = input.schedule.legacyDispatchCount ?? prior?.legacy_dispatch_count ?? null;
+      const completedCount = input.schedule.completedRunCount ?? prior?.completed_run_count ?? 0;
+
+      this.db.prepare(UPSERT_SCHEDULE_SQL).run(
+        ...scheduleUpsertParams(input.schedule, generation, legacyCount, completedCount),
+      );
+
+      this.db.prepare('DELETE FROM schedule_recoveries WHERE schedule_id = ?').run(input.schedule.id);
+      if (input.recovery) {
+        this.db.prepare(INSERT_RECOVERY_SQL).run(
+          input.recovery.scheduleId,
+          input.recovery.reason,
+          input.recovery.dueAt,
+          input.recovery.retryAt,
+          input.recovery.attempt,
+          input.recovery.retryContext ? JSON.stringify(input.recovery.retryContext) : null,
+          input.recovery.runId ?? null,
+        );
+      }
+
+      if (input.lastJsonMirrorSha256 !== undefined) {
+        this.db
+          .prepare("INSERT INTO schedule_meta(key, value) VALUES ('last_json_mirror_sha256', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+          .run(input.lastJsonMirrorSha256);
       }
     });
   }
